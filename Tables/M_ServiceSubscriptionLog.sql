@@ -1,0 +1,29 @@
+﻿/****** Object:  Table [dbo].[M_ServiceSubscriptionLog]    Script Date: 3/2/2026 12:27:11 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[M_ServiceSubscriptionLog](
+	[Subscribe_Id] [nvarchar](50) NOT NULL,
+	[Service_ID] [nvarchar](10) NOT NULL,
+	[Comp_ID] [nvarchar](50) NULL,
+	[Pro_ID] [nvarchar](50) NULL,
+	[Plan_ID] [nvarchar](50) NULL,
+	[PlanName] [nvarchar](150) NULL,
+	[PlanMasterPeriod] [numeric](18, 0) NULL,
+	[PlanSalePeriod] [numeric](18, 0) NULL,
+	[PlanMasterPrice] [numeric](18, 0) NULL,
+	[PlanSalePrice] [numeric](18, 0) NULL,
+	[DateFrom] [datetime] NULL,
+	[DateTo] [datetime] NULL,
+	[EntryDate] [datetime] NULL,
+	[IsActive] [int] NULL,
+	[IsDelete] [int] NULL,
+	[IsAdminVerify] [int] NULL,
+	[TransType] [nvarchar](50) NULL,
+ CONSTRAINT [PK_M_ServiceSubscriptionLog] PRIMARY KEY CLUSTERED 
+(
+	[Subscribe_Id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
