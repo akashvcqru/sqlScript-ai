@@ -76,6 +76,8 @@ BEGIN
         @ProductRegistered               AS productRegistered,
         @ServiceActivated                AS serviceActivated,
         c.Comp_ID,
+        c.Comp_Name,
+        c.Status,
         s.Service_ID,
         s.ServiceName
     FROM Comp_Reg c
