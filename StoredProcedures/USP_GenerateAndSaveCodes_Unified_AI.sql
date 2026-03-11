@@ -2,7 +2,7 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [dbo].[USP_GenerateAndSaveCodes_Unified]
+CREATE OR ALTER PROCEDURE [dbo].[USP_GenerateAndSaveCodes_Unified_AI]
     @TotalQ INT
 AS
 BEGIN

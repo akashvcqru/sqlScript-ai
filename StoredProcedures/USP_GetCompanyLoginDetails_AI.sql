@@ -4,7 +4,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetCompanyLoginDetails]
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetCompanyLoginDetails_AI]
 	@Email    NVARCHAR(100),
 	@Password NVARCHAR(50)
 AS
