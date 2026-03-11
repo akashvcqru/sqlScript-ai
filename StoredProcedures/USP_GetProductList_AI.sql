@@ -8,14 +8,57 @@ IF OBJECT_ID('USP_GetProductList_AI', 'P') IS NOT NULL
 GO
 
 CREATE PROCEDURE USP_GetProductList_AI
-    @Comp_ID    NVARCHAR(50) = '',
-    @Pro_Name   NVARCHAR(200) = ''
+    @Comp_ID       NVARCHAR(50) = '',
+    @PageNumber    INT = 1,
+    @PageSize      INT = 10,
+    @SearchQuery   NVARCHAR(200) = '',
+    @TimeWindow    NVARCHAR(50) = '',
+    @FromDate      DATETIME = NULL,
+    @ToDate        DATETIME = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
 
+    -- ── Date Filtering Logic Map ─────────────────────────────────────────────
+    DECLARE @CalculatedFromDate DATETIME = NULL;
+    DECLARE @CalculatedToDate DATETIME = NULL;
+
+    IF @TimeWindow = 'this week'
+    BEGIN
+        SET @CalculatedFromDate = DATEADD(week, DATEDIFF(week, 0, GETDATE()), 0);
+        SET @CalculatedToDate = GETDATE();
+    END
+    ELSE IF @TimeWindow = 'lastweek' OR @TimeWindow = 'last week'
+    BEGIN
+        SET @CalculatedFromDate = DATEADD(week, DATEDIFF(week, 7, GETDATE()), 0);
+        SET @CalculatedToDate = DATEADD(second, -1, DATEADD(week, DATEDIFF(week, 0, GETDATE()), 0));
+    END
+    ELSE IF @TimeWindow = 'this month'
+    BEGIN
+        SET @CalculatedFromDate = DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0);
+        SET @CalculatedToDate = GETDATE();
+    END
+    ELSE IF @TimeWindow = 'last month'
+    BEGIN
+        SET @CalculatedFromDate = DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0);
+        SET @CalculatedToDate = DATEADD(second, -1, DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0));
+    END
+    ELSE IF @TimeWindow = 'quarter'
+    BEGIN
+        SET @CalculatedFromDate = DATEADD(quarter, DATEDIFF(quarter, 0, GETDATE()), 0);
+        SET @CalculatedToDate = GETDATE();
+    END
+    ELSE IF @TimeWindow = 'from to date'
+    BEGIN
+        SET @CalculatedFromDate = @FromDate;
+        -- Ensure ToDate includes the entire day if time wasn't strictly provided
+        SET @CalculatedToDate = ISNULL(DATEADD(day, 1, @ToDate), GETDATE()); 
+    END
+
+    -- ── Main Query ──────────────────────────────────────────────────────────
     SELECT
-        ROW_NUMBER() OVER (ORDER BY pr.Pro_Entry_Date DESC)  AS SNo,
+        COUNT(1) OVER()                                       AS TotalRecords,
+        ROW_NUMBER() OVER (ORDER BY pr.Pro_Entry_Date DESC)   AS SNo,
         pr.Pro_ID,
         pr.Pro_Name,
         ISNULL(
@@ -43,7 +86,17 @@ BEGIN
     LEFT JOIN M_Label ml ON pr.Label_Code = ml.Label_Code
     WHERE
         ('' = @Comp_ID OR pr.Comp_ID = @Comp_ID)
-        AND pr.Pro_Name LIKE '%' + @Pro_Name + '%'
-    ORDER BY pr.Pro_Entry_Date DESC;
+        AND (@SearchQuery = '' OR pr.Pro_Name LIKE '%' + @SearchQuery + '%')
+        AND (
+            @CalculatedFromDate IS NULL 
+            OR pr.Pro_Entry_Date >= @CalculatedFromDate
+        )
+        AND (
+            @CalculatedToDate IS NULL 
+            OR pr.Pro_Entry_Date <= @CalculatedToDate
+        )
+    ORDER BY pr.Pro_Entry_Date DESC
+    OFFSET (@PageNumber - 1) * @PageSize ROWS 
+    FETCH NEXT @PageSize ROWS ONLY;
 END
 GO
