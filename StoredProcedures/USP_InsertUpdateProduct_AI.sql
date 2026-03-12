@@ -14,9 +14,12 @@ CREATE PROCEDURE USP_InsertUpdateProduct_AI
     @Pro_Name       NVARCHAR(200),
     @Pro_Desc       NVARCHAR(MAX),
     @Label_Code     NVARCHAR(50),
-    @BatchSize      BIGINT,
-    @DispLoc        NVARCHAR(200),
-    @DML            NCHAR(1)   -- 'I' = Insert, 'U' = Update
+    @BatchSize      BIGINT = 0,
+    @DispLoc        NVARCHAR(200) = NULL,
+    @DML            NCHAR(1),  -- 'I' = Insert, 'U' = Update, 'F' = Update File Flags Only
+    @Pro_Doc        NVARCHAR(250) = NULL,
+    @Doc_Flag       INT = 0,
+    @Sound_Flag     INT = 0
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -49,10 +52,10 @@ BEGIN
 
         INSERT INTO Pro_Reg
             (Comp_ID, Pro_ID, Pro_Entry_Date, Pro_Name, Update_Flag,
-             Pro_Desc, Label_Code, Doc_Flag, Sound_Flag, BatchSize, Dispatch_Location)
+             Pro_Desc, Label_Code, Doc_Flag, Sound_Flag, BatchSize, Dispatch_Location, Pro_Doc)
         VALUES
             (@Comp_ID, @NewProId, @Pro_Entry_Date, @Pro_Name, 0,
-             @Pro_Desc, @Label_Code, 0, 0, @BatchSize, @DispLoc);
+             @Pro_Desc, @Label_Code, @Doc_Flag, @Sound_Flag, @BatchSize, @DispLoc, @Pro_Doc);
 
         -- Increment counter
         UPDATE Code_Gen
@@ -69,11 +72,26 @@ BEGIN
                Pro_Desc          = @Pro_Desc,
                Label_Code        = @Label_Code,
                BatchSize         = @BatchSize,
-               Dispatch_Location = @DispLoc
+               Dispatch_Location = @DispLoc,
+               Pro_Doc           = ISNULL(@Pro_Doc, Pro_Doc),
+               Doc_Flag          = CASE WHEN @Pro_Doc IS NOT NULL THEN @Doc_Flag ELSE Doc_Flag END,
+               Sound_Flag        = CASE WHEN @Sound_Flag > 0 THEN @Sound_Flag ELSE Sound_Flag END
         WHERE  Pro_ID  = @Pro_ID
           AND  Comp_ID = @Comp_ID;
 
         SELECT 1 AS success, 'Product updated successfully.' AS message, @Pro_ID AS Pro_ID;
+    END
+    ELSE IF @DML = 'F'
+    BEGIN
+        -- Used to update just the file flags and names after the initial insert generates the Pro_ID
+        UPDATE Pro_Reg
+        SET    Pro_Doc           = ISNULL(@Pro_Doc, Pro_Doc),
+               Doc_Flag          = CASE WHEN @Pro_Doc IS NOT NULL THEN @Doc_Flag ELSE Doc_Flag END,
+               Sound_Flag        = CASE WHEN @Sound_Flag > 0 THEN @Sound_Flag ELSE Sound_Flag END
+        WHERE  Pro_ID  = @Pro_ID
+          AND  Comp_ID = @Comp_ID;
+
+        SELECT 1 AS success, 'Product files updated successfully.' AS message, @Pro_ID AS Pro_ID;
     END
     ELSE
     BEGIN
