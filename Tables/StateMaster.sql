@@ -1,0 +1,16 @@
+﻿/****** Object:  Table [dbo].[StateMaster]    Script Date: 3/2/2026 12:27:12 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[StateMaster](
+	[State_Id] [int] IDENTITY(1,1) NOT NULL,
+	[StateName] [nvarchar](max) NOT NULL,
+	[Country_Id] [int] NOT NULL,
+	[Flag] [int] NULL,
+ CONSTRAINT [PK_dbo.StateMaster] PRIMARY KEY CLUSTERED 
+(
+	[State_Id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO

@@ -1,0 +1,23 @@
+﻿/****** Object:  Table [dbo].[tblSeriesMapping]    Script Date: 3/2/2026 12:27:13 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[tblSeriesMapping](
+	[ID] [int] IDENTITY(1,1) NOT NULL,
+	[Series_No] [varchar](20) NULL,
+	[Code1] [numeric](5, 0) NULL,
+	[Code2] [numeric](8, 0) NULL,
+	[Mapping_Series] [int] NULL,
+	[Is_Used] [int] NULL,
+	[FullCode]  AS (right('00000'+CONVERT([varchar](5),[Code1]),(5))+right('00000000'+CONVERT([varchar](8),[Code2]),(8))),
+PRIMARY KEY CLUSTERED 
+(
+	[ID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+UNIQUE NONCLUSTERED 
+(
+	[Mapping_Series] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO

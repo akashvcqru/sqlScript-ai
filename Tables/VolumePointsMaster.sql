@@ -1,0 +1,17 @@
+﻿/****** Object:  Table [dbo].[VolumePointsMaster]    Script Date: 3/2/2026 12:27:13 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[VolumePointsMaster](
+	[ID] [int] IDENTITY(1,1) NOT NULL,
+	[MinVolume] [decimal](18, 2) NULL,
+	[MaxVolume] [decimal](18, 2) NULL,
+	[PointsPerLitre] [decimal](18, 2) NULL,
+	[Comp_id] [varchar](100) NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[ID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
