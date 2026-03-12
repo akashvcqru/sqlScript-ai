@@ -1,0 +1,66 @@
+﻿/****** Object:  Table [dbo].[Tbl_Draft_comp_Reg]    Script Date: 3/2/2026 12:27:12 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Tbl_Draft_comp_Reg](
+	[Draft_Id] [int] IDENTITY(1,1) NOT NULL,
+	[SubmittedToMainTable] [bit] NOT NULL,
+	[Comp_ID] [nvarchar](100) NULL,
+	[Comp_Name] [nvarchar](200) NULL,
+	[Comp_Cat_Id] [numeric](18, 0) NULL,
+	[Comp_Email] [nvarchar](200) NULL,
+	[WebSite] [nvarchar](200) NULL,
+	[Address] [nvarchar](max) NULL,
+	[City_ID] [numeric](18, 0) NULL,
+	[Contact_Person] [nvarchar](200) NULL,
+	[Mobile_No] [nvarchar](20) NULL,
+	[Phone_No] [nvarchar](20) NULL,
+	[Fax] [nvarchar](50) NULL,
+	[Reg_Date] [datetime] NULL,
+	[Password] [nvarchar](200) NULL,
+	[Status] [numeric](18, 0) NULL,
+	[Email_Vari_Flag] [numeric](18, 0) NULL,
+	[Update_Flag] [numeric](18, 0) NULL,
+	[Comp_Type] [nvarchar](100) NULL,
+	[Upgrade_Date] [datetime] NULL,
+	[Delete_Flag] [int] NULL,
+	[IsRetailer] [int] NULL,
+	[logo_path] [nvarchar](500) NULL,
+	[ResiAddress] [nvarchar](max) NULL,
+	[DirectorName] [nvarchar](200) NULL,
+	[DirectorFatherName] [nvarchar](200) NULL,
+	[AadharNumber] [varchar](20) NULL,
+	[MinLimitAmount] [decimal](18, 2) NULL,
+	[Gstin] [nvarchar](50) NULL,
+	[FssiNo] [nvarchar](50) NULL,
+	[MsmeNo] [nvarchar](50) NULL,
+	[DirectorPan] [nvarchar](20) NULL,
+	[ResetToken] [nvarchar](200) NULL,
+	[TokenExpiry] [datetime] NULL,
+	[SalutationId] [int] NULL,
+	[DirectorLastName] [varchar](200) NULL,
+	[PANCardImage] [varchar](500) NULL,
+	[Designation] [varchar](200) NULL,
+	[DirectorPhoto] [varchar](500) NULL,
+	[DirectorEmail] [varchar](200) NULL,
+	[DirectorMobile] [varchar](20) NULL,
+	[DirectorAddress] [varchar](max) NULL,
+	[GSTRegistrationCertificate] [varchar](500) NULL,
+	[CompanyPAN] [varchar](20) NULL,
+	[CompanyPANDocument] [varchar](500) NULL,
+	[SignAgreements] [varchar](500) NULL,
+	[StateId] [int] NULL,
+	[CompanyName] [nvarchar](50) NULL,
+	[City] [nvarchar](30) NULL,
+	[Pincode] [varchar](20) NULL,
+	[Landline] [varchar](20) NULL,
+	[CompanyIndustry] [varchar](200) NULL,
+	[CompanyAddress] [varchar](max) NULL,
+	[CurrentStep] [int] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[Draft_Id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO

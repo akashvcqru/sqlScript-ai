@@ -1,0 +1,9 @@
+﻿/****** Object:  Table [dbo].[jrbackup]    Script Date: 3/2/2026 12:27:11 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[jrbackup](
+	[M_Consumerid] [int] NOT NULL
+) ON [PRIMARY]
+GO

@@ -1,0 +1,53 @@
+﻿/****** Object:  Table [dbo].[tblbackup]    Script Date: 3/2/2026 12:27:13 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[tblbackup](
+	[Enquiry_Date] [datetime] NULL,
+	[Vendor] [nvarchar](70) NULL,
+	[Product_Name] [nvarchar](150) NULL,
+	[Location] [nvarchar](70) NULL,
+	[Code1] [nvarchar](16) NULL,
+	[Code2] [nvarchar](16) NULL,
+	[Status] [varchar](12) NULL,
+	[email] [nvarchar](50) NULL,
+	[Mobile_Number] [nvarchar](15) NULL,
+	[Amount_Won] [varchar](15) NULL,
+	[Mode_of_Verification] [nvarchar](10) NULL,
+	[TechnicianID] [varchar](20) NULL,
+	[DealerCode] [varchar](20) NULL,
+	[consumername] [nvarchar](50) NULL,
+	[city] [nvarchar](45) NULL,
+	[Address] [nvarchar](120) NULL,
+	[pincode] [nvarchar](8) NULL,
+	[aadharnumber] [varchar](12) NULL,
+	[Bank_Name] [nvarchar](65) NULL,
+	[Account_holder_Name] [nvarchar](55) NULL,
+	[Account_No] [nvarchar](30) NULL,
+	[Branch] [nvarchar](70) NULL,
+	[IFSC_Code] [nvarchar](20) NULL,
+	[City_of_Branch] [nvarchar](50) NULL,
+	[Branch_Address] [nvarchar](200) NULL,
+	[Account_type] [nvarchar](15) NULL,
+	[Notes] [varchar](500) NULL,
+	[CreatedDate] [datetime] NULL,
+	[CreatedBy] [varchar](5) NULL,
+	[UpdatedDate] [datetime] NULL,
+	[UpdatedBy] [varchar](3) NULL,
+	[Call_Status] [varchar](200) NULL,
+	[Id] [int] IDENTITY(1,1) NOT NULL,
+	[Pack] [nvarchar](40) NULL,
+	[aadharUploadedate] [datetime] NULL,
+	[aadharUploadedBy] [varchar](10) NULL,
+	[psbUploadedate] [datetime] NULL,
+	[psbUploadedBy] [varchar](10) NULL,
+	[Aadhar_source] [varchar](10) NULL,
+	[Passbook_source] [varchar](10) NULL,
+	[village] [nvarchar](100) NULL,
+	[Dealer_name] [nvarchar](100) NULL,
+	[Dealer_district] [nvarchar](50) NULL,
+	[Dealer_state] [nvarchar](50) NULL,
+	[Dealer_location] [nvarchar](50) NULL
+) ON [PRIMARY]
+GO

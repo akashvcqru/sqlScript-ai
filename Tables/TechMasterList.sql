@@ -1,0 +1,52 @@
+﻿/****** Object:  Table [dbo].[TechMasterList]    Script Date: 3/2/2026 12:27:13 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[TechMasterList](
+	[Tech Master Id] [float] NULL,
+	[Dealer Code] [nvarchar](255) NULL,
+	[Dealer State Name] [nvarchar](255) NULL,
+	[Dealer Zone] [nvarchar](255) NULL,
+	[Dealer Tehsil Name] [nvarchar](255) NULL,
+	[Dealer Name] [nvarchar](255) NULL,
+	[Dealer Village] [nvarchar](255) NULL,
+	[Dealer AO] [nvarchar](255) NULL,
+	[Tech Master Name] [nvarchar](255) NULL,
+	[Enrolment Date] [datetime] NULL,
+	[Mobile Number] [nvarchar](255) NULL,
+	[F12] [nvarchar](255) NULL,
+	[F13] [nvarchar](255) NULL,
+	[F14] [nvarchar](255) NULL,
+	[F15] [nvarchar](255) NULL,
+	[F16] [float] NULL,
+	[F17] [float] NULL,
+	[F18] [float] NULL,
+	[F19] [float] NULL,
+	[F20] [nvarchar](255) NULL,
+	[F21] [float] NULL,
+	[F22] [nvarchar](255) NULL,
+	[F23] [float] NULL,
+	[F24] [float] NULL,
+	[F25] [float] NULL,
+	[F26] [nvarchar](255) NULL,
+	[F27] [float] NULL,
+	[F28] [float] NULL,
+	[F29] [float] NULL,
+	[F30] [nvarchar](255) NULL,
+	[F31] [nvarchar](255) NULL,
+	[F32] [nvarchar](255) NULL,
+	[F33] [nvarchar](255) NULL,
+	[F34] [nvarchar](255) NULL,
+	[F35] [nvarchar](255) NULL,
+	[F36] [float] NULL,
+	[F37] [float] NULL,
+	[F38] [float] NULL,
+	[F39] [nvarchar](255) NULL,
+	[F40] [nvarchar](255) NULL,
+	[F41] [nvarchar](255) NULL,
+	[F42] [nvarchar](255) NULL,
+	[F43] [nvarchar](255) NULL,
+	[F44] [nvarchar](255) NULL
+) ON [PRIMARY]
+GO
