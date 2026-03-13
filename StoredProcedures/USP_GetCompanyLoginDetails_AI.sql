@@ -68,6 +68,9 @@ BEGIN
         SET @ServiceActivated = 1;
 
     -- ── 6. Return onboardingStatus + distinct services list ─────────────────
+    DECLARE @BalanceAmount DECIMAL(18, 2) = 0;
+    SELECT @BalanceAmount = ISNULL(balance_amount, 0) FROM Paytm_balance WHERE Comp_ID = @CompID;
+
     SELECT DISTINCT
         1                                AS success,
         'Services fetched successfully.' AS message,
@@ -78,6 +81,9 @@ BEGIN
         c.Comp_ID,
         c.Comp_Name,
         c.Status,
+        c.Contact_Person                 AS UserName,
+        c.Mobile_No                      AS MobileNumber,
+        @BalanceAmount                   AS BalanceAmount,
         s.Service_ID,
         s.ServiceName
     FROM Comp_Reg c
