@@ -18,13 +18,13 @@ CREATE PROCEDURE USP_InsertUpdateServiceSubscription_AI
     @DateFrom         DATETIME,
     @DateTo           DATETIME,
     @EntryDate        DATETIME,
+    @PlanSalePeriod   NUMERIC(18, 0),
     @DML              NCHAR(1) -- 'I' = Insert, 'U' = Update
 AS
 BEGIN
     SET NOCOUNT ON;
 
     -- Local variables for fixed/derived values
-    DECLARE @PlanSalePeriod   NUMERIC(18, 0) = @PlanMasterPeriod;
     DECLARE @PlanMasterPrice  NUMERIC(18, 0) = 0;
     DECLARE @PlanSalePrice    NUMERIC(18, 0) = 0;
     DECLARE @IsActive         INT = 0;
