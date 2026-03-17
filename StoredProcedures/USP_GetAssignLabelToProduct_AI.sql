@@ -9,14 +9,46 @@ CREATE PROCEDURE [dbo].[USP_GetAssignLabelToProduct_AI]
     @Pro_ID NVARCHAR(50) = NULL,
     @Pro_Name NVARCHAR(200) = NULL,
     @FromDate DATETIME = NULL,
-    @ToDate DATETIME = NULL
+    @ToDate DATETIME = NULL,
+    @Row_ID INT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF @Pro_ID IS NOT NULL AND @Pro_ID <> ''
+    IF @Row_ID IS NOT NULL
     BEGIN
-        -- SINGLE PRODUCT DETAIL MODE (Original behavior)
+        -- BATCH DETAIL MODE
+        SELECT 
+            t.Pro_ID,
+            pr.Pro_Name,
+            pr.BatchSize,
+            t.Batch_No AS BatchNo,
+            t.MRP,
+            CONVERT(VARCHAR, t.Mfd_Date, 105) AS MfdDate,
+            CONVERT(VARCHAR, t.Exp_Date, 105) AS ExpDate,
+            t.WarrantyDurationMonth AS Warranty,
+            t.Comments,
+            t.Row_ID AS RowId,
+            (SELECT COUNT(Row_ID) FROM M_Code WHERE Batch_No = CONVERT(VARCHAR, t.Row_ID)) AS NoofCodes
+        FROM T_Pro t
+        INNER JOIN Pro_Reg pr ON t.Pro_ID = pr.Pro_ID
+        WHERE t.Row_ID = @Row_ID AND pr.Comp_ID = @Comp_ID;
+
+        -- Check for Counter Fitting Service (SRV1018)
+        IF EXISTS (
+            SELECT 1 
+            FROM M_ServiceSubscription 
+            WHERE Service_ID = 'SRV1018' 
+              AND Pro_ID = (SELECT Pro_ID FROM T_Pro WHERE Row_ID = @Row_ID)
+              AND GETDATE() BETWEEN DateFrom AND DateTo
+        )
+            SELECT 1 AS IsCounterFittingServiceActive;
+        ELSE
+            SELECT 0 AS IsCounterFittingServiceActive;
+    END
+    ELSE IF @Pro_ID IS NOT NULL AND @Pro_ID <> ''
+    BEGIN
+        -- SINGLE PRODUCT DETAIL MODE (For NEW assignment)
         
         -- 1. Get Product Name and BatchSize
         SELECT 
@@ -49,42 +81,40 @@ BEGIN
     END
     ELSE
     BEGIN
-        -- PRODUCT LIST MODE
+        -- BATCH LIST MODE (Instead of just product list)
         
-        -- Default Date range logic if needed, but here we'll just use the filters
         DECLARE @CalculatedToDate DATETIME = ISNULL(DATEADD(day, 1, @ToDate), '9999-12-31');
 
         SELECT 
-            pr.Pro_ID,
+            t.Pro_ID,
             pr.Pro_Name,
             pr.BatchSize,
-            pr.Pro_Entry_Date,
-            (
-                SELECT COUNT(mc.Pro_ID) 
-                FROM M_Code mc 
-                WHERE mc.Pro_ID = pr.Pro_ID 
-                  AND (mc.ScrapeFlag IS NULL OR mc.ScrapeFlag = 0)
-                  AND mc.Print_Status = 1
-                  AND mc.Batch_No IS NULL
-                  AND mc.DispatchFlag = 1
-                  AND mc.ReceiveFlag = 1
-            ) AS AvailableCodes,
+            t.Entry_Date AS EntryDate,
+            t.Batch_No AS BatchNo,
+            t.MRP,
+            CONVERT(VARCHAR, t.Mfd_Date, 105) AS MfdDate,
+            CONVERT(VARCHAR, t.Exp_Date, 105) AS ExpDate,
+            t.WarrantyDurationMonth AS Warranty,
+            t.Comments,
+            t.Row_ID AS RowId,
+            (SELECT COUNT(mc.Row_ID) FROM M_Code mc WHERE mc.Batch_No = CONVERT(VARCHAR, t.Row_ID)) AS NoofCodes,
             CASE 
                 WHEN EXISTS (
                     SELECT 1 
                     FROM M_ServiceSubscription ss 
                     WHERE ss.Service_ID = 'SRV1018' 
-                      AND ss.Pro_ID = pr.Pro_ID 
+                      AND ss.Pro_ID = t.Pro_ID 
                       AND GETDATE() BETWEEN ss.DateFrom AND ss.DateTo
                 ) THEN 1 
                 ELSE 0 
             END AS IsCounterFittingServiceActive
-        FROM Pro_Reg pr
+        FROM T_Pro t
+        INNER JOIN Pro_Reg pr ON t.Pro_ID = pr.Pro_ID
         WHERE pr.Comp_ID = @Comp_ID
           AND (@Pro_Name IS NULL OR pr.Pro_Name LIKE '%' + @Pro_Name + '%')
-          AND (@FromDate IS NULL OR pr.Pro_Entry_Date >= @FromDate)
-          AND (pr.Pro_Entry_Date < @CalculatedToDate)
-        ORDER BY pr.Pro_Entry_Date DESC;
+          AND (@FromDate IS NULL OR t.Entry_Date >= @FromDate)
+          AND (t.Entry_Date < @CalculatedToDate)
+        ORDER BY t.Entry_Date DESC;
     END
 END
 GO

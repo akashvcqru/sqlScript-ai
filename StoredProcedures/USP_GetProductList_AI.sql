@@ -86,7 +86,7 @@ BEGIN
     LEFT JOIN M_Label ml ON pr.Label_Code = ml.Label_Code
     WHERE
         ('' = @Comp_ID OR pr.Comp_ID = @Comp_ID)
-        AND (@SearchQuery = '' OR pr.Pro_Name LIKE '%' + @SearchQuery + '%')
+        AND (@SearchQuery = '' OR pr.Pro_Name LIKE '%' + @SearchQuery + '%' OR pr.Pro_ID = @SearchQuery)
         AND (
             @CalculatedFromDate IS NULL 
             OR pr.Pro_Entry_Date >= @CalculatedFromDate
