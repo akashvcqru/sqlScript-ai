@@ -37,13 +37,15 @@ BEGIN
         (
             Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, 
             PlanMasterPeriod, PlanSalePeriod, PlanMasterPrice, PlanSalePrice, 
-            DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify
+            DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify,
+            TransType
         )
         VALUES
         (
             @Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, @Plan_ID, @PlanName, 
             @PlanMasterPeriod, @PlanSalePeriod, @PlanMasterPrice, @PlanSalePrice, 
-            @DateFrom, @DateTo, @EntryDate, @IsActive, @IsDelete, @IsAdminVerify
+            @DateFrom, @DateTo, @EntryDate, @IsActive, @IsDelete, @IsAdminVerify,
+            'Service'
         );
 
         SELECT 1 AS success, 'Subscription added successfully.' AS message;
