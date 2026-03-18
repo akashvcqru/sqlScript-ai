@@ -9,8 +9,6 @@ BEGIN
         CDM.Courier_ID,
         CM.Courier_Name,
         CM.Courier_Mobile,
-        CDM.Comp_ID,
-        CR.Comp_Name,
         CDM.Tracking_No,
         CDM.Dispatch_Date,
         CDM.Expected_Date,
@@ -34,9 +32,6 @@ BEGIN
     LEFT JOIN Courier_Master CM 
         ON CM.Courier_ID = CDM.Courier_ID
 
-    LEFT JOIN Comp_Reg CR 
-        ON CR.Comp_ID = CDM.Comp_ID
-
     LEFT JOIN Courier_Disp_ProInfo CDP 
         ON CDP.Courier_Disp_ID = CDM.Courier_Disp_ID
 
@@ -48,8 +43,6 @@ BEGIN
         CDM.Courier_ID,
         CM.Courier_Name,
         CM.Courier_Mobile,
-        CDM.Comp_ID,
-        CR.Comp_Name,
         CDM.Tracking_No,
         CDM.Dispatch_Date,
         CDM.Expected_Date,
