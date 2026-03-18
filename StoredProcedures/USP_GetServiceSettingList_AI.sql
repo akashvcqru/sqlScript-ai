@@ -10,7 +10,9 @@ CREATE PROCEDURE USP_GetServiceSettingList_AI
     @Comp_ID       NVARCHAR(50),
     @Pro_ID        NVARCHAR(50) = NULL,
     @Service_ID    NVARCHAR(10) = NULL,
-    @Pro_Name      NVARCHAR(100) = NULL
+    @Pro_Name      NVARCHAR(100) = NULL,
+    @PageIndex     INT = 1,
+    @PageSize      INT = 10
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -38,9 +40,7 @@ BEGIN
             ELSE 'De-Activated' 
         END AS StatusText,
         SST.IsDelete,
-        -- Sound paths (stubbed as per legacy UI expectation)
-        '' AS SoundPath,
-        '' AS SoundPath1
+        COUNT(*) OVER() as TotalRecords
     FROM M_ServiceSubscriptionTrans SST
     INNER JOIN M_ServiceSubscription SS ON SST.Subscribe_Id = SS.Subscribe_Id
     INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
@@ -50,6 +50,8 @@ BEGIN
       AND (@Pro_ID IS NULL OR SS.Pro_ID = @Pro_ID)
       AND (@Service_ID IS NULL OR SS.Service_ID = @Service_ID)
       AND (@Pro_Name IS NULL OR P.Pro_Name LIKE '%' + @Pro_Name + '%')
-    ORDER BY SST.Entry_Date DESC;
+    ORDER BY SST.Entry_Date DESC
+    OFFSET (@PageIndex - 1) * @PageSize ROWS
+    FETCH NEXT @PageSize ROWS ONLY;
 END
 GO

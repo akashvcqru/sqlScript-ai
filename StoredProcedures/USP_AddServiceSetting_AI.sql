@@ -30,6 +30,7 @@ CREATE PROCEDURE USP_AddServiceSetting_AI
     @TotalAmount      NUMERIC(18, 0) = 0,
     @SeriesStart      NVARCHAR(20) = NULL, -- Format "Order-Serial"
     @SeriesEnd        NVARCHAR(20) = NULL,  -- Format "Order-Serial"
+    @Multiple         INT = 1,
     @DML              NCHAR(1) = 'I' -- 'I' = Insert, 'U' = Update
 AS
 BEGIN
@@ -83,7 +84,7 @@ BEGIN
         RETURN;
     END
 
-    BEGIN TRANSACTION;
+-- BEGIN TRANSACTION; (Removed for API transaction management)
 
     IF @DML = 'I'
     BEGIN
@@ -91,13 +92,13 @@ BEGIN
         (
             Subscribe_Id, Points, IsCashConvert, IsCash, DateFrom, DateTo, 
             Entry_Date, Comments, Frequency, IsActive, IsDelete, IsDraw, 
-            IsReferral, DrawDate, WarrantyPeriod, AmtType, Minval, Maxval, totalamont
+            IsReferral, DrawDate, WarrantyPeriod, AmtType, Minval, Maxval, totalamont, Multiple
         )
         VALUES
         (
             @ActualSubscribeId, @Points, @IsCashConvert, @IsCash, @DateFrom, @DateTo, 
             GETDATE(), @Comments, @Frequency, 0, 0, @IsDraw, 
-            @IsReferral, @DrawDate, @WarrantyPeriod, @AmtType, @Minval, @Maxval, @TotalAmount
+            @IsReferral, @DrawDate, @WarrantyPeriod, @AmtType, @Minval, @Maxval, @TotalAmount, @Multiple
         );
 
         SET @SST_Id = SCOPE_IDENTITY();
@@ -109,7 +110,7 @@ BEGIN
             VALUES (@ReferralLimit, @Comp_ID, @SST_Id, GETDATE());
         END
 
-        COMMIT TRANSACTION;
+        -- COMMIT TRANSACTION; (Removed for API transaction management)
         SELECT 1 AS success, 'Service setting added successfully.' AS message, @SST_Id AS SST_Id;
     END
     ELSE IF @DML = 'U'
@@ -130,7 +131,8 @@ BEGIN
             AmtType = ISNULL(@AmtType, AmtType),
             Minval = ISNULL(@Minval, Minval),
             Maxval = ISNULL(@Maxval, Maxval),
-            totalamont = ISNULL(@TotalAmount, totalamont)
+            totalamont = ISNULL(@TotalAmount, totalamont),
+            Multiple = ISNULL(@Multiple, Multiple)
         WHERE SST_Id = @SST_Id;
 
         -- Update Referral Limit
@@ -143,12 +145,12 @@ BEGIN
                 VALUES (@ReferralLimit, @Comp_ID, @SST_Id, GETDATE());
         END
 
-        COMMIT TRANSACTION;
+        -- COMMIT TRANSACTION; (Removed for API transaction management)
         SELECT 1 AS success, 'Service setting updated successfully.' AS message, @SST_Id AS SST_Id;
     END
     ELSE
     BEGIN
-        ROLLBACK TRANSACTION;
+        -- ROLLBACK TRANSACTION; (Removed for API transaction management)
         SELECT 0 AS success, 'Invalid DML operation.' AS message;
     END
 END
