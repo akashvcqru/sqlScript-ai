@@ -1,3 +1,8 @@
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
 CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingTracTraceV2_AI]
     @Comp_ID        VARCHAR(50),
     @Pro_ID         VARCHAR(50),
@@ -112,13 +117,13 @@ BEGIN
 
         -- 6. Insert into codeassign_tractrac (Master Code Assignment)
         INSERT INTO codeassign_tractrac
-        (mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, entry_date)
+        (mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, entry_date, Dealer_Name, Dealer_Location, Contact_Information, Dispatch_Date, Invoice_Number)
         VALUES
         (
             @MasterCode, @Pro_ID, @MRP, 
             CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
-            @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE())
+            @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), '', '', '', ISNULL(@EntryDate, GETDATE()), ''
         );
 
         COMMIT TRANSACTION;
