@@ -1,34 +1,62 @@
-CREATE PROCEDURE [dbo].[USP_GetLabelReceiveList_AI]
-    @Row_ID INT,
-    @Page INT = 1,
-    @Limit INT = 10
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetLabelReceiveList_AI]
+    @Comp_ID NVARCHAR(50)
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @Offset INT = (@Page - 1) * @Limit;
-    DECLARE @Tracking_No NVARCHAR(100);
+    SELECT  
+        CDM.Courier_Disp_ID,
+        CDM.Courier_ID,
+        CM.Courier_Name,
+        CM.Courier_Mobile,
+        CDM.Comp_ID,
+        CR.Comp_Name,
+        CDM.Tracking_No,
+        CDM.Dispatch_Date,
+        CDM.Expected_Date,
+        CDM.Dispatch_Location,
+        
+        ISNULL(CDM.Received_Flag, 0) AS Flag,
 
-    -- 1. Find the Tracking_No for the given Row_ID
-    SELECT @Tracking_No = Tracking_No 
-    FROM M_Label_Request 
-    WHERE Row_ID = @Row_ID;
+        CASE 
+            WHEN ISNULL(CDM.Received_Flag, 0) = 0 THEN '----'
+            WHEN CDM.Received_Flag = 1 THEN 'Received'
+            WHEN CDM.Received_Flag = 2 THEN 'Received with scrap'
+            ELSE 'Not Received'
+        END AS Status,
 
-    -- 2. Fetch dispatch details linked to this Tracking_No
-    SELECT 
-        cdpi.Courier_Disp_ID, 
-        pr.Pro_Name, 
-        cdpi.Label_Code, 
-        cdpi.Label_Name, 
-        cdpi.Series_From, 
-        cdpi.Series_To, 
-        cdpi.Qty,
-        COUNT(*) OVER() AS TotalRecords
-    FROM Courier_Dispatch_Master cdm
-    INNER JOIN Courier_Disp_ProInfo cdpi ON cdm.Courier_Disp_ID = cdpi.Courier_Disp_ID
-    INNER JOIN Pro_Reg pr ON cdpi.Pro_ID = pr.Pro_ID
-    WHERE cdm.Tracking_No = @Tracking_No
-    ORDER BY cdm.Entry_Date DESC
-    OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
+        CDM.Entry_Date,
+
+        SUM(ISNULL(CDP.Qty, 0)) AS Qty
+
+    FROM Courier_Dispatch_Master CDM
+
+    LEFT JOIN Courier_Master CM 
+        ON CM.Courier_ID = CDM.Courier_ID
+
+    LEFT JOIN Comp_Reg CR 
+        ON CR.Comp_ID = CDM.Comp_ID
+
+    LEFT JOIN Courier_Disp_ProInfo CDP 
+        ON CDP.Courier_Disp_ID = CDM.Courier_Disp_ID
+
+    WHERE 
+        (@Comp_ID = '' OR CDM.Comp_ID = @Comp_ID)
+
+    GROUP BY
+        CDM.Courier_Disp_ID,
+        CDM.Courier_ID,
+        CM.Courier_Name,
+        CM.Courier_Mobile,
+        CDM.Comp_ID,
+        CR.Comp_Name,
+        CDM.Tracking_No,
+        CDM.Dispatch_Date,
+        CDM.Expected_Date,
+        CDM.Dispatch_Location,
+        CDM.Received_Flag,
+        CDM.Entry_Date
+
+    ORDER BY CDM.Entry_Date DESC;
 END
 GO
