@@ -120,11 +120,15 @@ BEGIN
         IF ISNULL(@StartOrder, -1) = ISNULL(@EndOrder, -1) AND @StartOrder IS NOT NULL
         BEGIN
             UPDATE M_Code
-            SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)) -- Batch_No in M_Code usually stores T_Pro.Row_ID
+            SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)),
+                print_status = 1 -- Ensure codes are marked as assigned/printed for the update SP
             WHERE Pro_ID = @Pro_ID 
               AND Series_Order = @StartOrder 
               AND Series_Serial BETWEEN @StartSerial AND @EndSerial;
         END
+
+        -- 5.5 Call UpdateM_codeByBatch_No to set correctly formatted Series_Limit
+        EXEC UpdateM_codeByBatch_No @NewTPro_RowID, @Pro_ID;
 
         -- 6. Insert into codeassign_tractrac (Master Code Assignment)
         INSERT INTO codeassign_tractrac
