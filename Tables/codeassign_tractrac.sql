@@ -10,6 +10,11 @@ BEGIN
         [SeriesStart] [varchar](100) NULL,
         [SeriesEnd] [varchar](100) NULL,
         [EntryDate] [datetime] NULL,
+        [Dealer_Name] [nvarchar](150) NULL,
+        [Dealer_Location] [nvarchar](150) NULL,
+        [Contact_Information] [nvarchar](150) NULL,
+        [Dispatch_Date] [datetime] NULL,
+        [Invoice_Number] [nvarchar](50) NULL,
         CONSTRAINT [PK_codeassign_tractrac] PRIMARY KEY CLUSTERED 
         (
             [MasterCode] ASC

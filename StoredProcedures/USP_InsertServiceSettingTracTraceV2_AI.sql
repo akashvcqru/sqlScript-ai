@@ -149,7 +149,7 @@ BEGIN
 
         -- 6. Insert into codeassign_tractrac (Master Code Assignment)
         INSERT INTO codeassign_tractrac
-        (mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, entry_date, Dealer_Name, Dealer_Location, Contact_Information, Dispatch_Date, Invoice_Number)
+        (mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, EntryDate, Dealer_Name, Dealer_Location, Contact_Information, Dispatch_Date, Invoice_Number)
         VALUES
         (
             @MasterCode, @Pro_ID, @MRP, 

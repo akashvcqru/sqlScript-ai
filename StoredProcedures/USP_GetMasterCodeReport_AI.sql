@@ -3,7 +3,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
     SELECT 
-        mastercode,
+        MasterCode,
         Pro_ID,
         MRP,
         Mfd_Date,
@@ -11,13 +11,13 @@ BEGIN
         Batch_No,
         SeriesStart,
         SeriesEnd,
-        entry_date,
+        EntryDate,
         Dealer_Name,
         Dealer_Location,
         Contact_Information,
         Dispatch_Date,
         Invoice_Number
     FROM codeassign_tractrac
-    ORDER BY entry_date DESC;
+    ORDER BY EntryDate DESC;
 END
 GO
