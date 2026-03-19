@@ -61,14 +61,14 @@ BEGIN
         -- 3. Insert into M_ServiceSubscriptionTrans (Settings Transaction)
         INSERT INTO M_ServiceSubscriptionTrans
         (
-            Subscribe_Id, DateFrom, DateTo, Comments, Entry_Date, Points, IsCashConvert, IsCash, Frequency, IsActive, IsDelete
+            Subscribe_Id, DateFrom, DateTo, Comments, Entry_Date, Points, IsCashConvert, IsCash, Frequency, IsActive, IsDelete, Minval, Maxval, totalamont
         )
         VALUES
         (
             @Subscribe_Id, 
             CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
-            @Comments, ISNULL(@EntryDate, GETDATE()), 0, 1, 0, 1, 0, 0
+            @Comments, ISNULL(@EntryDate, GETDATE()), 0, 1, 0, 1, 0, 0, 0, 0, 0
         );
 
         DECLARE @NewSST_Id BIGINT = SCOPE_IDENTITY();
