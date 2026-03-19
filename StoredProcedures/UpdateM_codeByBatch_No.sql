@@ -40,7 +40,5 @@ BEGIN
              ORDER BY [Series_Order] DESC, [Series_Serial] DESC)
     )
     WHERE Row_ID = @Row_ID;
-
-    SELECT @Row_ID AS Row_ID;
 END
 GO

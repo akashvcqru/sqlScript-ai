@@ -73,21 +73,37 @@ BEGIN
 
         DECLARE @NewSST_Id BIGINT = SCOPE_IDENTITY();
 
-        -- 4. Insert into T_Pro (Product Batch Details)
-        INSERT INTO T_Pro
-        (
-            Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date, Series_Limit
-        )
-        VALUES
-        (
-            @Pro_ID, @Batch_No, @MRP, 
-            CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
-            CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
-            @Comments, ISNULL(@EntryDate, GETDATE()),
-            CONCAT('From ', @Pro_ID, '-00-', @SeriesStart, ' To ', @Pro_ID, '-00-', @SeriesEnd)
-        );
+        -- 4. Upsert into T_Pro (Product Batch Details)
+        DECLARE @NewTPro_RowID BIGINT;
+        SELECT @NewTPro_RowID = Row_ID FROM T_Pro WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
 
-        DECLARE @NewTPro_RowID BIGINT = SCOPE_IDENTITY();
+        IF @NewTPro_RowID IS NOT NULL
+        BEGIN
+            UPDATE T_Pro
+            SET MRP = @MRP,
+                Mfd_Date = CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
+                Exp_Date = CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
+                Comments = @Comments,
+                Entry_Date = ISNULL(@EntryDate, GETDATE()),
+                Series_Limit = CONCAT('From ', @Pro_ID, '-00-', @SeriesStart, ' To ', @Pro_ID, '-00-', @SeriesEnd)
+            WHERE Row_ID = @NewTPro_RowID;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO T_Pro
+            (
+                Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date, Series_Limit
+            )
+            VALUES
+            (
+                @Pro_ID, @Batch_No, @MRP, 
+                CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
+                CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
+                @Comments, ISNULL(@EntryDate, GETDATE()),
+                CONCAT('From ', @Pro_ID, '-00-', @SeriesStart, ' To ', @Pro_ID, '-00-', @SeriesEnd)
+            );
+            SET @NewTPro_RowID = SCOPE_IDENTITY();
+        END
 
         -- 5. Update M_Code (Batch assignment for code range)
         -- Parsing SeriesStart/End (Format: "Order-Serial" or just "Serial")
@@ -124,7 +140,8 @@ BEGIN
                 print_status = 1 -- Ensure codes are marked as assigned/printed for the update SP
             WHERE Pro_ID = @Pro_ID 
               AND Series_Order = @StartOrder 
-              AND Series_Serial BETWEEN @StartSerial AND @EndSerial;
+              AND Series_Serial BETWEEN @StartSerial AND @EndSerial
+              AND (Batch_No IS NULL OR Batch_No = '');
         END
 
         -- 5.5 Call UpdateM_codeByBatch_No to set correctly formatted Series_Limit
