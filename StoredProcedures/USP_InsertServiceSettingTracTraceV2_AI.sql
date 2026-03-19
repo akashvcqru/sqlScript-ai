@@ -61,14 +61,14 @@ BEGIN
         -- 3. Insert into M_ServiceSubscriptionTrans (Settings Transaction)
         INSERT INTO M_ServiceSubscriptionTrans
         (
-            Subscribe_Id, DateFrom, DateTo, Comments, Entry_Date
+            Subscribe_Id, DateFrom, DateTo, Comments, Entry_Date, Points, IsCashConvert, IsCash, Frequency, IsActive, IsDelete
         )
         VALUES
         (
             @Subscribe_Id, 
             CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
-            @Comments, ISNULL(@EntryDate, GETDATE())
+            @Comments, ISNULL(@EntryDate, GETDATE()), 0, 1, 0, 1, 0, 0
         );
 
         DECLARE @NewSST_Id BIGINT = SCOPE_IDENTITY();
@@ -76,20 +76,21 @@ BEGIN
         -- 4. Insert into T_Pro (Product Batch Details)
         INSERT INTO T_Pro
         (
-            Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date
+            Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date, Series_Limit
         )
         VALUES
         (
             @Pro_ID, @Batch_No, @MRP, 
             CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
-            @Comments, ISNULL(@EntryDate, GETDATE())
+            @Comments, ISNULL(@EntryDate, GETDATE()),
+            CONCAT('From ', @Pro_ID, '-00-', @SeriesStart, ' To ', @Pro_ID, '-00-', @SeriesEnd)
         );
 
         DECLARE @NewTPro_RowID BIGINT = SCOPE_IDENTITY();
 
         -- 5. Update M_Code (Batch assignment for code range)
-        -- Parsing SeriesStart/End (Format: "Order-Serial")
+        -- Parsing SeriesStart/End (Format: "Order-Serial" or just "Serial")
         DECLARE @StartOrder INT, @StartSerial INT;
         DECLARE @EndOrder   INT, @EndSerial   INT;
 
@@ -98,15 +99,25 @@ BEGIN
             SET @StartOrder = CAST(LEFT(@SeriesStart, CHARINDEX('-', @SeriesStart) - 1) AS INT);
             SET @StartSerial = CAST(SUBSTRING(@SeriesStart, CHARINDEX('-', @SeriesStart) + 1, LEN(@SeriesStart)) AS INT);
         END
+        ELSE IF @SeriesStart IS NOT NULL AND @SeriesStart <> ''
+        BEGIN
+            SET @StartOrder = 0;
+            SET @StartSerial = CAST(@SeriesStart AS INT);
+        END
 
         IF CHARINDEX('-', @SeriesEnd) > 0
         BEGIN
             SET @EndOrder = CAST(LEFT(@SeriesEnd, CHARINDEX('-', @SeriesEnd) - 1) AS INT);
             SET @EndSerial = CAST(SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd)) AS INT);
         END
+        ELSE IF @SeriesEnd IS NOT NULL AND @SeriesEnd <> ''
+        BEGIN
+            SET @EndOrder = 0;
+            SET @EndSerial = CAST(@SeriesEnd AS INT);
+        END
 
         -- If orders are the same, update the range
-        IF @StartOrder = @EndOrder
+        IF ISNULL(@StartOrder, -1) = ISNULL(@EndOrder, -1) AND @StartOrder IS NOT NULL
         BEGIN
             UPDATE M_Code
             SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)) -- Batch_No in M_Code usually stores T_Pro.Row_ID
