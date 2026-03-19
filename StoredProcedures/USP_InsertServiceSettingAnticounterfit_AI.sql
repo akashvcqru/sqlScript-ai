@@ -23,28 +23,44 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingAnticounterfit_AI]
     @AmtType         VARCHAR(12)   = 'Fixed',
     @Minval          NUMERIC(18,0) = 0,
     @Maxval          NUMERIC(18,0) = 0,
-    @totalamont      NUMERIC(18,0) = 0
+    @totalamont      NUMERIC(18,0) = 0,
+
+    -- Batch-related fields (Like TracTrace)
+    @MRP            NUMERIC(18, 2) = NULL,
+    @Mfd_Date       VARCHAR(50)    = NULL,
+    @Exp_Date       VARCHAR(50)    = NULL,
+    @Batch_No       VARCHAR(100)   = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- Resolve Subscribe_Id if not supplied
+        -- 1. Resolve Subscribe_Id if not supplied (Auto-resolve/create like TracTrace)
         IF ISNULL(@Subscribe_Id, '') = ''
         BEGIN
             SELECT TOP 1 @Subscribe_Id = Subscribe_Id
             FROM M_ServiceSubscription
             WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID;
+            
+            IF @Subscribe_Id IS NULL
+            BEGIN
+                -- GENERATE ID (Mocking Utility.GetMyGenID logic as in TracTrace)
+                DECLARE @GeneratedSubId VARCHAR(50) = 'SUB' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
+                
+                INSERT INTO M_ServiceSubscription
+                (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType)
+                VALUES
+                (@GeneratedSubId, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', 
+                 ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, GETDATE()), 
+                 ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, DATEADD(YEAR, 1, GETDATE())), 
+                 GETDATE(), 0, 0, 1, 'Service');
+                
+                SET @Subscribe_Id = @GeneratedSubId;
+            END
         END
 
-        IF ISNULL(@Subscribe_Id, '') = ''
-        BEGIN
-            SELECT 0 AS success, 'No active subscription found for the given Comp/Product/Service.' AS message;
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
-
+        -- 2. Insert into M_ServiceSubscriptionTrans
         INSERT INTO M_ServiceSubscriptionTrans
         (
             Subscribe_Id,
@@ -58,13 +74,47 @@ BEGIN
         (
             @Subscribe_Id,
             @Points, @IsCashConvert, @IsCash,
-            @DateFrom, @DateTo,
+            ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END),
+            ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END),
             @Comments, ISNULL(@EntryDate, GETDATE()),
             @Frequency, @IsActive, @IsDelete,
             @AmtType, @Minval, @Maxval, @totalamont
         );
 
         DECLARE @NewSST_Id BIGINT = SCOPE_IDENTITY();
+
+        -- 3. Upsert into T_Pro (Product Batch Details - Mirroring TracTrace logic)
+        IF @Batch_No IS NOT NULL AND @Batch_No <> ''
+        BEGIN
+            DECLARE @NewTPro_RowID BIGINT;
+            SELECT @NewTPro_RowID = Row_ID FROM T_Pro WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
+
+            IF @NewTPro_RowID IS NOT NULL
+            BEGIN
+                UPDATE T_Pro
+                SET MRP = @MRP,
+                    Mfd_Date = CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
+                    Exp_Date = CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
+                    Comments = @Comments,
+                    Entry_Date = ISNULL(@EntryDate, GETDATE())
+                WHERE Row_ID = @NewTPro_RowID;
+            END
+            ELSE
+            BEGIN
+                INSERT INTO T_Pro
+                (
+                    Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date
+                )
+                VALUES
+                (
+                    @Pro_ID, @Batch_No, @MRP, 
+                    CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
+                    CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
+                    @Comments, ISNULL(@EntryDate, GETDATE())
+                );
+                SET @NewTPro_RowID = SCOPE_IDENTITY();
+            END
+        END
 
         COMMIT TRANSACTION;
         SELECT 1 AS success, 'Anticounterfit service setting added successfully.' AS message, @NewSST_Id AS NewSST_Id;

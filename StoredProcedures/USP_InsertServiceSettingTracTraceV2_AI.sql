@@ -16,7 +16,15 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingTracTraceV2_AI]
     @SeriesEnd      VARCHAR(100)   = NULL, -- Format: "Order-SerialTo"
     @MasterCode     VARCHAR(100)   = NULL,
     @Comments       NVARCHAR(1000) = NULL,
-    @EntryDate      DATETIME       = NULL
+    @EntryDate      DATETIME       = NULL,
+    
+    -- New Fields
+    @Dealer_Name         NVARCHAR(150) = NULL,
+    @Dealer_Location     NVARCHAR(150) = NULL,
+    @Contact_Information NVARCHAR(150) = NULL,
+    @Invoice_Number      NVARCHAR(50)  = NULL,
+    @Latitude            NVARCHAR(50)  = NULL,
+    @Longitude           NVARCHAR(50)  = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -149,13 +157,17 @@ BEGIN
 
         -- 6. Insert into codeassign_tractrac (Master Code Assignment)
         INSERT INTO codeassign_tractrac
-        (mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, EntryDate, Dealer_Name, Dealer_Location, Contact_Information, Dispatch_Date, Invoice_Number)
+        (
+            mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, entry_date, 
+            Dealer_Name, Dealer_Location, Contact_Information, Dispatch_Date, Invoice_Number, Latitude, Longitude
+        )
         VALUES
         (
             @MasterCode, @Pro_ID, @MRP, 
             CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
-            @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), '', '', '', ISNULL(@EntryDate, GETDATE()), ''
+            @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
+            @Dealer_Name, @Dealer_Location, @Contact_Information, ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude
         );
 
         COMMIT TRANSACTION;
