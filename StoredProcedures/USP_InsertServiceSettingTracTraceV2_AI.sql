@@ -24,7 +24,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingTracTraceV2_AI]
     @Contact_Information NVARCHAR(150) = NULL,
     @Invoice_Number      NVARCHAR(50)  = NULL,
     @Latitude            NVARCHAR(50)  = NULL,
-    @Longitude           NVARCHAR(50)  = NULL
+    @Longitude           NVARCHAR(50)  = NULL,
+    @SST_Id              BIGINT        = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -159,7 +160,8 @@ BEGIN
         INSERT INTO codeassign_tractrac
         (
             mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, entry_date, 
-            Dealer_Name, Dealer_Location, Contact_Information, Dispatch_Date, Invoice_Number, Latitude, Longitude
+            Dealer_Name, Dealer_Location, Contact_Information, Dispatch_Date, Invoice_Number, Latitude, Longitude,
+            SST_Id, Subscribe_Id
         )
         VALUES
         (
@@ -167,7 +169,8 @@ BEGIN
             CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
             @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
-            @Dealer_Name, @Dealer_Location, @Contact_Information, ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude
+            @Dealer_Name, @Dealer_Location, @Contact_Information, ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude,
+            ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id
         );
 
         COMMIT TRANSACTION;

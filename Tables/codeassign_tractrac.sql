@@ -20,6 +20,8 @@ BEGIN
         [Batch_No] [varchar](100) NULL,
         [SeriesStart] [varchar](100) NULL,
         [SeriesEnd] [varchar](100) NULL,
+        [SST_Id] [bigint] NULL,
+        [Subscribe_Id] [varchar](50) NULL,
         CONSTRAINT [PK_codeassign_tractrac] PRIMARY KEY CLUSTERED 
         (
             [mastercode] ASC
