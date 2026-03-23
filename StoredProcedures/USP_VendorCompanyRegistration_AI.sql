@@ -10,19 +10,20 @@ AS
 BEGIN
     SET NOCOUNT ON;
     
-    -- 1. Check for duplicate email (using Delete_Flag logic if applicable)
+    -- 1. Check for duplicate email (using Delete_Flag and Status logic)
     -- As per legacy logic, we check if there are NO rows with Delete_Flag = 1
     -- BUT, if the email exists but is NOT verified (Email_Vari_Flag = 0), we allow re-registration
-    IF EXISTS (SELECT 1 FROM Comp_Reg WHERE Comp_Email = @Email AND Delete_Flag = 1 AND Email_Vari_Flag = 1)
+    -- Also, if it's not yet approved (Status = 0), we allow re-registration to let user correct details.
+    IF EXISTS (SELECT 1 FROM Comp_Reg WHERE Comp_Email = @Email AND Delete_Flag = 1 AND Email_Vari_Flag = 1 AND Status = 1)
     BEGIN
-        SELECT 0 AS Success, 'This email id already registered in our system. Please enter different email id.' AS Message;
+        -- Clarified error: already verified and active (approved) in system
+        SELECT 0 AS Success, 'This email id already registered and active in our system. Please enter different email id.' AS Message;
         RETURN;
     END
 
-    -- If unverified record exists, we will delete it or just proceed to overwrite it by generating a new ID 
-    -- (Or we could reuse the ID, but legacy code usually generates new ones)
-    -- For safety, we delete the unverified record if it exists to avoid primary key constraints if Comp_ID was same
-    DELETE FROM Comp_Reg WHERE Comp_Email = @Email AND Email_Vari_Flag = 0;
+    -- If unverified OR unapproved record exists, we will delete it to allow fresh registration
+    -- This handles the "enter show in my db" issue where previous attempts created a pending record.
+    DELETE FROM Comp_Reg WHERE Comp_Email = @Email AND (Email_Vari_Flag = 0 OR Status = 0);
 
     -- 2. Check Verification Status in Tbl_EmailVerification
     DECLARE @IsVerified BIT = 0;
