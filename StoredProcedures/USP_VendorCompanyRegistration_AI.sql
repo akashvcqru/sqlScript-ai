@@ -4,7 +4,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_VendorCompanyRegistration_AI]
     @Email NVARCHAR(50),
     @Mobile NVARCHAR(50),
     @LogoPath NVARCHAR(MAX) = NULL,
-    @Password NVARCHAR(50) = NULL
+    @Password NVARCHAR(50) = NULL,
+    @AcceptedPolicy BIT = 0
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -65,7 +66,14 @@ BEGIN
     -- 4. Increment Code_Gen
     UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE [Prfor] = 'Company';
 
-    -- 5. Return success
+    -- 5. Insert Policy Acceptance if applicable
+    IF @AcceptedPolicy = 1
+    BEGIN
+        INSERT INTO Tbl_UserPolicyAcceptance (Comp_Id, PolicyVersion, AcceptedOn, AcceptedBy)
+        VALUES (@CompID, '1.0', GETDATE(), 'User');
+    END
+
+    -- 6. Return success
     SELECT 1 AS Success, 'Company registered successfully.' AS Message, @CompID AS Comp_ID;
 END
 GO
