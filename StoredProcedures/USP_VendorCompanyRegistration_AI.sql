@@ -12,14 +12,24 @@ BEGIN
     
     -- 1. Check for duplicate email (using Delete_Flag logic if applicable)
     -- As per legacy logic, we check if there are NO rows with Delete_Flag = 1
-    -- This implies Delete_Flag = 1 means ACTIVE.
-    IF EXISTS (SELECT 1 FROM Comp_Reg WHERE Comp_Email = @Email AND Delete_Flag = 1)
+    -- BUT, if the email exists but is NOT verified (Email_Vari_Flag = 0), we allow re-registration
+    IF EXISTS (SELECT 1 FROM Comp_Reg WHERE Comp_Email = @Email AND Delete_Flag = 1 AND Email_Vari_Flag = 1)
     BEGIN
         SELECT 0 AS Success, 'This email id already registered in our system. Please enter different email id.' AS Message;
         RETURN;
     END
 
-    -- 2. Generate Comp_ID
+    -- If unverified record exists, we will delete it or just proceed to overwrite it by generating a new ID 
+    -- (Or we could reuse the ID, but legacy code usually generates new ones)
+    -- For safety, we delete the unverified record if it exists to avoid primary key constraints if Comp_ID was same
+    DELETE FROM Comp_Reg WHERE Comp_Email = @Email AND Email_Vari_Flag = 0;
+
+    -- 2. Check Verification Status in Tbl_EmailVerification
+    DECLARE @IsVerified BIT = 0;
+    IF EXISTS (SELECT 1 FROM Tbl_EmailVerification WHERE Email = @Email AND IsVerified = 1)
+        SET @IsVerified = 1;
+
+    -- 3. Generate Comp_ID
     DECLARE @Prefix NVARCHAR(50), @Start INT, @CompID NVARCHAR(50);
     SELECT @Prefix = PrPrefix, @Start = PrStart FROM Code_Gen WHERE Prfor = 'Company';
     
@@ -31,7 +41,7 @@ BEGIN
 
     SET @CompID = @Prefix + '-' + CAST(@Start AS NVARCHAR(20));
 
-    -- 3. Insert into Comp_Reg
+    -- 4. Insert into Comp_Reg
     INSERT INTO Comp_Reg (
         Comp_ID, 
         Comp_Name, 
@@ -55,7 +65,7 @@ BEGIN
         @Mobile,
         GETDATE(), 
         0, -- Status 0: Pending/Inactive
-        0, -- Email_Vari_Flag 0: Unverified
+        @IsVerified, -- Email_Vari_Flag based on Tbl_EmailVerification
         0, -- Update_Flag 0: New
         'L', -- Comp_Type 'L' as per legacy code
         1, -- Delete_Flag 1: Active (per legacy logic)

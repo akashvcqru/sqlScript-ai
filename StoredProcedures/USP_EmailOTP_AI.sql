@@ -51,6 +51,11 @@ BEGIN
             VerifiedAt = GETDATE()
         WHERE Email = @Email AND VerificationCode = @OTP;
 
+        -- Also update Comp_Reg if the record already exists
+        UPDATE Comp_Reg 
+        SET Email_Vari_Flag = 1 
+        WHERE Comp_Email = @Email;
+
         SELECT 1 AS Success, 'OTP verified successfully.' AS Message;
     END
     ELSE
