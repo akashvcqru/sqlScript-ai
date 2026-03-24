@@ -43,6 +43,7 @@ BEGIN
         CT.Dealer_Location,
         CT.Contact_Information,
         CT.Invoice_Number,
+        CT.BatchSize,
         CT.ID AS TrackTrace_ID,
         COUNT(*) OVER() as TotalRecords
     FROM M_ServiceSubscriptionTrans SST
