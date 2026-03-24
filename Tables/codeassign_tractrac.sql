@@ -22,6 +22,7 @@ BEGIN
         [SeriesEnd] [varchar](100) NULL,
         [SST_Id] [bigint] NULL,
         [Subscribe_Id] [varchar](50) NULL,
+        [BatchSize] [int] NULL,
         CONSTRAINT [PK_codeassign_tractrac] PRIMARY KEY CLUSTERED 
         (
             [mastercode] ASC

@@ -41,6 +41,12 @@ BEGIN
     END
 
     SET @CompID = @Prefix + '-' + CAST(@Start AS NVARCHAR(20));
+    
+    -- Format Logo Path if provided
+    IF @LogoPath IS NOT NULL AND @LogoPath <> ''
+    BEGIN
+        SET @LogoPath = '~/Info/img/logos/' + CAST(@Start AS NVARCHAR(20)) + '/' + @CompID + '.jpg';
+    END
 
     -- 4. Insert into Comp_Reg
     INSERT INTO Comp_Reg (

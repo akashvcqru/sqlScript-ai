@@ -1,16 +1,13 @@
 -- =============================================
--- Procedure: USP_GetServiceSettingList_AI
--- Description: Fetch list of service settings for a vendor
+-- Procedure: USP_GetServiceSettingTracTrashList_AI
+-- Description: Fetch list of service settings for Track & Trace with master code details
 -- =============================================
-IF OBJECT_ID('USP_GetServiceSettingList_AI', 'P') IS NOT NULL
-    DROP PROCEDURE USP_GetServiceSettingList_AI
+IF OBJECT_ID('USP_GetServiceSettingTracTrashList_AI', 'P') IS NOT NULL
+    DROP PROCEDURE USP_GetServiceSettingTracTrashList_AI
 GO
 
-CREATE PROCEDURE USP_GetServiceSettingList_AI
+CREATE PROCEDURE USP_GetServiceSettingTracTrashList_AI
     @Comp_ID       NVARCHAR(50),
-    @Pro_ID        NVARCHAR(50) = NULL,
-    @Service_ID    NVARCHAR(10) = NULL,
-    @Pro_Name      NVARCHAR(100) = NULL,
     @PageIndex     INT = 1,
     @PageSize      INT = 10
 AS
@@ -55,10 +52,7 @@ BEGIN
     INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
     LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
     WHERE SS.Comp_ID = @Comp_ID
-      AND (SST.IsDelete = 0 OR SST.IsDelete IS NULL)
-      AND (@Pro_ID IS NULL OR SS.Pro_ID = @Pro_ID)
-      AND (@Service_ID IS NULL OR SS.Service_ID = @Service_ID)
-      AND (@Pro_Name IS NULL OR P.Pro_Name LIKE '%' + @Pro_Name + '%')
+      AND SS.Service_ID = 'SRV1021'
     ORDER BY SST.Entry_Date DESC
     OFFSET (@PageIndex - 1) * @PageSize ROWS
     FETCH NEXT @PageSize ROWS ONLY;
