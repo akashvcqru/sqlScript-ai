@@ -48,7 +48,7 @@ BEGIN
         SET @CalculatedFromDate = DATEADD(quarter, DATEDIFF(quarter, 0, GETDATE()), 0);
         SET @CalculatedToDate = GETDATE();
     END
-    ELSE IF @TimeWindow = 'from to date'
+    ELSE IF @FromDate IS NOT NULL OR @ToDate IS NOT NULL OR @TimeWindow = 'from to date'
     BEGIN
         SET @CalculatedFromDate = @FromDate;
         -- Ensure ToDate includes the entire day if time wasn't strictly provided
