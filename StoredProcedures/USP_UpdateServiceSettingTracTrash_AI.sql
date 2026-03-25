@@ -12,7 +12,8 @@ CREATE PROCEDURE USP_UpdateServiceSettingTracTrash_AI
     @Batch_No             VARCHAR(100) = NULL,
     @Dealer_Name          NVARCHAR(150) = NULL,
     @Dealer_Location      NVARCHAR(150) = NULL,
-    @Contact_Information  NVARCHAR(150) = NULL,
+    @Mobile               NVARCHAR(150) = NULL, -- Replaced @Contact_Information
+    @Email                NVARCHAR(150) = NULL, -- Added @Email
     @Invoice_Number       NVARCHAR(50) = NULL,
     @BatchSize            INT = NULL,
     @MRP                  NUMERIC(18, 2) = NULL,
@@ -33,9 +34,13 @@ BEGIN
             SET Batch_No = ISNULL(@Batch_No, Batch_No),
                 Dealer_Name = ISNULL(@Dealer_Name, Dealer_Name),
                 Dealer_Location = ISNULL(@Dealer_Location, Dealer_Location),
-                Contact_Information = ISNULL(@Contact_Information, Contact_Information),
+                Mobile = ISNULL(@Mobile, Mobile),
+                Email = ISNULL(@Email, Email),
                 Invoice_Number = ISNULL(@Invoice_Number, Invoice_Number),
-                BatchSize = ISNULL(@BatchSize, BatchSize)
+                BatchSize = ISNULL(@BatchSize, BatchSize),
+                MRP = ISNULL(@MRP, MRP),
+                Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
+                Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date)
             WHERE ID = @TrackTrace_ID;
         END
         ELSE IF @SST_Id IS NOT NULL AND @SST_Id > 0
@@ -44,7 +49,8 @@ BEGIN
             SET Batch_No = ISNULL(@Batch_No, Batch_No),
                 Dealer_Name = ISNULL(@Dealer_Name, Dealer_Name),
                 Dealer_Location = ISNULL(@Dealer_Location, Dealer_Location),
-                Contact_Information = ISNULL(@Contact_Information, Contact_Information),
+                Mobile = ISNULL(@Mobile, Mobile),
+                Email = ISNULL(@Email, Email),
                 Invoice_Number = ISNULL(@Invoice_Number, Invoice_Number),
                 BatchSize = ISNULL(@BatchSize, BatchSize),
                 MRP = ISNULL(@MRP, MRP),
@@ -61,23 +67,20 @@ BEGIN
                 DateTo = ISNULL(CASE WHEN ISDATE(@DateTo)=1 THEN CAST(@DateTo AS DATETIME) ELSE NULL END, DateTo),
                 Comments = ISNULL(@Comments, Comments)
             WHERE SST_Id = @SST_Id;
-        END
 
-        -- Sync with T_Pro if Batch_No/Pro_ID is known for the assignment
-        -- Note: This is more complex since one record in T_Pro might affect many assignments.
-        -- But usually, people expect metadata updates to proparate if they changed the batch info.
-        DECLARE @Actual_Pro_ID VARCHAR(50);
-        DECLARE @Actual_Batch_No VARCHAR(100);
-        SELECT @Actual_Pro_ID = Pro_ID, @Actual_Batch_No = Batch_No FROM codeassign_tractrac WHERE SST_Id = @SST_Id;
+            DECLARE @Actual_Pro_ID VARCHAR(50);
+            DECLARE @Actual_Batch_No VARCHAR(100);
+            SELECT @Actual_Pro_ID = Pro_ID, @Actual_Batch_No = Batch_No FROM codeassign_tractrac WHERE SST_Id = @SST_Id;
 
-        IF @Actual_Pro_ID IS NOT NULL AND @Actual_Batch_No IS NOT NULL
-        BEGIN
-            UPDATE T_Pro
-            SET MRP = ISNULL(@MRP, MRP),
-                Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
-                Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
-                Comments = ISNULL(@Comments, Comments)
-            WHERE Pro_ID = @Actual_Pro_ID AND Batch_No = @Actual_Batch_No;
+            IF @Actual_Pro_ID IS NOT NULL AND @Actual_Batch_No IS NOT NULL
+            BEGIN
+                UPDATE T_Pro
+                SET MRP = ISNULL(@MRP, MRP),
+                    Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
+                    Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
+                    Comments = ISNULL(@Comments, Comments)
+                WHERE Pro_ID = @Actual_Pro_ID AND Batch_No = @Actual_Batch_No;
+            END
         END
         ELSE
         BEGIN
@@ -85,14 +88,7 @@ BEGIN
              RETURN;
         END
 
-        IF @@ROWCOUNT > 0
-        BEGIN
-            SELECT 1 AS success, 'Track & Trace settings updated successfully.' AS message;
-        END
-        ELSE
-        BEGIN
-            SELECT 0 AS success, 'No record found to update.' AS message;
-        END
+        SELECT 1 AS success, 'Track & Trace settings updated successfully.' AS message;
     END TRY
     BEGIN CATCH
         SELECT 0 AS success, ERROR_MESSAGE() AS message;

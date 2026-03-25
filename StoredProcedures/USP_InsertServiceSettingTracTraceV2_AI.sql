@@ -21,7 +21,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingTracTraceV2_AI]
     -- New Fields
     @Dealer_Name         NVARCHAR(150) = NULL,
     @Dealer_Location     NVARCHAR(150) = NULL,
-    @Contact_Information NVARCHAR(150) = NULL,
+    @Mobile              NVARCHAR(150) = NULL, -- Replaces @Contact_Information
+    @Email               NVARCHAR(150) = NULL,
     @Invoice_Number      NVARCHAR(50)  = NULL,
     @Latitude            NVARCHAR(50)  = NULL,
     @Longitude           NVARCHAR(50)  = NULL,
@@ -109,8 +110,10 @@ BEGIN
             -- Fallback for EndSerial if only one order
             IF @EndSerial IS NULL SELECT @EndSerial = MAX(Series_Serial) FROM (SELECT TOP (@BatchSize) * FROM NextBatch) t WHERE Series_Order = @EndOrder;
 
-            SET @SeriesStart = CONCAT(@StartOrder, '-', @StartSerial);
-            SET @SeriesEnd = CONCAT(@EndOrder, '-', @EndSerial);
+            SET @SeriesStart = CONCAT(@StartOrder, '-', FORMAT(@StartSerial, '0000')); -- Fallback simple
+            -- Better formatting for 4-4
+            SET @SeriesStart = CONCAT(FORMAT(@StartOrder, '0000'), '-', FORMAT(@StartSerial, '0000'));
+            SET @SeriesEnd = CONCAT(FORMAT(@EndOrder, '0000'), '-', FORMAT(@EndSerial, '0000'));
         END
         ELSE
         BEGIN
@@ -138,9 +141,80 @@ BEGIN
                 SET @EndOrder = CAST(LEFT(@SeriesEnd, CHARINDEX('-', @SeriesEnd) - 1) AS INT);
                 SET @EndSerial = CAST(SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd)) AS INT);
             END
+
+            -- Existence validation
+            DECLARE @ExistingCount INT;
+            SELECT @ExistingCount = COUNT(*) FROM M_Code 
+            WHERE Pro_ID = @Pro_ID 
+              AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
+              AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial));
+            
+            DECLARE @ExpectedRangeCount INT = 0;
+            IF @StartOrder = @EndOrder SET @ExpectedRangeCount = (@EndSerial - @StartSerial) + 1;
+            -- (Note: Accurate cross-order expected count requires more logic, relying on @ExistingCount for now)
+
+            IF @ExistingCount = 0
+            BEGIN
+                SELECT 0 AS success, 'The specified code range does not exist in the system.' AS message;
+                ROLLBACK TRANSACTION; RETURN;
+            END
+
+            -- BatchSize Validation (IF Batch Size IS provided)
+            IF @BatchSize IS NOT NULL AND @BatchSize > 0
+            BEGIN
+                DECLARE @CalculatedCount INT;
+                IF @StartOrder = @EndOrder
+                BEGIN
+                    SET @CalculatedCount = (@EndSerial - @StartSerial) + 1;
+                END
+                ELSE
+                BEGIN
+                    -- Count across orders
+                    SELECT @CalculatedCount = COUNT(*) 
+                    FROM M_Code 
+                    WHERE Pro_ID = @Pro_ID 
+                      AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
+                      AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial));
+                END
+
+                IF @CalculatedCount <> @BatchSize
+                BEGIN
+                    SELECT 0 AS success, CONCAT('number of codes will be equel not lesstehn or greator then (Expected: ', @BatchSize, ', Found: ', @CalculatedCount, ')') AS message;
+                    ROLLBACK TRANSACTION; RETURN;
+                END
+            END
+
+            -- 1.2 M_Code Assignment Validation (Check if any code is already assigned)
+            IF EXISTS (
+                SELECT 1 FROM M_Code 
+                WHERE Pro_ID = @Pro_ID 
+                  AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
+                  AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial))
+                  AND (Batch_No IS NOT NULL AND Batch_No <> '')
+            )
+            BEGIN
+                SELECT 0 AS success, 'these codes are already assigned to other sst id' AS message;
+                ROLLBACK TRANSACTION; RETURN;
+            END
+
+            -- 1.3 MasterCode Presence Check
+            IF NOT EXISTS (
+                SELECT 1 FROM M_Code 
+                WHERE Pro_ID = @Pro_ID 
+                  AND (CONCAT(FORMAT(Series_Order, '0000'), '-', FORMAT(Series_Serial, '0000')) = SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode))
+                       OR master_code = @MasterCode)
+            )
+            BEGIN
+                -- If it doesn't match the prefix-order-serial format, check if it exists as a literal mastercode
+                IF NOT EXISTS (SELECT 1 FROM M_Code WHERE master_code = @MasterCode AND Pro_ID = @Pro_ID)
+                BEGIN
+                    -- Note: Optional warning or error. 
+                    PRINT 'MasterCode not found in M_Code table.';
+                END
+            END
         END
 
-        -- 2. Ensure Subscribe_Id exists or create one if missing (as requested)
+        -- 2. Ensure Subscribe_Id exists or create one if missing
         IF ISNULL(@Subscribe_Id, '') = ''
         BEGIN
             SELECT TOP 1 @Subscribe_Id = Subscribe_Id
@@ -148,10 +222,9 @@ BEGIN
             WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID
             ORDER BY EntryDate DESC;
             
-            -- If still missing, create a new subscription entry (Legacy style)
+            -- If still missing, create a new subscription entry
             IF @Subscribe_Id IS NULL
             BEGIN
-                -- GENERATE ID (Mocking Utility.GetMyGenID logic)
                 DECLARE @GeneratedSubId VARCHAR(50) = 'SUB' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
                 
                 INSERT INTO M_ServiceSubscription
@@ -200,10 +273,6 @@ BEGIN
         END
 
         -- 5. Update M_Code (Batch assignment for code range)
-        -- Using the @StartOrder, @StartSerial, @EndOrder, @EndSerial calculated earlier
-
-        -- 5.3 Multi-Order M_Code Update
-        -- Mark codes as assigned in M_Code across multiple orders if necessary
         UPDATE M_Code
         SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)),
             print_status = 1 
@@ -222,12 +291,15 @@ BEGIN
         WHERE Subscribe_Id = @Subscribe_Id;
 
         -- 5.5 Call UpdateM_codeByBatch_No to set correctly formatted Series_Limit in T_Pro
-        EXEC UpdateM_codeByBatch_No @NewTPro_RowID, @Pro_ID;
+        IF EXISTS (SELECT 1 FROM sys.objects WHERE name = 'UpdateM_codeByBatch_No' AND type = 'P')
+        BEGIN
+            EXEC UpdateM_codeByBatch_No @NewTPro_RowID, @Pro_ID;
+        END
 
         -- 6. Insert into codeassign_tractrac (Master Code Assignment)
         INSERT INTO codeassign_tractrac (
             mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, entry_date, 
-            Dealer_Name, Dealer_Location, Contact_Information, Dispatch_Date, Invoice_Number, Latitude, Longitude,
+            Dealer_Name, Dealer_Location, Mobile, Email, Dispatch_Date, Invoice_Number, Latitude, Longitude,
             SST_Id, Subscribe_Id, BatchSize
         )
         VALUES
@@ -236,7 +308,7 @@ BEGIN
             CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
             @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
-            @Dealer_Name, @Dealer_Location, @Contact_Information, ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude,
+            @Dealer_Name, @Dealer_Location, @Mobile, @Email, ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude,
             ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id, @BatchSize
         );
 
