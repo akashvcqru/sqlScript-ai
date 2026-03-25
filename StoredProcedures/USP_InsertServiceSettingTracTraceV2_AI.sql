@@ -212,6 +212,30 @@ BEGIN
                     PRINT 'MasterCode not found in M_Code table.';
                 END
             END
+
+            -- 1.4 MasterCode Range Exclusion Check (MasterCode != codes in assigned range)
+            DECLARE @MasterOrd INT, @MasterSer INT;
+            IF @MasterCode LIKE '%-%-%'
+            BEGIN
+                DECLARE @MP2 VARCHAR(50) = SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode));
+                SET @MasterOrd = TRY_CAST(LEFT(@MP2, CHARINDEX('-', @MP2) - 1) AS INT);
+                SET @MasterSer = TRY_CAST(SUBSTRING(@MP2, CHARINDEX('-', @MP2) + 1, LEN(@MP2)) AS INT);
+            END
+            ELSE IF @MasterCode LIKE '%-%'
+            BEGIN
+                SET @MasterOrd = TRY_CAST(LEFT(@MasterCode, CHARINDEX('-', @MasterCode) - 1) AS INT);
+                SET @MasterSer = TRY_CAST(SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode)) AS INT);
+            END
+
+            IF @MasterOrd IS NOT NULL AND @MasterSer IS NOT NULL
+            BEGIN
+                IF (@MasterOrd > @StartOrder OR (@MasterOrd = @StartOrder AND @MasterSer >= @StartSerial))
+                   AND (@MasterOrd < @EndOrder OR (@MasterOrd = @EndOrder AND @MasterSer <= @EndSerial))
+                BEGIN
+                    SELECT 0 AS success, 'MasterCode cannot be part of the assigned code range.' AS message;
+                    ROLLBACK TRANSACTION; RETURN;
+                END
+            END
         END
 
         -- 2. Ensure Subscribe_Id exists or create one if missing
