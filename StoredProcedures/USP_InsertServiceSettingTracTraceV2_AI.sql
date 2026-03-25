@@ -51,28 +51,113 @@ BEGIN
             RETURN;
         END
 
+        -- 0.1 Parsing SeriesStart/End (Expect Format: "Prefix-Order-Serial" or "Order-Serial")
+        DECLARE @StartOrder INT, @StartSerial INT;
+        DECLARE @EndOrder   INT, @EndSerial   INT;
+
+        -- 0.2 Automated Range Calculation (Next Available Range)
+        IF ISNULL(@SeriesStart, '') = '' OR ISNULL(@SeriesEnd, '') = ''
+        BEGIN
+            IF @BatchSize IS NULL OR @BatchSize <= 0
+            BEGIN
+                SELECT 0 AS success, 'BatchSize is required for automated range calculation.' AS message;
+                ROLLBACK TRANSACTION; RETURN;
+            END
+
+            -- Find the last assigned range from M_ServiceSubscription
+            DECLARE @LastEndOrder INT, @LastEndSerial INT;
+            SELECT TOP 1 @LastEndOrder = end_order, @LastEndSerial = end_series
+            FROM M_ServiceSubscription
+            WHERE Pro_ID = @Pro_ID AND end_order IS NOT NULL
+            ORDER BY EntryDate DESC, Subscribe_Id DESC;
+
+            IF @LastEndOrder IS NULL
+            BEGIN
+                -- First time: Get the first available code for this product
+                SELECT TOP 1 @StartOrder = Series_Order, @StartSerial = Series_Serial
+                FROM M_Code WHERE Pro_ID = @Pro_ID ORDER BY Series_Order, Series_Serial;
+            END
+            ELSE
+            BEGIN
+                -- Next available code after the last end
+                SELECT TOP 1 @StartOrder = Series_Order, @StartSerial = Series_Serial
+                FROM M_Code 
+                WHERE Pro_ID = @Pro_ID 
+                  AND (Series_Order > @LastEndOrder OR (Series_Order = @LastEndOrder AND Series_Serial > @LastEndSerial))
+                ORDER BY Series_Order, Series_Serial;
+            END
+
+            IF @StartOrder IS NULL
+            BEGIN
+                SELECT 0 AS success, 'No available codes found in M_Code for this product.' AS message;
+                ROLLBACK TRANSACTION; RETURN;
+            END
+
+            -- Get the end based on BatchSize
+            ;WITH NextBatch AS (
+                SELECT TOP (@BatchSize) Series_Order, Series_Serial
+                FROM M_Code
+                WHERE Pro_ID = @Pro_ID
+                  AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
+                ORDER BY Series_Order, Series_Serial
+            )
+            SELECT 
+                @EndOrder = MAX(Series_Order),
+                @EndSerial = MAX(Series_Serial)
+            FROM (SELECT TOP (@BatchSize) * FROM NextBatch ORDER BY Series_Order DESC, Series_Serial DESC) AS LastCode;
+            
+            -- Fallback for EndSerial if only one order
+            IF @EndSerial IS NULL SELECT @EndSerial = MAX(Series_Serial) FROM (SELECT TOP (@BatchSize) * FROM NextBatch) t WHERE Series_Order = @EndOrder;
+
+            SET @SeriesStart = CONCAT(@StartOrder, '-', @StartSerial);
+            SET @SeriesEnd = CONCAT(@EndOrder, '-', @EndSerial);
+        END
+        ELSE
+        BEGIN
+            -- Manual Parsing Logic (Skip BM58- part if present)
+            IF @SeriesStart LIKE '%-%-%'
+            BEGIN
+                DECLARE @StartP2 VARCHAR(50) = SUBSTRING(@SeriesStart, CHARINDEX('-', @SeriesStart) + 1, LEN(@SeriesStart));
+                SET @StartOrder = CAST(LEFT(@StartP2, CHARINDEX('-', @StartP2) - 1) AS INT);
+                SET @StartSerial = CAST(SUBSTRING(@StartP2, CHARINDEX('-', @StartP2) + 1, LEN(@StartP2)) AS INT);
+            END
+            ELSE IF @SeriesStart LIKE '%-%'
+            BEGIN
+                SET @StartOrder = CAST(LEFT(@SeriesStart, CHARINDEX('-', @SeriesStart) - 1) AS INT);
+                SET @StartSerial = CAST(SUBSTRING(@SeriesStart, CHARINDEX('-', @SeriesStart) + 1, LEN(@SeriesStart)) AS INT);
+            END
+
+            IF @SeriesEnd LIKE '%-%-%'
+            BEGIN
+                DECLARE @EndP2 VARCHAR(50) = SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd));
+                SET @EndOrder = CAST(LEFT(@EndP2, CHARINDEX('-', @EndP2) - 1) AS INT);
+                SET @EndSerial = CAST(SUBSTRING(@EndP2, CHARINDEX('-', @EndP2) + 1, LEN(@EndP2)) AS INT);
+            END
+            ELSE IF @SeriesEnd LIKE '%-%'
+            BEGIN
+                SET @EndOrder = CAST(LEFT(@SeriesEnd, CHARINDEX('-', @SeriesEnd) - 1) AS INT);
+                SET @EndSerial = CAST(SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd)) AS INT);
+            END
+        END
+
         -- 2. Ensure Subscribe_Id exists or create one if missing (as requested)
         IF ISNULL(@Subscribe_Id, '') = ''
         BEGIN
             SELECT TOP 1 @Subscribe_Id = Subscribe_Id
             FROM M_ServiceSubscription
-            WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID;
+            WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID
+            ORDER BY EntryDate DESC;
             
             -- If still missing, create a new subscription entry (Legacy style)
             IF @Subscribe_Id IS NULL
             BEGIN
-                -- This is a simplified creation. Usually ID is generated.
-                -- For now, let's assume we need to return an error if subscription is missing,
-                -- OR we can try to find an existign one across the company if it's a generic service.
-                -- The user said "add entry in m_servicesubscription", so I'll insert a default one if needed.
-                
                 -- GENERATE ID (Mocking Utility.GetMyGenID logic)
                 DECLARE @GeneratedSubId VARCHAR(50) = 'SUB' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
                 
                 INSERT INTO M_ServiceSubscription
-                (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType)
+                (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType, start_order, start_series, end_order, end_series)
                 VALUES
-                (@GeneratedSubId, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', ISNULL(CASE WHEN ISDATE(@DateFrom)=1 THEN CAST(@DateFrom AS DATETIME) ELSE NULL END, GETDATE()), ISNULL(CASE WHEN ISDATE(@DateTo)=1 THEN CAST(@DateTo AS DATETIME) ELSE NULL END, DATEADD(YEAR, 1, GETDATE())), GETDATE(), 0, 0, 1, 'Service');
+                (@GeneratedSubId, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', ISNULL(CASE WHEN ISDATE(@DateFrom)=1 THEN CAST(@DateFrom AS DATETIME) ELSE NULL END, GETDATE()), ISNULL(CASE WHEN ISDATE(@DateTo)=1 THEN CAST(@DateTo AS DATETIME) ELSE NULL END, DATEADD(YEAR, 1, GETDATE())), GETDATE(), 0, 0, 1, 'Service', @StartOrder, @StartSerial, @EndOrder, @EndSerial);
                 
                 SET @Subscribe_Id = @GeneratedSubId;
             END
@@ -115,73 +200,32 @@ BEGIN
         END
 
         -- 5. Update M_Code (Batch assignment for code range)
-        -- Parsing SeriesStart/End (Expect Format: "Prefix-Order-Serial")
-        DECLARE @StartOrder INT, @StartSerial INT;
-        DECLARE @EndOrder   INT, @EndSerial   INT;
+        -- Using the @StartOrder, @StartSerial, @EndOrder, @EndSerial calculated earlier
 
-        -- Helper Logic: Parse 3-part format (e.g., BM58-00-0011)
-        IF CHARINDEX('-', @SeriesStart) > 0 AND CHARINDEX('-', @SeriesStart, CHARINDEX('-', @SeriesStart) + 1) > 0
-        BEGIN
-            -- 3 parts detected
-            DECLARE @StartP2 VARCHAR(50) = SUBSTRING(@SeriesStart, CHARINDEX('-', @SeriesStart) + 1, LEN(@SeriesStart));
-            SET @StartOrder = CAST(LEFT(@StartP2, CHARINDEX('-', @StartP2) - 1) AS INT);
-            SET @StartSerial = CAST(SUBSTRING(@StartP2, CHARINDEX('-', @StartP2) + 1, LEN(@StartP2)) AS INT);
-        END
-        ELSE IF CHARINDEX('-', @SeriesStart) > 0
-        BEGIN
-            -- 2 parts fallback (Order-Serial)
-            SET @StartOrder = CAST(LEFT(@SeriesStart, CHARINDEX('-', @SeriesStart) - 1) AS INT);
-            SET @StartSerial = CAST(SUBSTRING(@SeriesStart, CHARINDEX('-', @SeriesStart) + 1, LEN(@SeriesStart)) AS INT);
-        END
-        ELSE
-        BEGIN
-            SET @StartOrder = 0; SET @StartSerial = CAST(@SeriesStart AS INT);
-        END
+        -- 5.3 Multi-Order M_Code Update
+        -- Mark codes as assigned in M_Code across multiple orders if necessary
+        UPDATE M_Code
+        SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)),
+            print_status = 1 
+        WHERE Pro_ID = @Pro_ID 
+          AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
+          AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial))
+          AND (Series_Order BETWEEN @StartOrder AND @EndOrder)
+          AND (Batch_No IS NULL OR Batch_No = '');
 
-        IF CHARINDEX('-', @SeriesEnd) > 0 AND CHARINDEX('-', @SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1) > 0
-        BEGIN
-            DECLARE @EndP2 VARCHAR(50) = SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd));
-            SET @EndOrder = CAST(LEFT(@EndP2, CHARINDEX('-', @EndP2) - 1) AS INT);
-            SET @EndSerial = CAST(SUBSTRING(@EndP2, CHARINDEX('-', @EndP2) + 1, LEN(@EndP2)) AS INT);
-        END
-        ELSE IF CHARINDEX('-', @SeriesEnd) > 0
-        BEGIN
-            SET @EndOrder = CAST(LEFT(@SeriesEnd, CHARINDEX('-', @SeriesEnd) - 1) AS INT);
-            SET @EndSerial = CAST(SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd)) AS INT);
-        END
-        ELSE
-        BEGIN
-            SET @EndOrder = 0; SET @EndSerial = CAST(@SeriesEnd AS INT);
-        END
+        -- 5.4 Ensure M_ServiceSubscription record contains the range
+        UPDATE M_ServiceSubscription
+        SET start_order = @StartOrder,
+            start_series = @StartSerial,
+            end_order = @EndOrder,
+            end_series = @EndSerial
+        WHERE Subscribe_Id = @Subscribe_Id;
 
-        -- 5.3 Batch Size Validation
-        IF @BatchSize IS NOT NULL AND @StartSerial IS NOT NULL AND @EndSerial IS NOT NULL
-        BEGIN
-            DECLARE @RequestedQty INT = (@EndSerial - @StartSerial + 1);
-            IF @RequestedQty > @BatchSize
-            BEGIN
-                SELECT 0 AS success, 'Assigned quantity (' + CAST(@RequestedQty AS VARCHAR) + ') exceeds Batch Size (' + CAST(@BatchSize AS VARCHAR) + ').' AS message;
-                ROLLBACK TRANSACTION;
-                RETURN;
-            END
-        END
-
-        -- If orders are the same, update the range
-        IF ISNULL(@StartOrder, -1) = ISNULL(@EndOrder, -1) AND @StartOrder IS NOT NULL
-        BEGIN
-            UPDATE M_Code
-            SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)),
-                print_status = 1 -- Ensure codes are marked as assigned/printed for the update SP
-            WHERE Pro_ID = @Pro_ID 
-              AND Series_Order = @StartOrder 
-              AND Series_Serial BETWEEN @StartSerial AND @EndSerial
-              AND (Batch_No IS NULL OR Batch_No = '');
-        END
-
-        -- 5.5 Call UpdateM_codeByBatch_No to set correctly formatted Series_Limit
+        -- 5.5 Call UpdateM_codeByBatch_No to set correctly formatted Series_Limit in T_Pro
         EXEC UpdateM_codeByBatch_No @NewTPro_RowID, @Pro_ID;
 
         -- 6. Insert into codeassign_tractrac (Master Code Assignment)
+        INSERT INTO codeassign_tractrac (
             mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, entry_date, 
             Dealer_Name, Dealer_Location, Contact_Information, Dispatch_Date, Invoice_Number, Latitude, Longitude,
             SST_Id, Subscribe_Id, BatchSize
@@ -197,7 +241,7 @@ BEGIN
         );
 
         COMMIT TRANSACTION;
-        SELECT 1 AS success, 'TracTrace assignment completed successfully.' AS message, @NewSST_Id AS NewSST_Id, @NewTPro_RowID AS NewTPro_RowID;
+        SELECT 1 AS success, 'TracTrace assignment completed successfully.' AS message, @NewSST_Id AS NewSST_Id, @NewTPro_RowID AS NewTPro_RowID, @SeriesStart AS SeriesStart, @SeriesEnd AS SeriesEnd;
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;

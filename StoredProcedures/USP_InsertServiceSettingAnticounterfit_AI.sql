@@ -29,32 +29,38 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingAnticounterfit_AI]
     @MRP            NUMERIC(18, 2) = NULL,
     @Mfd_Date       VARCHAR(50)    = NULL,
     @Exp_Date       VARCHAR(50)    = NULL,
-    @Batch_No       VARCHAR(100)   = NULL
+    -- Batch-related fields (Like TracTrace)
+    @MRP            NUMERIC(18, 2) = NULL,
+    @Mfd_Date       VARCHAR(50)    = NULL,
+    @Exp_Date       VARCHAR(50)    = NULL,
+    @Batch_No       VARCHAR(100)   = NULL,
+    @BatchSize      INT            = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- 1. Resolve Subscribe_Id if not supplied (Auto-resolve/create like TracTrace)
+        -- 1. Resolve/Create Subscribe_Id with automated sequencing
         IF ISNULL(@Subscribe_Id, '') = ''
         BEGIN
             SELECT TOP 1 @Subscribe_Id = Subscribe_Id
             FROM M_ServiceSubscription
-            WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID;
+            WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID
+            ORDER BY EntryDate DESC;
             
             IF @Subscribe_Id IS NULL
             BEGIN
-                -- GENERATE ID (Mocking Utility.GetMyGenID logic as in TracTrace)
                 DECLARE @GeneratedSubId VARCHAR(50) = 'SUB' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
                 
-                INSERT INTO M_ServiceSubscription
-                (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType)
-                VALUES
-                (@GeneratedSubId, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', 
-                 ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, GETDATE()), 
-                 ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, DATEADD(YEAR, 1, GETDATE())), 
-                 GETDATE(), 0, 0, 1, 'Service');
+                -- Call the centralized SP for new subscription creation with sequence logic
+                EXEC USP_InsertUpdateServiceSubscription_AI 
+                    @Subscribe_Id = @GeneratedSubId,
+                    @Service_ID = @Service_ID,
+                    @Comp_ID = @Comp_ID,
+                    @Pro_ID = @Pro_ID,
+                    @BatchSize = @BatchSize,
+                    @DML = 'I';
                 
                 SET @Subscribe_Id = @GeneratedSubId;
             END
