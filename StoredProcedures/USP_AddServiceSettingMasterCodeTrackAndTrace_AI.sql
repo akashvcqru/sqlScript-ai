@@ -185,7 +185,28 @@ BEGIN
             END
         END
 
-        -- 2. Always create a new Subscribe_Id and insert into M_ServiceSubscription
+        -- 2. Fetch latest plan details for the given Pro_ID and create a new Subscribe_Id
+        DECLARE @PlanID_Last NVARCHAR(50), @PlanName_Last NVARCHAR(150), @PlanMasterPeriod_Last NUMERIC(18,0), @PlanSalePeriod_Last NUMERIC(18,0), @PlanMasterPrice_Last NUMERIC(18,0), @PlanSalePrice_Last NUMERIC(18,0);
+        
+        SELECT TOP 1 
+            @PlanID_Last = Plan_ID, 
+            @PlanName_Last = PlanName, 
+            @PlanMasterPeriod_Last = PlanMasterPeriod, 
+            @PlanSalePeriod_Last = PlanSalePeriod, 
+            @PlanMasterPrice_Last = PlanMasterPrice, 
+            @PlanSalePrice_Last = PlanSalePrice
+        FROM M_ServiceSubscription
+        WHERE Pro_ID = @Pro_ID
+        ORDER BY EntryDate DESC, Subscribe_Id DESC;
+
+        -- Fallback to defaults if no previous record exists
+        SET @PlanID_Last = ISNULL(@PlanID_Last, 'PLAN_DEFAULT');
+        SET @PlanName_Last = ISNULL(@PlanName_Last, 'Manual Subscription');
+        SET @PlanMasterPeriod_Last = ISNULL(@PlanMasterPeriod_Last, 0);
+        SET @PlanSalePeriod_Last = ISNULL(@PlanSalePeriod_Last, 0);
+        SET @PlanMasterPrice_Last = ISNULL(@PlanMasterPrice_Last, 0);
+        SET @PlanSalePrice_Last = ISNULL(@PlanSalePrice_Last, 0);
+
         DECLARE @PrPrefix VARCHAR(50), @PrStart BIGINT;
         SELECT @PrPrefix = PrPrefix, @PrStart = PrStart FROM Code_Gen WHERE Prfor = 'Subscription' AND PrPrefix = 'SSI';
         
@@ -202,9 +223,9 @@ BEGIN
         END
 
         INSERT INTO M_ServiceSubscription
-        (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType, start_order, start_series, end_order, end_series)
+        (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, PlanMasterPeriod, PlanSalePeriod, PlanMasterPrice, PlanSalePrice, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType, start_order, start_series, end_order, end_series)
         VALUES
-        (@Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', 
+        (@Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, @PlanID_Last, @PlanName_Last, @PlanMasterPeriod_Last, @PlanSalePeriod_Last, @PlanMasterPrice_Last, @PlanSalePrice_Last, 
          ISNULL(TRY_CAST(@DateFrom AS DATETIME), GETDATE()), 
          ISNULL(TRY_CAST(@DateTo AS DATETIME), DATEADD(YEAR, 1, GETDATE())), 
          GETDATE(), 0, 0, 1, 'Service', @StartOrder, @StartSerial, @EndOrder, @EndSerial);
