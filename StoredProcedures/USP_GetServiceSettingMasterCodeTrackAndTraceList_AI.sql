@@ -38,7 +38,12 @@ BEGIN
             ELSE 'De-Activated' 
         END AS StatusText,
         SST.IsDelete,
-        NULL AS MasterCode,
+        (SELECT STRING_AGG(CAST(m.Pro_ID AS VARCHAR) + '-' + FORMAT(m.Series_Order, '000') + '-' + FORMAT(m.Series_Serial, '0000'), ', ') 
+         FROM M_Code m 
+         WHERE m.Pro_ID = SS.Pro_ID 
+           AND (m.Series_Order > SS.start_order OR (m.Series_Order = SS.start_order AND m.Series_Serial >= SS.start_series))
+           AND (m.Series_Order < SS.end_order OR (m.Series_Order = SS.end_order AND m.Series_Serial <= SS.end_series))
+        ) AS MasterCode,
         CT.Batch_No,
         CT.Dealer_Name,
         CT.Dealer_Location,
