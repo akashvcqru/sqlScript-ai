@@ -188,32 +188,20 @@ BEGIN
             IF EXISTS (
                 SELECT 1 FROM M_Code 
                 WHERE Pro_ID = @Pro_ID 
-                  AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
-                  AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial))
+                  AND (
+                      ((Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
+                       AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial)))
+                      OR (master_code = @MasterCode 
+                          OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer))
+                  )
                   AND (Batch_No IS NOT NULL AND Batch_No <> '')
             )
             BEGIN
-                SELECT 0 AS success, 'these codes are already assigned to other sst id' AS message;
+                SELECT 0 AS success, 'these codes (or master code) are already assigned to other sst id' AS message;
                 ROLLBACK TRANSACTION; RETURN;
             END
 
             -- 1.3 MasterCode Presence Check
-            IF NOT EXISTS (
-                SELECT 1 FROM M_Code 
-                WHERE Pro_ID = @Pro_ID 
-                  AND (CONCAT(FORMAT(Series_Order, '0000'), '-', FORMAT(Series_Serial, '0000')) = SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode))
-                       OR master_code = @MasterCode)
-            )
-            BEGIN
-                -- If it doesn't match the prefix-order-serial format, check if it exists as a literal mastercode
-                IF NOT EXISTS (SELECT 1 FROM M_Code WHERE master_code = @MasterCode AND Pro_ID = @Pro_ID)
-                BEGIN
-                    -- Note: Optional warning or error. 
-                    PRINT 'MasterCode not found in M_Code table.';
-                END
-            END
-
-            -- 1.4 MasterCode Range Exclusion Check (MasterCode != codes in assigned range)
             DECLARE @MasterOrd INT, @MasterSer INT;
             IF @MasterCode LIKE '%-%-%'
             BEGIN
@@ -227,14 +215,33 @@ BEGIN
                 SET @MasterSer = TRY_CAST(SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode)) AS INT);
             END
 
+            IF NOT EXISTS (
+                SELECT 1 FROM M_Code 
+                WHERE Pro_ID = @Pro_ID 
+                  AND (master_code = @MasterCode 
+                       OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer))
+            )
+            BEGIN
+                SELECT 0 AS success, 'MasterCode does not exist for the selected product.' AS message;
+                ROLLBACK TRANSACTION; RETURN;
+            END
+
+            -- 1.4 MasterCode Count Logic
+            DECLARE @IsMasterInBatch BIT = 0;
             IF @MasterOrd IS NOT NULL AND @MasterSer IS NOT NULL
             BEGIN
                 IF (@MasterOrd > @StartOrder OR (@MasterOrd = @StartOrder AND @MasterSer >= @StartSerial))
                    AND (@MasterOrd < @EndOrder OR (@MasterOrd = @EndOrder AND @MasterSer <= @EndSerial))
                 BEGIN
-                    SELECT 0 AS success, 'MasterCode cannot be part of the assigned code range.' AS message;
-                    ROLLBACK TRANSACTION; RETURN;
+                    SET @IsMasterInBatch = 1;
                 END
+            END
+
+            -- If MasterCode is outside the range, it's an extra code
+            DECLARE @TotalBatchSize INT = @BatchSize;
+            IF @IsMasterInBatch = 0
+            BEGIN
+                SET @TotalBatchSize = ISNULL(@BatchSize, 0) + 1;
             END
         END
 
@@ -306,6 +313,17 @@ BEGIN
           AND (Series_Order BETWEEN @StartOrder AND @EndOrder)
           AND (Batch_No IS NULL OR Batch_No = '');
 
+        -- 5.1 If MasterCode is outside the range, update its Batch_No separately
+        IF @IsMasterInBatch = 0
+        BEGIN
+            UPDATE M_Code
+            SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)),
+                print_status = 1
+            WHERE Pro_ID = @Pro_ID 
+              AND (master_code = @MasterCode 
+                   OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer));
+        END
+
         -- 5.4 Ensure M_ServiceSubscription record contains the range
         UPDATE M_ServiceSubscription
         SET start_order = @StartOrder,
@@ -333,7 +351,7 @@ BEGIN
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
             @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
             @Dealer_Name, @Dealer_Location, @Mobile, @Email, @Mobile, ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude,
-            ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id, @BatchSize
+            ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id, @TotalBatchSize
         );
 
         COMMIT TRANSACTION;
