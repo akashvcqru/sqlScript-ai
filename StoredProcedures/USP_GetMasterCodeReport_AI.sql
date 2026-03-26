@@ -29,27 +29,14 @@ BEGIN
                 WHERE 
                     MC.Pro_ID = CAT.Pro_ID
 
-                    -- SAFE Series_Order
-                    AND MC.Series_Order = 
-                    CASE 
-                        WHEN CHARINDEX('-', CAT.SeriesStart) > 0 
-                        THEN TRY_CAST(LEFT(CAT.SeriesStart, CHARINDEX('-', CAT.SeriesStart) - 1) AS BIGINT)
-                        ELSE NULL
-                    END
+                    -- Robust parsing of Order and Serial (supports both Prefix-Order-Serial and Order-Serial)
+                    AND MC.Series_Order = TRY_CAST(PARSENAME(REPLACE(CAT.SeriesStart, '-', '.'), 2) AS BIGINT)
 
-                    -- SAFE Series_Serial RANGE
+                    -- Series_Serial RANGE
                     AND MC.Series_Serial BETWEEN 
-                    CASE 
-                        WHEN CHARINDEX('-', CAT.SeriesStart) > 0 
-                        THEN TRY_CAST(SUBSTRING(CAT.SeriesStart, CHARINDEX('-', CAT.SeriesStart) + 1, LEN(CAT.SeriesStart)) AS BIGINT)
-                        ELSE NULL
-                    END
-                    AND
-                    CASE 
-                        WHEN CHARINDEX('-', CAT.SeriesEnd) > 0 
-                        THEN TRY_CAST(SUBSTRING(CAT.SeriesEnd, CHARINDEX('-', CAT.SeriesEnd) + 1, LEN(CAT.SeriesEnd)) AS BIGINT)
-                        ELSE NULL
-                    END
+                        TRY_CAST(PARSENAME(REPLACE(CAT.SeriesStart, '-', '.'), 1) AS BIGINT)
+                        AND
+                        TRY_CAST(PARSENAME(REPLACE(CAT.SeriesEnd, '-', '.'), 1) AS BIGINT)
 
                 FOR JSON PATH
             )

@@ -187,7 +187,7 @@ BEGIN
     INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
     LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
     WHERE SS.Comp_ID = @Comp_ID AND (SST.IsDelete = 0 OR SST.IsDelete IS NULL) AND (@Pro_ID IS NULL OR SS.Pro_ID = @Pro_ID) AND (@Service_ID IS NULL OR SS.Service_ID = @Service_ID)
-    ORDER BY SST.Entry_Date DESC OFFSET (@PageIndex - 1) * @PageSize ROWS FETCH NEXT @PageSize ROWS ONLY;
+    ORDER BY CT.entry_date DESC OFFSET (@PageIndex - 1) * @PageSize ROWS FETCH NEXT @PageSize ROWS ONLY;
 END
 GO
 
@@ -224,7 +224,7 @@ BEGIN
     WHERE SS.Comp_ID = @Comp_ID 
       AND (SST.IsDelete = 0 OR SST.IsDelete IS NULL) 
       AND S.Service_ID = 'SRV1021' -- Track & Trace
-    ORDER BY SST.Entry_Date DESC 
+    ORDER BY CT.entry_date DESC 
     OFFSET (@PageIndex - 1) * @PageSize ROWS FETCH NEXT @PageSize ROWS ONLY;
 END
 GO

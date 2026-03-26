@@ -24,7 +24,7 @@ BEGIN
     INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
     LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
     WHERE SS.Comp_ID = @Comp_ID AND (SST.IsDelete = 0 OR SST.IsDelete IS NULL) AND (@Pro_ID IS NULL OR SS.Pro_ID = @Pro_ID) AND (@Service_ID IS NULL OR SS.Service_ID = @Service_ID) AND (@Pro_Name IS NULL OR P.Pro_Name LIKE '%' + @Pro_Name + '%')
-    ORDER BY SST.Entry_Date DESC
+    ORDER BY CT.entry_date DESC
     OFFSET (@PageIndex - 1) * @PageSize ROWS
     FETCH NEXT @PageSize ROWS ONLY;
 END

@@ -60,23 +60,13 @@ BEGIN
     OUTER APPLY (
         SELECT TOP 1 *
         FROM codeassign_tractrac CAT
-        WHERE TRY_CAST(C.Series_Serial AS INT) BETWEEN 
-              TRY_CAST(
-                  CASE 
-                      WHEN CHARINDEX('-', CAT.SeriesStart) > 0 
-                      THEN LEFT(CAT.SeriesStart, CHARINDEX('-', CAT.SeriesStart) - 1)
-                      ELSE CAT.SeriesStart
-                  END AS INT
-              )
+        WHERE C.Pro_ID = CAT.Pro_ID
+          AND C.Series_Order = TRY_CAST(PARSENAME(REPLACE(CAT.SeriesStart, '-', '.'), 2) AS BIGINT)
+          AND C.Series_Serial BETWEEN 
+              TRY_CAST(PARSENAME(REPLACE(CAT.SeriesStart, '-', '.'), 1) AS BIGINT)
               AND
-              TRY_CAST(
-                  CASE 
-                      WHEN CHARINDEX('-', CAT.SeriesEnd) > 0 
-                      THEN LEFT(CAT.SeriesEnd, CHARINDEX('-', CAT.SeriesEnd) - 1)
-                      ELSE CAT.SeriesEnd
-                  END AS INT
-              )
-        ORDER BY TRY_CAST(CAT.SeriesEnd AS INT) ASC   -- pick smallest range
+              TRY_CAST(PARSENAME(REPLACE(CAT.SeriesEnd, '-', '.'), 1) AS BIGINT)
+        ORDER BY TRY_CAST(PARSENAME(REPLACE(CAT.SeriesEnd, '-', '.'), 1) AS BIGINT) ASC   -- pick smallest range
     ) CAT
 
     WHERE 

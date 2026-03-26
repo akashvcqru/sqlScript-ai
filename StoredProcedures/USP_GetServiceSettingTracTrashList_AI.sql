@@ -54,7 +54,7 @@ BEGIN
     LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
     WHERE SS.Comp_ID = @Comp_ID
       AND SS.Service_ID = 'SRV1021'
-    ORDER BY SST.Entry_Date DESC
+    ORDER BY CT.entry_date DESC
     OFFSET (@PageIndex - 1) * @PageSize ROWS
     FETCH NEXT @PageSize ROWS ONLY;
 END
