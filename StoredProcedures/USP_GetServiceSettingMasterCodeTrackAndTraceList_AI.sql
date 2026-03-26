@@ -38,7 +38,7 @@ BEGIN
             ELSE 'De-Activated' 
         END AS StatusText,
         SST.IsDelete,
-        CT.mastercode AS MasterCode,
+        NULL AS MasterCode,
         CT.Batch_No,
         CT.Dealer_Name,
         CT.Dealer_Location,
@@ -54,7 +54,7 @@ BEGIN
     INNER JOIN M_ServiceSubscription SS ON SST.Subscribe_Id = SS.Subscribe_Id
     INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
     INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
-    LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
+    LEFT JOIN M_ServiceSubscriptionTracTrace_MasterCodeLess CT ON SST.SST_Id = CT.SST_Id
     WHERE SS.Comp_ID = @Comp_ID
       AND SS.Service_ID = 'SRV1021' -- Track & Trace
     ORDER BY SST.Entry_Date DESC

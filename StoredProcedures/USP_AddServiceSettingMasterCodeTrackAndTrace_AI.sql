@@ -293,18 +293,25 @@ BEGIN
         -- 6. Insert into M_ServiceSubscriptionTracTrace_MasterCodeLess (Metadata Storage)
         INSERT INTO M_ServiceSubscriptionTracTrace_MasterCodeLess
         (
-            SST_Id, Pro_ID, Service_ID, Subscribe_Id, Dealer_Name, Dealer_Location, Mobile, Email, Invoice_Number, BatchSize, Batch_No, SeriesStart, SeriesEnd, Latitude, Longitude, EntryDate
+            SST_Id, Pro_ID, Service_ID, Subscribe_Id, Dealer_Name, Dealer_Location, Mobile, Email, Invoice_Number, BatchSize, Batch_No, SeriesStart, SeriesEnd, Latitude, Longitude, MRP, Mfd_Date, Exp_Date, EntryDate
         )
         VALUES
         (
-            @GeneratedSST_Id, @Pro_ID, @Service_ID, @Subscribe_Id, @Dealer_Name, @Dealer_Location, @Mobile, @Email, @Invoice_Number, @BatchSize, @Batch_No, @SeriesStart, @SeriesEnd, @Latitude, @Longitude, GETDATE()
+            @GeneratedSST_Id, @Pro_ID, @Service_ID, @Subscribe_Id, @Dealer_Name, @Dealer_Location, @Mobile, @Email, @Invoice_Number, @BatchSize, @Batch_No, @SeriesStart, @SeriesEnd, @Latitude, @Longitude, 
+            @MRP, 
+            CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
+            CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
+            GETDATE()
         );
 
         COMMIT TRANSACTION;
         SELECT 1 AS success, 'TracTrace assignment completed successfully.' AS message, @GeneratedSST_Id AS NewSST_Id, @NewTPro_RowID AS NewTPro_RowID, @SeriesStart AS SeriesStart, @SeriesEnd AS SeriesEnd, @Subscribe_Id AS Subscribe_Id;
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        IF @@TRANCOUNT > 0 
+        BEGIN
+            ROLLBACK TRANSACTION;
+        END
         SELECT 0 AS success, ERROR_MESSAGE() AS message;
     END CATCH
 END

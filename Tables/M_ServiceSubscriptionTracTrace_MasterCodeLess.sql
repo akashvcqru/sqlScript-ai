@@ -17,6 +17,9 @@ BEGIN
         [SeriesEnd] [varchar](100) NULL,
         [Latitude] [nvarchar](50) NULL,
         [Longitude] [nvarchar](50) NULL,
+        [MRP] [numeric](18, 2) NULL,
+        [Mfd_Date] [datetime] NULL,
+        [Exp_Date] [datetime] NULL,
         [EntryDate] [datetime] NULL DEFAULT (getdate()),
         CONSTRAINT [PK_M_ServiceSubscriptionTracTrace_MasterCodeLess] PRIMARY KEY CLUSTERED 
         (
