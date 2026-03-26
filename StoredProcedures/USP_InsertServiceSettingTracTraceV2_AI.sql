@@ -205,8 +205,10 @@ BEGIN
                   AND (
                       ((Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
                        AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial)))
-                      OR (master_code = @MasterCode 
-                          OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer))
+                      OR (
+                          LEFT(@MasterCode, 4) = LEFT(@Pro_ID, 4) 
+                          AND (master_code = @MasterCode OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer))
+                         )
                   )
                   AND (Batch_No IS NOT NULL AND Batch_No <> '')
             )
@@ -215,16 +217,19 @@ BEGIN
                 ROLLBACK TRANSACTION; RETURN;
             END
 
-            -- 1.4 MasterCode Presence Check in Database
-            IF NOT EXISTS (
-                SELECT 1 FROM M_Code 
-                WHERE Pro_ID = @Pro_ID 
-                  AND (master_code = @MasterCode 
-                       OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer))
-            )
+            -- 1.4 MasterCode Presence Check in Database (Only for matching product prefixes)
+            IF LEFT(@MasterCode, 4) = LEFT(@Pro_ID, 4)
             BEGIN
-                SELECT 0 AS success, 'MasterCode does not exist for the selected product.' AS message;
-                ROLLBACK TRANSACTION; RETURN;
+                IF NOT EXISTS (
+                    SELECT 1 FROM M_Code 
+                    WHERE Pro_ID = @Pro_ID 
+                      AND (master_code = @MasterCode 
+                           OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer))
+                )
+                BEGIN
+                    SELECT 0 AS success, 'MasterCode does not exist for the selected product.' AS message;
+                    ROLLBACK TRANSACTION; RETURN;
+                END
             END
 
             -- 1.4 MasterCode Count Logic
@@ -350,8 +355,8 @@ BEGIN
           AND (Series_Order BETWEEN @StartOrder AND @EndOrder)
           AND (Batch_No IS NULL OR Batch_No = '');
 
-        -- 5.1 If MasterCode is outside the range, update its Batch_No separately
-        IF @IsMasterInBatch = 0
+        -- 5.1 If MasterCode is outside the range AND matches product prefix, update its Batch_No separately
+        IF @IsMasterInBatch = 0 AND LEFT(@MasterCode, 4) = LEFT(@Pro_ID, 4)
         BEGIN
             UPDATE M_Code
             SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)),
