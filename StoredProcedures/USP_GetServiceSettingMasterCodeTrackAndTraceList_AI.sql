@@ -1,0 +1,63 @@
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Procedure: USP_GetServiceSettingMasterCodeTrackAndTraceList_AI
+-- Description: Fetch list of service settings for Track & Trace (No MasterCode)
+-- =============================================
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetServiceSettingMasterCodeTrackAndTraceList_AI]
+    @Comp_ID       NVARCHAR(50),
+    @PageIndex     INT = 1,
+    @PageSize      INT = 10
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT 
+        SST.SST_Id,
+        SST.Subscribe_Id,
+        P.Pro_Name,
+        S.ServiceName,
+        CASE 
+            WHEN SS.start_order IS NOT NULL AND SS.start_series IS NOT NULL 
+            THEN CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR) + ' to ' + CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR)
+            ELSE 'All'
+        END AS servicerange,
+        SST.DateFrom,
+        SST.DateTo,
+        SST.Points,
+        SST.IsCashConvert,
+        SST.IsCash,
+        SST.Frequency,
+        SST.Comments,
+        SST.IsActive,
+        CASE 
+            WHEN SST.IsActive = 0 THEN 'Activated' 
+            ELSE 'De-Activated' 
+        END AS StatusText,
+        SST.IsDelete,
+        ML.Batch_No,
+        ML.Dealer_Name,
+        ML.Dealer_Location,
+        ML.Mobile,
+        ML.Email,
+        ML.Invoice_Number,
+        ML.BatchSize,
+        ML.ID AS TrackTrace_ID,
+        ML.SeriesStart,
+        ML.SeriesEnd,
+        COUNT(*) OVER() as TotalRecords
+    FROM M_ServiceSubscriptionTrans SST
+    INNER JOIN M_ServiceSubscription SS ON SST.Subscribe_Id = SS.Subscribe_Id
+    INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
+    INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
+    INNER JOIN M_ServiceSubscriptionTracTrace_MasterCodeLess ML ON SST.SST_Id = ML.SST_Id
+    WHERE SS.Comp_ID = @Comp_ID
+      AND SS.Service_ID = 'SRV1021' -- Track & Trace
+    ORDER BY SST.Entry_Date DESC
+    OFFSET (@PageIndex - 1) * @PageSize ROWS
+    FETCH NEXT @PageSize ROWS ONLY;
+END
+GO
