@@ -184,7 +184,21 @@ BEGIN
                 END
             END
 
-            -- 1.2 M_Code Assignment Validation (Check if any code is already assigned)
+            -- 1.2 MasterCode Presence Check & Parsing
+            DECLARE @MasterOrd INT, @MasterSer INT;
+            IF @MasterCode LIKE '%-%-%'
+            BEGIN
+                DECLARE @MP2 VARCHAR(50) = SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode));
+                SET @MasterOrd = TRY_CAST(LEFT(@MP2, CHARINDEX('-', @MP2) - 1) AS INT);
+                SET @MasterSer = TRY_CAST(SUBSTRING(@MP2, CHARINDEX('-', @MP2) + 1, LEN(@MP2)) AS INT);
+            END
+            ELSE IF @MasterCode LIKE '%-%'
+            BEGIN
+                SET @MasterOrd = TRY_CAST(LEFT(@MasterCode, CHARINDEX('-', @MasterCode) - 1) AS INT);
+                SET @MasterSer = TRY_CAST(SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode)) AS INT);
+            END
+
+            -- 1.3 M_Code Assignment Validation (Check if any code is already assigned)
             IF EXISTS (
                 SELECT 1 FROM M_Code 
                 WHERE Pro_ID = @Pro_ID 
@@ -201,20 +215,7 @@ BEGIN
                 ROLLBACK TRANSACTION; RETURN;
             END
 
-            -- 1.3 MasterCode Presence Check
-            DECLARE @MasterOrd INT, @MasterSer INT;
-            IF @MasterCode LIKE '%-%-%'
-            BEGIN
-                DECLARE @MP2 VARCHAR(50) = SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode));
-                SET @MasterOrd = TRY_CAST(LEFT(@MP2, CHARINDEX('-', @MP2) - 1) AS INT);
-                SET @MasterSer = TRY_CAST(SUBSTRING(@MP2, CHARINDEX('-', @MP2) + 1, LEN(@MP2)) AS INT);
-            END
-            ELSE IF @MasterCode LIKE '%-%'
-            BEGIN
-                SET @MasterOrd = TRY_CAST(LEFT(@MasterCode, CHARINDEX('-', @MasterCode) - 1) AS INT);
-                SET @MasterSer = TRY_CAST(SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode)) AS INT);
-            END
-
+            -- 1.4 MasterCode Presence Check in Database
             IF NOT EXISTS (
                 SELECT 1 FROM M_Code 
                 WHERE Pro_ID = @Pro_ID 
@@ -247,26 +248,26 @@ BEGIN
 
         -- 2. Always create a new Subscribe_Id and insert into M_ServiceSubscription
         DECLARE @PrPrefix VARCHAR(50), @PrStart BIGINT;
-        SELECT @PrPrefix = PrPrefix, @PrStart = PrStart FROM Code_Gen WHERE Prfor = 'Subscription';
+        SELECT @PrPrefix = PrPrefix, @PrStart = PrStart FROM Code_Gen WHERE Prfor = 'Subscription' AND PrPrefix = 'SSI';
         
         IF @PrPrefix IS NULL
         BEGIN
-            -- Fallback if Code_Gen is missing entry
-            SET @Subscribe_Id = 'SUB' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
+            -- Fallback if Code_Gen is missing specific entry
+            SET @Subscribe_Id = 'SSI' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
         END
         ELSE
         BEGIN
             SET @Subscribe_Id = @PrPrefix + CAST(@PrStart AS VARCHAR(50));
             -- Increment the counter
-            UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'Subscription';
+            UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'Subscription' AND PrPrefix = 'SSI';
         END
 
         INSERT INTO M_ServiceSubscription
         (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType, start_order, start_series, end_order, end_series)
         VALUES
         (@Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', 
-         ISNULL(CASE WHEN ISDATE(@DateFrom)=1 THEN CAST(@DateFrom AS DATETIME) ELSE NULL END, GETDATE()), 
-         ISNULL(CASE WHEN ISDATE(@DateTo)=1 THEN CAST(@DateTo AS DATETIME) ELSE NULL END, DATEADD(YEAR, 1, GETDATE())), 
+         ISNULL(TRY_CAST(@DateFrom AS DATETIME), GETDATE()), 
+         ISNULL(TRY_CAST(@DateTo AS DATETIME), DATEADD(YEAR, 1, GETDATE())), 
          GETDATE(), 0, 0, 1, 'Service', @StartOrder, @StartSerial, @EndOrder, @EndSerial);
 
         -- 3. Insert into M_ServiceSubscriptionTrans (Settings Transaction)
