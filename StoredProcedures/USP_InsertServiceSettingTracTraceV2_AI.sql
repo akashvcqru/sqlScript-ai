@@ -245,27 +245,29 @@ BEGIN
             END
         END
 
-        -- 2. Ensure Subscribe_Id exists or create one if missing
-        IF ISNULL(@Subscribe_Id, '') = ''
+        -- 2. Always create a new Subscribe_Id and insert into M_ServiceSubscription
+        DECLARE @PrPrefix VARCHAR(50), @PrStart BIGINT;
+        SELECT @PrPrefix = PrPrefix, @PrStart = PrStart FROM Code_Gen WHERE Prfor = 'Subscription';
+        
+        IF @PrPrefix IS NULL
         BEGIN
-            SELECT TOP 1 @Subscribe_Id = Subscribe_Id
-            FROM M_ServiceSubscription
-            WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID
-            ORDER BY EntryDate DESC;
-            
-            -- If still missing, create a new subscription entry
-            IF @Subscribe_Id IS NULL
-            BEGIN
-                DECLARE @GeneratedSubId VARCHAR(50) = 'SUB' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
-                
-                INSERT INTO M_ServiceSubscription
-                (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType, start_order, start_series, end_order, end_series)
-                VALUES
-                (@GeneratedSubId, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', ISNULL(CASE WHEN ISDATE(@DateFrom)=1 THEN CAST(@DateFrom AS DATETIME) ELSE NULL END, GETDATE()), ISNULL(CASE WHEN ISDATE(@DateTo)=1 THEN CAST(@DateTo AS DATETIME) ELSE NULL END, DATEADD(YEAR, 1, GETDATE())), GETDATE(), 0, 0, 1, 'Service', @StartOrder, @StartSerial, @EndOrder, @EndSerial);
-                
-                SET @Subscribe_Id = @GeneratedSubId;
-            END
+            -- Fallback if Code_Gen is missing entry
+            SET @Subscribe_Id = 'SUB' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
         END
+        ELSE
+        BEGIN
+            SET @Subscribe_Id = @PrPrefix + CAST(@PrStart AS VARCHAR(50));
+            -- Increment the counter
+            UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'Subscription';
+        END
+
+        INSERT INTO M_ServiceSubscription
+        (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType, start_order, start_series, end_order, end_series)
+        VALUES
+        (@Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', 
+         ISNULL(CASE WHEN ISDATE(@DateFrom)=1 THEN CAST(@DateFrom AS DATETIME) ELSE NULL END, GETDATE()), 
+         ISNULL(CASE WHEN ISDATE(@DateTo)=1 THEN CAST(@DateTo AS DATETIME) ELSE NULL END, DATEADD(YEAR, 1, GETDATE())), 
+         GETDATE(), 0, 0, 1, 'Service', @StartOrder, @StartSerial, @EndOrder, @EndSerial);
 
         -- 3. Insert into M_ServiceSubscriptionTrans (Settings Transaction)
         INSERT INTO M_ServiceSubscriptionTrans
@@ -324,7 +326,7 @@ BEGIN
                    OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer));
         END
 
-        -- 5.4 Ensure M_ServiceSubscription record contains the range
+        -- 5.4 Ensure M_ServiceSubscription record contains the range (ALREADY INSERTED WITH RANGE, BUT UPDATING AGAIN TO BE SURE/COMPATIBLE WITH FLOW)
         UPDATE M_ServiceSubscription
         SET start_order = @StartOrder,
             start_series = @StartSerial,
@@ -355,7 +357,7 @@ BEGIN
         );
 
         COMMIT TRANSACTION;
-        SELECT 1 AS success, 'TracTrace assignment completed successfully.' AS message, @NewSST_Id AS NewSST_Id, @NewTPro_RowID AS NewTPro_RowID, @SeriesStart AS SeriesStart, @SeriesEnd AS SeriesEnd;
+        SELECT 1 AS success, 'TracTrace assignment completed successfully.' AS message, @NewSST_Id AS NewSST_Id, @NewTPro_RowID AS NewTPro_RowID, @SeriesStart AS SeriesStart, @SeriesEnd AS SeriesEnd, @Subscribe_Id AS Subscribe_Id;
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
