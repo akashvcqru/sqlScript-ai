@@ -323,7 +323,7 @@ BEGIN
         -- 6. Insert into codeassign_tractrac (Master Code Assignment)
         INSERT INTO codeassign_tractrac (
             mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, entry_date, 
-            Dealer_Name, Dealer_Location, Mobile, Email, Dispatch_Date, Invoice_Number, Latitude, Longitude,
+            Dealer_Name, Dealer_Location, Mobile, Email, Contact_Information, Dispatch_Date, Invoice_Number, Latitude, Longitude,
             SST_Id, Subscribe_Id, BatchSize
         )
         VALUES
@@ -332,7 +332,7 @@ BEGIN
             CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
             @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
-            @Dealer_Name, @Dealer_Location, @Mobile, @Email, ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude,
+            @Dealer_Name, @Dealer_Location, @Mobile, @Email, @Mobile, ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude,
             ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id, @BatchSize
         );
 
