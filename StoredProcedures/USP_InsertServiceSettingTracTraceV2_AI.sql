@@ -238,6 +238,19 @@ BEGIN
                 END
             END
 
+            -- Conditional Validation: If MasterCode prefix matches Pro_ID prefix, it MUST be in range
+            -- Note: Using LEFT(@Pro_ID, 4) etc. as per user requirement "match with pro_id ... first four leter"
+            IF LEFT(@Pro_ID, 4) = LEFT(@SeriesStart, 4) 
+               AND LEFT(@Pro_ID, 4) = LEFT(@SeriesEnd, 4) 
+               AND LEFT(@Pro_ID, 4) = LEFT(@MasterCode, 4)
+            BEGIN
+                IF @IsMasterInBatch = 0
+                BEGIN
+                    SELECT 0 AS success, 'MasterCode must be between SeriesStart and SeriesEnd for matching product prefixes.' AS message;
+                    ROLLBACK TRANSACTION; RETURN;
+                END
+            END
+
             -- If MasterCode is outside the range, it's an extra code
             DECLARE @TotalBatchSize INT = @BatchSize;
             IF @IsMasterInBatch = 0
