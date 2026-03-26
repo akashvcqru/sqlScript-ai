@@ -38,22 +38,23 @@ BEGIN
             ELSE 'De-Activated' 
         END AS StatusText,
         SST.IsDelete,
-        ML.Batch_No,
-        ML.Dealer_Name,
-        ML.Dealer_Location,
-        ML.Mobile,
-        ML.Email,
-        ML.Invoice_Number,
-        ML.BatchSize,
-        ML.ID AS TrackTrace_ID,
-        ML.SeriesStart,
-        ML.SeriesEnd,
+        CT.mastercode AS MasterCode,
+        CT.Batch_No,
+        CT.Dealer_Name,
+        CT.Dealer_Location,
+        CT.Mobile,
+        CT.Email,
+        CT.Invoice_Number,
+        CT.BatchSize,
+        CT.ID AS TrackTrace_ID,
+        CT.SeriesStart,
+        CT.SeriesEnd,
         COUNT(*) OVER() as TotalRecords
     FROM M_ServiceSubscriptionTrans SST
     INNER JOIN M_ServiceSubscription SS ON SST.Subscribe_Id = SS.Subscribe_Id
     INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
     INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
-    INNER JOIN M_ServiceSubscriptionTracTrace_MasterCodeLess ML ON SST.SST_Id = ML.SST_Id
+    LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
     WHERE SS.Comp_ID = @Comp_ID
       AND SS.Service_ID = 'SRV1021' -- Track & Trace
     ORDER BY SST.Entry_Date DESC
