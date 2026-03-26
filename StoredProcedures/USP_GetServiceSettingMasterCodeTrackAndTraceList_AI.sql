@@ -38,7 +38,7 @@ BEGIN
             ELSE 'De-Activated' 
         END AS StatusText,
         SST.IsDelete,
-        (SELECT STRING_AGG(CAST(m.Pro_ID AS VARCHAR) + '-' + FORMAT(m.Series_Order, '000') + '-' + FORMAT(m.Series_Serial, '0000'), ', ') 
+        (SELECT STRING_AGG(CAST(m.Pro_ID AS VARCHAR(MAX)) + '-' + FORMAT(m.Series_Order, '000') + '-' + FORMAT(m.Series_Serial, '0000'), ', ') 
          FROM M_Code m 
          WHERE m.Pro_ID = SS.Pro_ID 
            AND (m.Series_Order > SS.start_order OR (m.Series_Order = SS.start_order AND m.Series_Serial >= SS.start_series))
