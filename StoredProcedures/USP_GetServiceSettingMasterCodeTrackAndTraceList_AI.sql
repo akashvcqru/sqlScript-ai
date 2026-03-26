@@ -40,9 +40,8 @@ BEGIN
         SST.IsDelete,
         (SELECT STRING_AGG(CAST(m.Pro_ID AS VARCHAR(MAX)) + '-' + FORMAT(m.Series_Order, '000') + '-' + FORMAT(m.Series_Serial, '0000'), ', ') 
          FROM M_Code m 
-         WHERE m.Pro_ID = SS.Pro_ID 
-           AND (m.Series_Order > SS.start_order OR (m.Series_Order = SS.start_order AND m.Series_Serial >= SS.start_series))
-           AND (m.Series_Order < SS.end_order OR (m.Series_Order = SS.end_order AND m.Series_Serial <= SS.end_series))
+         INNER JOIN T_Pro TP ON m.Pro_ID = TP.Pro_ID AND m.Batch_No = CAST(TP.Row_ID AS VARCHAR(50))
+         WHERE TP.Pro_ID = CT.Pro_ID AND TP.Batch_No = CT.Batch_No
         ) AS MasterCode,
         CT.Batch_No,
         CT.Dealer_Name,
