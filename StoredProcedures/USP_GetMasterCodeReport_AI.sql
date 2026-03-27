@@ -19,6 +19,8 @@ BEGIN
         CAT.Email,
         CAT.Dispatch_Date,
         CAT.Invoice_Number,
+        CAT.Latitude,
+        CAT.Longitude,
         TRY_CAST(PARSENAME(REPLACE(CAT.SeriesStart, '-', '.'), 2) AS BIGINT) AS Series_Order,
         TRY_CAST(PARSENAME(REPLACE(CAT.SeriesStart, '-', '.'), 1) AS BIGINT) AS Start_Serial,
         TRY_CAST(PARSENAME(REPLACE(CAT.SeriesEnd, '-', '.'), 1) AS BIGINT) AS End_Serial,
