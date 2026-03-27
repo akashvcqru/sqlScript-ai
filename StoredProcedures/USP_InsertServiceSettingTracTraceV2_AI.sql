@@ -392,7 +392,7 @@ BEGIN
             CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
             @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
-            @Dealer_Name, @Dealer_Location, @Mobile, @Email, @Mobile, ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude,
+            @Dealer_Name, @Dealer_Location, ISNULL(@Mobile, ''), @Email, ISNULL(@Mobile, ''), ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude,
             ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id, @TotalBatchSize
         );
 
