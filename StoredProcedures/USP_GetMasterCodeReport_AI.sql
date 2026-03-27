@@ -18,6 +18,9 @@ BEGIN
         CAT.Contact_Information,
         CAT.Dispatch_Date,
         CAT.Invoice_Number,
+        TRY_CAST(PARSENAME(REPLACE(CAT.SeriesStart, '-', '.'), 2) AS BIGINT) AS Series_Order,
+        TRY_CAST(PARSENAME(REPLACE(CAT.SeriesStart, '-', '.'), 1) AS BIGINT) AS Start_Serial,
+        TRY_CAST(PARSENAME(REPLACE(CAT.SeriesEnd, '-', '.'), 1) AS BIGINT) AS End_Serial,
 
         JSON_QUERY(
             (

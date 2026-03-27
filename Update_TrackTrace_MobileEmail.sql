@@ -180,7 +180,7 @@ CREATE OR ALTER PROCEDURE USP_GetServiceSettingList_AI
 AS
 BEGIN
     SET NOCOUNT ON;
-    SELECT SST.SST_Id, SST.Subscribe_Id, P.Pro_Name, S.ServiceName, CASE WHEN SS.start_order IS NOT NULL AND SS.start_series IS NOT NULL THEN CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR) + ' to ' + CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR) ELSE 'All' END AS servicerange, SST.DateFrom, SST.DateTo, SST.Points, SST.Comments, SST.IsActive, CT.mastercode, CT.Batch_No, CT.Dealer_Name, CT.Mobile, CT.Email, CT.BatchSize, CT.ID AS TrackTrace_ID, COUNT(*) OVER() as TotalRecords
+    SELECT SST.SST_Id, SST.Subscribe_Id, P.Pro_Name, S.ServiceName, CASE WHEN SS.start_order IS NOT NULL AND SS.start_series IS NOT NULL THEN CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR) + ' to ' + CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR) ELSE 'All' END AS servicerange, SST.DateFrom, SST.DateTo, SST.Points, SST.Comments, SST.IsActive, CT.mastercode, CT.Batch_No, CT.Dealer_Name, CT.Mobile, CT.Email, CT.BatchSize, CT.ID AS TrackTrace_ID, TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 2) AS BIGINT) AS Series_Order, TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 1) AS BIGINT) AS Start_Serial, TRY_CAST(PARSENAME(REPLACE(CT.SeriesEnd, '-', '.'), 1) AS BIGINT) AS End_Serial, COUNT(*) OVER() as TotalRecords
     FROM M_ServiceSubscriptionTrans SST
     INNER JOIN M_ServiceSubscription SS ON SST.Subscribe_Id = SS.Subscribe_Id
     INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
@@ -215,6 +215,9 @@ BEGIN
         CT.Invoice_Number, 
         CT.BatchSize, 
         CT.ID AS TrackTrace_ID, 
+        TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 1) AS BIGINT) AS Start_Serial,
+        TRY_CAST(PARSENAME(REPLACE(CT.SeriesEnd, '-', '.'), 1) AS BIGINT) AS End_Serial,
+        TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 2) AS BIGINT) AS Series_Order,
         COUNT(*) OVER() as TotalRecords
     FROM M_ServiceSubscriptionTrans SST
     INNER JOIN M_ServiceSubscription SS ON SST.Subscribe_Id = SS.Subscribe_Id

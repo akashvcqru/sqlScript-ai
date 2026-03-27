@@ -46,6 +46,9 @@ BEGIN
         CT.Invoice_Number,
         CT.BatchSize,
         CT.ID AS TrackTrace_ID,
+        TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 2) AS BIGINT) AS Series_Order,
+        TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 1) AS BIGINT) AS Start_Serial,
+        TRY_CAST(PARSENAME(REPLACE(CT.SeriesEnd, '-', '.'), 1) AS BIGINT) AS End_Serial,
         COUNT(*) OVER() as TotalRecords
     FROM M_ServiceSubscriptionTrans SST
     INNER JOIN M_ServiceSubscription SS ON SST.Subscribe_Id = SS.Subscribe_Id
