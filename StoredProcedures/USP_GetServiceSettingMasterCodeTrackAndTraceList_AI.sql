@@ -1,12 +1,13 @@
--- =============================================
--- Procedure: USP_GetServiceSettingTracTrashList_AI
--- Description: Fetch list of service settings for Track & Trace with master code details
--- =============================================
-IF OBJECT_ID('USP_GetServiceSettingTracTrashList_AI', 'P') IS NOT NULL
-    DROP PROCEDURE USP_GetServiceSettingTracTrashList_AI
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE PROCEDURE USP_GetServiceSettingTracTrashList_AI
+-- =============================================
+-- Procedure: USP_GetServiceSettingMasterCodeTrackAndTraceList_AI
+-- Description: Fetch list of service settings for Track & Trace (No MasterCode)
+-- =============================================
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetServiceSettingMasterCodeTrackAndTraceList_AI]
     @Comp_ID       NVARCHAR(50),
     @PageIndex     INT = 1,
     @PageSize      INT = 10
@@ -37,7 +38,11 @@ BEGIN
             ELSE 'De-Activated' 
         END AS StatusText,
         SST.IsDelete,
-        CT.mastercode,
+        (SELECT STRING_AGG(CAST(m.Pro_ID AS VARCHAR(MAX)) + '-' + FORMAT(m.Series_Order, '000') + '-' + FORMAT(m.Series_Serial, '0000'), ', ') 
+         FROM M_Code m 
+         INNER JOIN T_Pro TP ON m.Pro_ID = TP.Pro_ID AND m.Batch_No = CAST(TP.Row_ID AS VARCHAR(50))
+         WHERE TP.Pro_ID = CT.Pro_ID AND TP.Batch_No = CT.Batch_No
+        ) AS MasterCode,
         CT.Batch_No,
         CT.Dealer_Name,
         CT.Dealer_Location,
@@ -46,18 +51,17 @@ BEGIN
         CT.Invoice_Number,
         CT.BatchSize,
         CT.ID AS TrackTrace_ID,
-        TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 2) AS BIGINT) AS Series_Order,
-        TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 1) AS BIGINT) AS Start_Serial,
-        TRY_CAST(PARSENAME(REPLACE(CT.SeriesEnd, '-', '.'), 1) AS BIGINT) AS End_Serial,
+        CT.SeriesStart,
+        CT.SeriesEnd,
         COUNT(*) OVER() as TotalRecords
     FROM M_ServiceSubscriptionTrans SST
     INNER JOIN M_ServiceSubscription SS ON SST.Subscribe_Id = SS.Subscribe_Id
     INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
     INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
-    LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
+    LEFT JOIN M_ServiceSubscriptionTracTrace_MasterCodeLess CT ON SST.SST_Id = CT.SST_Id
     WHERE SS.Comp_ID = @Comp_ID
-      AND SS.Service_ID = 'SRV1021'
-    ORDER BY CT.entry_date DESC
+      AND SS.Service_ID = 'SRV1021' -- Track & Trace
+    ORDER BY SST.Entry_Date DESC
     OFFSET (@PageIndex - 1) * @PageSize ROWS
     FETCH NEXT @PageSize ROWS ONLY;
 END

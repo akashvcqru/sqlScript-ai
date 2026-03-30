@@ -3,7 +3,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingTracTraceV2_AI]
+CREATE OR ALTER PROCEDURE [dbo].[USP_AddServiceSettingMasterCodeTrackAndTrace_AI]
     @Comp_ID        VARCHAR(50),
     @Pro_ID         VARCHAR(50),
     @Service_ID     VARCHAR(50),
@@ -14,14 +14,14 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingTracTraceV2_AI]
     @Batch_No       VARCHAR(100)   = NULL,
     @SeriesStart    VARCHAR(100)   = NULL, -- Format: "Order-SerialFrom"
     @SeriesEnd      VARCHAR(100)   = NULL, -- Format: "Order-SerialTo"
-    @MasterCode     VARCHAR(100)   = NULL,
+    -- @MasterCode removed as per requirement
     @Comments       NVARCHAR(1000) = NULL,
     @EntryDate      DATETIME       = NULL,
     
-    -- New Fields
+    -- Metadata Fields
     @Dealer_Name         NVARCHAR(150) = NULL,
     @Dealer_Location     NVARCHAR(150) = NULL,
-    @Mobile              NVARCHAR(150) = NULL, -- Replaces @Contact_Information
+    @Mobile              NVARCHAR(150) = NULL, 
     @Email               NVARCHAR(150) = NULL,
     @Invoice_Number      NVARCHAR(50)  = NULL,
     @Latitude            NVARCHAR(50)  = NULL,
@@ -40,14 +40,6 @@ BEGIN
         IF @Mfd_Date IS NULL OR @Mfd_Date = '' OR @Mfd_Date = 'string'
         BEGIN
             SELECT 0 AS success, 'Manufacturing Date is compulsory.' AS message;
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
-
-        -- 1. Check MasterCode uniqueness in codeassign_tractrac
-        IF EXISTS (SELECT 1 FROM codeassign_tractrac WHERE mastercode = @MasterCode)
-        BEGIN
-            SELECT 0 AS success, 'Already master code exists' AS message;
             ROLLBACK TRANSACTION;
             RETURN;
         END
@@ -110,8 +102,7 @@ BEGIN
             -- Fallback for EndSerial if only one order
             IF @EndSerial IS NULL SELECT @EndSerial = MAX(Series_Serial) FROM (SELECT TOP (@BatchSize) * FROM NextBatch) t WHERE Series_Order = @EndOrder;
 
-            SET @SeriesStart = CONCAT(@StartOrder, '-', FORMAT(@StartSerial, '0000')); -- Fallback simple
-            -- Better formatting for 4-4
+            -- Formatting for 4-4
             SET @SeriesStart = CONCAT(FORMAT(@StartOrder, '0000'), '-', FORMAT(@StartSerial, '0000'));
             SET @SeriesEnd = CONCAT(FORMAT(@EndOrder, '0000'), '-', FORMAT(@EndSerial, '0000'));
         END
@@ -149,10 +140,6 @@ BEGIN
               AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
               AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial));
             
-            DECLARE @ExpectedRangeCount INT = 0;
-            IF @StartOrder = @EndOrder SET @ExpectedRangeCount = (@EndSerial - @StartSerial) + 1;
-            -- (Note: Accurate cross-order expected count requires more logic, relying on @ExistingCount for now)
-
             IF @ExistingCount = 0
             BEGIN
                 SELECT 0 AS success, 'The specified code range does not exist in the system.' AS message;
@@ -179,88 +166,22 @@ BEGIN
 
                 IF @CalculatedCount <> @BatchSize
                 BEGIN
-                    SELECT 0 AS success, CONCAT('number of codes will be equel not lesstehn or greator then (Expected: ', @BatchSize, ', Found: ', @CalculatedCount, ')') AS message;
+                    SELECT 0 AS success, CONCAT('Number of codes mismatch. Expected: ', @BatchSize, ', Found: ', @CalculatedCount) AS message;
                     ROLLBACK TRANSACTION; RETURN;
                 END
             END
 
-            -- 1.2 MasterCode Presence Check & Parsing
-            DECLARE @MasterOrd INT, @MasterSer INT;
-            IF @MasterCode LIKE '%-%-%'
-            BEGIN
-                DECLARE @MP2 VARCHAR(50) = SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode));
-                SET @MasterOrd = TRY_CAST(LEFT(@MP2, CHARINDEX('-', @MP2) - 1) AS INT);
-                SET @MasterSer = TRY_CAST(SUBSTRING(@MP2, CHARINDEX('-', @MP2) + 1, LEN(@MP2)) AS INT);
-            END
-            ELSE IF @MasterCode LIKE '%-%'
-            BEGIN
-                SET @MasterOrd = TRY_CAST(LEFT(@MasterCode, CHARINDEX('-', @MasterCode) - 1) AS INT);
-                SET @MasterSer = TRY_CAST(SUBSTRING(@MasterCode, CHARINDEX('-', @MasterCode) + 1, LEN(@MasterCode)) AS INT);
-            END
-
-            -- 1.3 M_Code Assignment Validation (Check if any code is already assigned)
+            -- 1.2 M_Code Assignment Validation (Check if any code is already assigned)
             IF EXISTS (
                 SELECT 1 FROM M_Code 
                 WHERE Pro_ID = @Pro_ID 
-                  AND (
-                      ((Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
-                       AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial)))
-                      OR (
-                          LEFT(@MasterCode, 4) = LEFT(@Pro_ID, 4) 
-                          AND (master_code = @MasterCode OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer))
-                         )
-                  )
+                  AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
+                  AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial))
                   AND (Batch_No IS NOT NULL AND Batch_No <> '')
             )
             BEGIN
-                SELECT 0 AS success, 'these codes (or master code) are already assigned to other sst id' AS message;
+                SELECT 0 AS success, 'These codes are already assigned to another batch.' AS message;
                 ROLLBACK TRANSACTION; RETURN;
-            END
-
-            -- 1.4 MasterCode Presence Check in Database (Only for matching product prefixes)
-            IF LEFT(@MasterCode, 4) = LEFT(@Pro_ID, 4)
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM M_Code 
-                    WHERE Pro_ID = @Pro_ID 
-                      AND (master_code = @MasterCode 
-                           OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer))
-                )
-                BEGIN
-                    SELECT 0 AS success, 'MasterCode does not exist for the selected product.' AS message;
-                    ROLLBACK TRANSACTION; RETURN;
-                END
-            END
-
-            -- 1.4 MasterCode Count Logic
-            DECLARE @IsMasterInBatch BIT = 0;
-            IF @MasterOrd IS NOT NULL AND @MasterSer IS NOT NULL
-            BEGIN
-                IF (@MasterOrd > @StartOrder OR (@MasterOrd = @StartOrder AND @MasterSer >= @StartSerial))
-                   AND (@MasterOrd < @EndOrder OR (@MasterOrd = @EndOrder AND @MasterSer <= @EndSerial))
-                BEGIN
-                    SET @IsMasterInBatch = 1;
-                END
-            END
-
-            -- Conditional Validation: If MasterCode prefix matches Pro_ID prefix, it MUST be in range
-            -- Note: Using LEFT(@Pro_ID, 4) etc. as per user requirement "match with pro_id ... first four leter"
-            IF LEFT(@Pro_ID, 4) = LEFT(@SeriesStart, 4) 
-               AND LEFT(@Pro_ID, 4) = LEFT(@SeriesEnd, 4) 
-               AND LEFT(@Pro_ID, 4) = LEFT(@MasterCode, 4)
-            BEGIN
-                IF @IsMasterInBatch = 0
-                BEGIN
-                    SELECT 0 AS success, 'MasterCode must be between SeriesStart and SeriesEnd for matching product prefixes.' AS message;
-                    ROLLBACK TRANSACTION; RETURN;
-                END
-            END
-
-            -- If MasterCode is outside the range, it's an extra code
-            DECLARE @TotalBatchSize INT = @BatchSize;
-            IF @IsMasterInBatch = 0
-            BEGIN
-                SET @TotalBatchSize = ISNULL(@BatchSize, 0) + 1;
             END
         END
 
@@ -291,7 +212,7 @@ BEGIN
         
         IF @PrPrefix IS NULL
         BEGIN
-            -- Fallback if Code_Gen is missing specific entry
+            -- Fallback if Code_Gen is missing entry
             SET @Subscribe_Id = 'SSI' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
         END
         ELSE
@@ -322,7 +243,7 @@ BEGIN
             @Comments, ISNULL(@EntryDate, GETDATE()), 0, 1, 0, 1, 0, 0, 0, 0, 0
         );
 
-        DECLARE @NewSST_Id BIGINT = SCOPE_IDENTITY();
+        DECLARE @GeneratedSST_Id BIGINT = SCOPE_IDENTITY();
 
         -- 4. Get/Insert T_Pro (Product Batch Details)
         DECLARE @NewTPro_RowID BIGINT;
@@ -355,17 +276,6 @@ BEGIN
           AND (Series_Order BETWEEN @StartOrder AND @EndOrder)
           AND (Batch_No IS NULL OR Batch_No = '');
 
-        -- 5.1 If MasterCode is outside the range AND matches product prefix, update its Batch_No separately
-        IF @IsMasterInBatch = 0 AND LEFT(@MasterCode, 4) = LEFT(@Pro_ID, 4)
-        BEGIN
-            UPDATE M_Code
-            SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)),
-                print_status = 1
-            WHERE Pro_ID = @Pro_ID 
-              AND (master_code = @MasterCode 
-                   OR (Series_Order = @MasterOrd AND Series_Serial = @MasterSer));
-        END
-
         -- 5.4 Ensure M_ServiceSubscription record contains the range (ALREADY INSERTED WITH RANGE, BUT UPDATING AGAIN TO BE SURE/COMPATIBLE WITH FLOW)
         UPDATE M_ServiceSubscription
         SET start_order = @StartOrder,
@@ -380,27 +290,28 @@ BEGIN
             EXEC UpdateM_codeByBatch_No @NewTPro_RowID, @Pro_ID;
         END
 
-        -- 6. Insert into codeassign_tractrac (Master Code Assignment)
-        INSERT INTO codeassign_tractrac (
-            mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, entry_date, 
-            Dealer_Name, Dealer_Location, Mobile, Email, Contact_Information, Dispatch_Date, Invoice_Number, Latitude, Longitude,
-            SST_Id, Subscribe_Id, BatchSize
+        -- 6. Insert into M_ServiceSubscriptionTracTrace_MasterCodeLess (Metadata Storage)
+        INSERT INTO M_ServiceSubscriptionTracTrace_MasterCodeLess
+        (
+            SST_Id, Pro_ID, Service_ID, Subscribe_Id, Dealer_Name, Dealer_Location, Mobile, Email, Invoice_Number, BatchSize, Batch_No, SeriesStart, SeriesEnd, Latitude, Longitude, MRP, Mfd_Date, Exp_Date, EntryDate
         )
         VALUES
         (
-            @MasterCode, @Pro_ID, @MRP, 
+            @GeneratedSST_Id, @Pro_ID, @Service_ID, @Subscribe_Id, @Dealer_Name, @Dealer_Location, @Mobile, @Email, @Invoice_Number, @BatchSize, @Batch_No, @SeriesStart, @SeriesEnd, @Latitude, @Longitude, 
+            @MRP, 
             CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
             CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
-            @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
-            @Dealer_Name, @Dealer_Location, ISNULL(@Mobile, ''), @Email, ISNULL(@Mobile, ''), ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude,
-            ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id, @TotalBatchSize
+            GETDATE()
         );
 
         COMMIT TRANSACTION;
-        SELECT 1 AS success, 'TracTrace assignment completed successfully.' AS message, @NewSST_Id AS NewSST_Id, @NewTPro_RowID AS NewTPro_RowID, @SeriesStart AS SeriesStart, @SeriesEnd AS SeriesEnd, @Subscribe_Id AS Subscribe_Id;
+        SELECT 1 AS success, 'TracTrace assignment completed successfully.' AS message, @GeneratedSST_Id AS NewSST_Id, @NewTPro_RowID AS NewTPro_RowID, @SeriesStart AS SeriesStart, @SeriesEnd AS SeriesEnd, @Subscribe_Id AS Subscribe_Id;
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        IF @@TRANCOUNT > 0 
+        BEGIN
+            ROLLBACK TRANSACTION;
+        END
         SELECT 0 AS success, ERROR_MESSAGE() AS message;
     END CATCH
 END
