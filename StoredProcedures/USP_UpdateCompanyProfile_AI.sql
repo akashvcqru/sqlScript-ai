@@ -4,15 +4,19 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_UpdateCompanyProfile_AI]
     @WebSite NVARCHAR(50) = NULL,
     @Address NVARCHAR(MAX) = NULL,
     @City_ID DECIMAL(18,0) = NULL,
+    @StateId INT = NULL,
     @Contact_Person NVARCHAR(50) = NULL,
     @Mobile_No NVARCHAR(50) = NULL,
-    @Phone_No NVARCHAR(50) = NULL,
-    @Fax NVARCHAR(50) = NULL,
     @Pincode NVARCHAR(10) = NULL,
-    @Landline NVARCHAR(20) = NULL,
-    @CompanyIndustry NVARCHAR(200) = NULL,
-    @CompanyAddress NVARCHAR(MAX) = NULL,
-    @Comp_Cat_Id DECIMAL(18,0) = NULL
+    @Gstin NVARCHAR(50) = NULL,
+    @CompanyPAN NVARCHAR(50) = NULL,
+    @gst_LegalBusinessName NVARCHAR(200) = NULL,
+    @gst_RegistrationStatus BIT = NULL,
+    @gst_BusinessConstitution NVARCHAR(200) = NULL,
+    @gst_TradeName NVARCHAR(200) = NULL,
+    @gst_RegistrationDate NVARCHAR(50) = NULL,
+    @comp_pan_type NVARCHAR(50) = NULL,
+    @comp_pan_status NVARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -23,16 +27,20 @@ BEGIN
         WebSite = ISNULL(@WebSite, WebSite),
         Address = ISNULL(@Address, Address),
         City_ID = ISNULL(@City_ID, City_ID),
+        StateId = ISNULL(@StateId, StateId),
         Contact_Person = ISNULL(@Contact_Person, Contact_Person),
         Mobile_No = ISNULL(@Mobile_No, Mobile_No),
-        Phone_No = ISNULL(@Phone_No, Phone_No),
-        Fax = ISNULL(@Fax, Fax),
         Pincode = ISNULL(@Pincode, Pincode),
-        Landline = ISNULL(@Landline, Landline),
-        CompanyIndustry = ISNULL(@CompanyIndustry, CompanyIndustry),
-        CompanyAddress = ISNULL(@CompanyAddress, CompanyAddress),
-        Comp_Cat_Id = ISNULL(@Comp_Cat_Id, Comp_Cat_Id),
-        Update_Flag = 1 -- Mark as updated
+        Gstin = ISNULL(@Gstin, Gstin),
+        CompanyPAN = ISNULL(@CompanyPAN, CompanyPAN),
+        gst_LegalBusinessName = ISNULL(@gst_LegalBusinessName, gst_LegalBusinessName),
+        gst_RegistrationStatus = ISNULL(@gst_RegistrationStatus, gst_RegistrationStatus),
+        gst_BusinessConstitution = ISNULL(@gst_BusinessConstitution, gst_BusinessConstitution),
+        gst_TradeName = ISNULL(@gst_TradeName, gst_TradeName),
+        gst_RegistrationDate = ISNULL(@gst_RegistrationDate, gst_RegistrationDate),
+        comp_pan_type = ISNULL(@comp_pan_type, comp_pan_type),
+        comp_pan_status = ISNULL(@comp_pan_status, comp_pan_status),
+        Update_Flag = 1
     WHERE Comp_ID = @Comp_ID;
 
     IF @@ROWCOUNT > 0
@@ -41,3 +49,4 @@ BEGIN
         SELECT 0 AS Success, 'Company not found or no changes made.' AS Message;
 END
 GO
+
