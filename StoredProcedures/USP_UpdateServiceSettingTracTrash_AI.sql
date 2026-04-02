@@ -21,7 +21,9 @@ CREATE PROCEDURE USP_UpdateServiceSettingTracTrash_AI
     @Exp_Date             VARCHAR(50) = NULL,
     @DateFrom             VARCHAR(50) = NULL,
     @DateTo               VARCHAR(50) = NULL,
-    @Comments             NVARCHAR(1000) = NULL
+    @Comments             NVARCHAR(1000) = NULL,
+    @Latitude             NVARCHAR(50) = NULL,
+    @Longitude            NVARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -42,7 +44,9 @@ BEGIN
                     BatchSize = ISNULL(@BatchSize, BatchSize),
                     MRP = ISNULL(@MRP, MRP),
                     Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
-                    Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date)
+                    Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
+                    Latitude = ISNULL(@Latitude, Latitude),
+                    Longitude = ISNULL(@Longitude, Longitude)
                 WHERE ID = @TrackTrace_ID;
             END
             ELSE
@@ -57,7 +61,9 @@ BEGIN
                     BatchSize = ISNULL(@BatchSize, BatchSize),
                     MRP = ISNULL(@MRP, MRP),
                     Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
-                    Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date)
+                    Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
+                    Latitude = ISNULL(@Latitude, Latitude),
+                    Longitude = ISNULL(@Longitude, Longitude)
                 WHERE ID = @TrackTrace_ID;
             END
         END
@@ -75,7 +81,9 @@ BEGIN
                     BatchSize = ISNULL(@BatchSize, BatchSize),
                     MRP = ISNULL(@MRP, MRP),
                     Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
-                    Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date)
+                    Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
+                    Latitude = ISNULL(@Latitude, Latitude),
+                    Longitude = ISNULL(@Longitude, Longitude)
                 WHERE SST_Id = @SST_Id;
             END
             ELSE
@@ -90,7 +98,9 @@ BEGIN
                     BatchSize = ISNULL(@BatchSize, BatchSize),
                     MRP = ISNULL(@MRP, MRP),
                     Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
-                    Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date)
+                    Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
+                    Latitude = ISNULL(@Latitude, Latitude),
+                    Longitude = ISNULL(@Longitude, Longitude)
                 WHERE SST_Id = @SST_Id;
             END
         END

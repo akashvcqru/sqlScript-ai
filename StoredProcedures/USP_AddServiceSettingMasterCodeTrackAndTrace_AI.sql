@@ -8,9 +8,6 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_AddServiceSettingMasterCodeTrackAndTrace_AI
     @Pro_ID         VARCHAR(50),
     @Service_ID     VARCHAR(50),
     @Subscribe_Id   VARCHAR(50)    = NULL,
-    @MRP            NUMERIC(18, 2) = NULL,
-    @Mfd_Date       VARCHAR(50)    = NULL,
-    @Exp_Date       VARCHAR(50)    = NULL,
     @Batch_No       VARCHAR(100)   = NULL,
     @SeriesStart    VARCHAR(100)   = NULL, -- Format: "Order-SerialFrom"
     @SeriesEnd      VARCHAR(100)   = NULL, -- Format: "Order-SerialTo"
@@ -19,13 +16,6 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_AddServiceSettingMasterCodeTrackAndTrace_AI
     @EntryDate      DATETIME       = NULL,
     
     -- Metadata Fields
-    @Dealer_Name         NVARCHAR(150) = NULL,
-    @Dealer_Location     NVARCHAR(150) = NULL,
-    @Mobile              NVARCHAR(150) = NULL, 
-    @Email               NVARCHAR(150) = NULL,
-    @Invoice_Number      NVARCHAR(50)  = NULL,
-    @Latitude            NVARCHAR(50)  = NULL,
-    @Longitude           NVARCHAR(50)  = NULL,
     @SST_Id              BIGINT        = NULL,
     @BatchSize           INT           = NULL,
     @DateFrom            VARCHAR(50)   = NULL,
@@ -36,13 +26,6 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- 0. Validate Compulsory Manufacturing Date
-        IF @Mfd_Date IS NULL OR @Mfd_Date = '' OR @Mfd_Date = 'string'
-        BEGIN
-            SELECT 0 AS success, 'Manufacturing Date is compulsory.' AS message;
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
 
         -- 0.1 Parsing SeriesStart/End (Expect Format: "Prefix-Order-Serial" or "Order-Serial")
         DECLARE @StartOrder INT, @StartSerial INT;
@@ -253,13 +236,11 @@ BEGIN
         BEGIN
             INSERT INTO T_Pro
             (
-                Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date, Series_Limit
+                Pro_ID, Batch_No, Comments, Entry_Date, Series_Limit
             )
             VALUES
             (
-                @Pro_ID, @Batch_No, @MRP, 
-                CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
-                CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
+                @Pro_ID, @Batch_No, 
                 @Comments, ISNULL(@EntryDate, GETDATE()),
                 CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd)
             );
@@ -293,14 +274,11 @@ BEGIN
         -- 6. Insert into M_ServiceSubscriptionTracTrace_MasterCodeLess (Metadata Storage)
         INSERT INTO M_ServiceSubscriptionTracTrace_MasterCodeLess
         (
-            SST_Id, Pro_ID, Service_ID, Subscribe_Id, Dealer_Name, Dealer_Location, Mobile, Email, Invoice_Number, BatchSize, Batch_No, SeriesStart, SeriesEnd, Latitude, Longitude, MRP, Mfd_Date, Exp_Date, EntryDate
+            SST_Id, Pro_ID, Service_ID, Subscribe_Id, BatchSize, Batch_No, SeriesStart, SeriesEnd, EntryDate
         )
         VALUES
         (
-            @GeneratedSST_Id, @Pro_ID, @Service_ID, @Subscribe_Id, @Dealer_Name, @Dealer_Location, @Mobile, @Email, @Invoice_Number, @BatchSize, @Batch_No, @SeriesStart, @SeriesEnd, @Latitude, @Longitude, 
-            @MRP, 
-            CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
-            CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
+            @GeneratedSST_Id, @Pro_ID, @Service_ID, @Subscribe_Id, @BatchSize, @Batch_No, @SeriesStart, @SeriesEnd, 
             GETDATE()
         );
 

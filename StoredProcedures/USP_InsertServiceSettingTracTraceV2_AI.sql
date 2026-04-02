@@ -8,9 +8,6 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingTracTraceV2_AI]
     @Pro_ID         VARCHAR(50),
     @Service_ID     VARCHAR(50),
     @Subscribe_Id   VARCHAR(50)    = NULL,
-    @MRP            NUMERIC(18, 2) = NULL,
-    @Mfd_Date       VARCHAR(50)    = NULL,
-    @Exp_Date       VARCHAR(50)    = NULL,
     @Batch_No       VARCHAR(100)   = NULL,
     @SeriesStart    VARCHAR(100)   = NULL, -- Format: "Order-SerialFrom"
     @SeriesEnd      VARCHAR(100)   = NULL, -- Format: "Order-SerialTo"
@@ -19,13 +16,6 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingTracTraceV2_AI]
     @EntryDate      DATETIME       = NULL,
     
     -- New Fields
-    @Dealer_Name         NVARCHAR(150) = NULL,
-    @Dealer_Location     NVARCHAR(150) = NULL,
-    @Mobile              NVARCHAR(150) = NULL, -- Replaces @Contact_Information
-    @Email               NVARCHAR(150) = NULL,
-    @Invoice_Number      NVARCHAR(50)  = NULL,
-    @Latitude            NVARCHAR(50)  = NULL,
-    @Longitude           NVARCHAR(50)  = NULL,
     @SST_Id              BIGINT        = NULL,
     @BatchSize           INT           = NULL,
     @DateFrom            VARCHAR(50)   = NULL,
@@ -36,13 +26,6 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- 0. Validate Compulsory Manufacturing Date
-        IF @Mfd_Date IS NULL OR @Mfd_Date = '' OR @Mfd_Date = 'string'
-        BEGIN
-            SELECT 0 AS success, 'Manufacturing Date is compulsory.' AS message;
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
 
         -- 1. Check MasterCode uniqueness in codeassign_tractrac
         IF EXISTS (SELECT 1 FROM codeassign_tractrac WHERE mastercode = @MasterCode)
@@ -332,13 +315,11 @@ BEGIN
         BEGIN
             INSERT INTO T_Pro
             (
-                Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date, Series_Limit
+                Pro_ID, Batch_No, Comments, Entry_Date, Series_Limit
             )
             VALUES
             (
-                @Pro_ID, @Batch_No, @MRP, 
-                CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
-                CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
+                @Pro_ID, @Batch_No, 
                 @Comments, ISNULL(@EntryDate, GETDATE()),
                 CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd)
             );
@@ -382,17 +363,14 @@ BEGIN
 
         -- 6. Insert into codeassign_tractrac (Master Code Assignment)
         INSERT INTO codeassign_tractrac (
-            mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, SeriesStart, SeriesEnd, entry_date, 
-            Dealer_Name, Dealer_Location, Mobile, Email, Contact_Information, Dispatch_Date, Invoice_Number, Latitude, Longitude,
+            Pro_ID, Batch_No, SeriesStart, SeriesEnd, entry_date, 
+            Dispatch_Date, 
             SST_Id, Subscribe_Id, BatchSize
         )
         VALUES
         (
-            @MasterCode, @Pro_ID, @MRP, 
-            CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
-            CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
-            @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
-            @Dealer_Name, @Dealer_Location, ISNULL(@Mobile, ''), @Email, ISNULL(@Mobile, ''), ISNULL(@EntryDate, GETDATE()), @Invoice_Number, @Latitude, @Longitude,
+            @Pro_ID, @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
+            ISNULL(@EntryDate, GETDATE()), 
             ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id, @TotalBatchSize
         );
 
