@@ -19,11 +19,6 @@ BEGIN
         SST.Subscribe_Id,
         P.Pro_Name,
         S.ServiceName,
-        CASE 
-            WHEN SS.start_order IS NOT NULL AND SS.start_series IS NOT NULL 
-            THEN CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR) + ' to ' + CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR)
-            ELSE 'All'
-        END AS servicerange,
         SST.DateFrom,
         SST.DateTo,
         SST.Points,
@@ -48,6 +43,7 @@ BEGIN
         CT.SeriesStart,
         CT.SeriesEnd,
         CT.ID AS TrackTrace_ID,
+        CT.ID AS ID,
         TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 2) AS BIGINT) AS Series_Order,
         TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 1) AS BIGINT) AS Start_Serial,
         TRY_CAST(PARSENAME(REPLACE(CT.SeriesEnd, '-', '.'), 1) AS BIGINT) AS End_Serial,
