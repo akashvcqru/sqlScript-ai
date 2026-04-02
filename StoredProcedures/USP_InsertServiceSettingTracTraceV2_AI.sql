@@ -363,13 +363,13 @@ BEGIN
 
         -- 6. Insert into codeassign_tractrac (Master Code Assignment)
         INSERT INTO codeassign_tractrac (
-            Pro_ID, Batch_No, SeriesStart, SeriesEnd, entry_date, 
+            mastercode, Pro_ID, Batch_No, SeriesStart, SeriesEnd, entry_date, 
             Dispatch_Date, 
             SST_Id, Subscribe_Id, BatchSize
         )
         VALUES
         (
-            @Pro_ID, @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
+            @MasterCode, @Pro_ID, @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
             ISNULL(@EntryDate, GETDATE()), 
             ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id, @TotalBatchSize
         );
