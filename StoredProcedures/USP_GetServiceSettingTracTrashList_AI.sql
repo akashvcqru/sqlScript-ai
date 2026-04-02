@@ -45,6 +45,8 @@ BEGIN
         CT.Email,
         CT.Invoice_Number,
         CT.BatchSize,
+        CT.SeriesStart,
+        CT.SeriesEnd,
         CT.ID AS TrackTrace_ID,
         TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 2) AS BIGINT) AS Series_Order,
         TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 1) AS BIGINT) AS Start_Serial,
