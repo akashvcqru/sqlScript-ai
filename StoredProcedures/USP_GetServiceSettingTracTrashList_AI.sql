@@ -17,6 +17,7 @@ BEGIN
     SELECT 
         SST.SST_Id,
         SST.Subscribe_Id,
+        SS.Pro_ID, 
         P.Pro_Name,
         S.ServiceName,
         SST.DateFrom,
