@@ -55,10 +55,8 @@ BEGIN
     INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
     INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
     LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
-    LEFT JOIN T_Pro TP ON TP.Pro_ID = CT.Pro_ID 
-                      AND TP.Batch_No = CT.Batch_No 
-                      AND (TP.Series_Limit = 'From ' + CT.SeriesStart + ' To ' + CT.SeriesEnd
-                           OR TP.Series_Limit LIKE '%' + CT.SeriesStart + '%')
+    LEFT JOIN M_Code MC ON MC.master_code = CT.mastercode
+    LEFT JOIN T_Pro TP ON TP.Pro_ID = MC.Pro_ID AND CAST(TP.Row_ID AS VARCHAR) = MC.Batch_No
     WHERE SS.Comp_ID = @Comp_ID
       AND SS.Service_ID = 'SRV1021'
     ORDER BY CT.entry_date DESC
