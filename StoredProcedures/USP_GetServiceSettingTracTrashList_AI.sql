@@ -55,8 +55,26 @@ BEGIN
     INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
     INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
     LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
-    LEFT JOIN M_Code MC ON MC.master_code = CT.mastercode
-    LEFT JOIN T_Pro TP ON TP.Pro_ID = MC.Pro_ID AND CAST(TP.Row_ID AS VARCHAR) = MC.Batch_No
+    OUTER APPLY (
+        SELECT TOP 1 m.Pro_ID, m.Batch_No
+        FROM M_Code m
+        WHERE m.Pro_ID = CT.Pro_ID 
+          AND (
+               -- Primary join: Use SeriesStart components (e.g., BM92-0000-0117)
+               (m.Series_Order = TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 2) AS NUMERIC(10,0))
+                AND m.Series_Serial = TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 1) AS NUMERIC(4,0)))
+               OR
+               -- Fallback join: Use mastercode with safe conversion
+               (TRY_CAST(CT.mastercode AS NUMERIC(18,0)) IS NOT NULL AND 
+                (m.Code1 = TRY_CAST(CT.mastercode AS NUMERIC(5,0)) OR m.Code2 = TRY_CAST(CT.mastercode AS NUMERIC(8,0))))
+          )
+    ) MC
+    OUTER APPLY (
+        SELECT TOP 1 Row_ID
+        FROM T_Pro 
+        WHERE Pro_ID = MC.Pro_ID 
+          AND CAST(Row_ID AS VARCHAR(50)) = MC.Batch_No
+    ) TP
     WHERE SS.Comp_ID = @Comp_ID
       AND SS.Service_ID = 'SRV1021'
     ORDER BY CT.entry_date DESC
