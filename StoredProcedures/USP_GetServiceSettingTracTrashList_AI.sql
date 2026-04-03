@@ -47,12 +47,17 @@ BEGIN
         TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 2) AS BIGINT) AS Series_Order,
         TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 1) AS BIGINT) AS Start_Serial,
         TRY_CAST(PARSENAME(REPLACE(CT.SeriesEnd, '-', '.'), 1) AS BIGINT) AS End_Serial,
+        TP.Row_ID AS tpro_id,
         COUNT(*) OVER() as TotalRecords
     FROM M_ServiceSubscriptionTrans SST
     INNER JOIN M_ServiceSubscription SS ON SST.Subscribe_Id = SS.Subscribe_Id
     INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
     INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
     LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
+    LEFT JOIN T_Pro TP ON TP.Pro_ID = CT.Pro_ID 
+                      AND TP.Batch_No = CT.Batch_No 
+                      AND (TP.Series_Limit = 'From ' + CT.SeriesStart + ' To ' + CT.SeriesEnd
+                           OR TP.Series_Limit LIKE '%' + CT.SeriesStart + '%')
     WHERE SS.Comp_ID = @Comp_ID
       AND SS.Service_ID = 'SRV1021'
     ORDER BY CT.entry_date DESC
