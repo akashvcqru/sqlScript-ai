@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[Product_Variants]    Script Date: 3/2/2026 12:27:12 PM ******/
+/****** Object:  Table [dbo].[Product_Variants]    Script Date: 3/2/2026 12:27:12 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -8,6 +8,7 @@ CREATE TABLE [dbo].[Product_Variants](
 	[ProductCatalogId] [int] NOT NULL,
 	[Color] [nvarchar](200) NULL,
 	[Size] [nvarchar](200) NULL,
+	[IsDelete] [bit] NULL DEFAULT ((0)),
 PRIMARY KEY CLUSTERED 
 (
 	[VariantId] ASC
