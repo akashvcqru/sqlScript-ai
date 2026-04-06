@@ -1,12 +1,21 @@
 CREATE OR ALTER PROCEDURE [dbo].[USP_AcceptLabelPrintRequest_AI]
     @Row_ID INT,
-    @Pro_ID NVARCHAR(50),
     @Comp_ID NVARCHAR(50),
     @Qty INT,
     @PrintType NVARCHAR(50)
 AS
 BEGIN
     SET NOCOUNT ON;
+    
+    DECLARE @Pro_ID NVARCHAR(50);
+    SELECT @Pro_ID = Pro_ID FROM M_Label_Request WHERE Row_ID = @Row_ID;
+
+    IF @Pro_ID IS NULL
+    BEGIN
+        SELECT 'Label Request not found or missing Product ID' AS Result;
+        RETURN;
+    END
+
     BEGIN TRY
         BEGIN TRANSACTION;
 
