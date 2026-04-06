@@ -24,12 +24,11 @@ BEGIN
           AND mc.[M_Consumerid] = @M_consumerid
 		  AND (ms.Service_ID = @Service_ID OR @Service_ID IS NULL)
 
-        SELECT @TotalEarnedPoints = ISNULL(SUM(CAST(bp.[RedeemPoints] AS INT)), 0)
-        FROM [BPointsTransaction] bp with(nolock)
+        SELECT @TotalEarnedPoints = ISNULL(SUM(CAST(bp.[Points] AS INT)), 0)
+        FROM [BLoyaltyPointsEarned] bp with(nolock)
 		INNER JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id
 		INNER JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
-        WHERE bp.[RedeemBy] = @M_consumerid
-          AND bp.bpstatus <> 'FAILURE'
+        WHERE bp.M_Consumerid = @M_consumerid
 		  AND (ms.Service_ID = @Service_ID OR @Service_ID IS NULL)
 
         SELECT @SuccessCode = COUNT(pe.[Received_Code1])
