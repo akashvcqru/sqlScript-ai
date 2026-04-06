@@ -23,7 +23,11 @@ CREATE PROCEDURE USP_UpdateServiceSettingTracTrash_AI
     @DateTo               VARCHAR(50) = NULL,
     @Comments             NVARCHAR(1000) = NULL,
     @Latitude             NVARCHAR(50) = NULL,
-    @Longitude            NVARCHAR(50) = NULL
+    @Longitude            NVARCHAR(50) = NULL,
+    @SeriesStart          VARCHAR(100) = NULL,
+    @SeriesEnd            VARCHAR(100) = NULL,
+    @MasterCode           VARCHAR(100) = NULL,
+    @tpro_id              BIGINT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -46,7 +50,10 @@ BEGIN
                     Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
                     Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
                     Latitude = ISNULL(@Latitude, Latitude),
-                    Longitude = ISNULL(@Longitude, Longitude)
+                    Longitude = ISNULL(@Longitude, Longitude),
+                    SeriesStart = ISNULL(@SeriesStart, SeriesStart),
+                    SeriesEnd = ISNULL(@SeriesEnd, SeriesEnd),
+                    mastercode = ISNULL(@MasterCode, mastercode)
                 WHERE ID = @TrackTrace_ID;
             END
             ELSE
@@ -63,7 +70,9 @@ BEGIN
                     Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
                     Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
                     Latitude = ISNULL(@Latitude, Latitude),
-                    Longitude = ISNULL(@Longitude, Longitude)
+                    Longitude = ISNULL(@Longitude, Longitude),
+                    SeriesStart = ISNULL(@SeriesStart, SeriesStart),
+                    SeriesEnd = ISNULL(@SeriesEnd, SeriesEnd)
                 WHERE ID = @TrackTrace_ID;
             END
         END
@@ -83,7 +92,10 @@ BEGIN
                     Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
                     Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
                     Latitude = ISNULL(@Latitude, Latitude),
-                    Longitude = ISNULL(@Longitude, Longitude)
+                    Longitude = ISNULL(@Longitude, Longitude),
+                    SeriesStart = ISNULL(@SeriesStart, SeriesStart),
+                    SeriesEnd = ISNULL(@SeriesEnd, SeriesEnd),
+                    mastercode = ISNULL(@MasterCode, mastercode)
                 WHERE SST_Id = @SST_Id;
             END
             ELSE
@@ -100,7 +112,9 @@ BEGIN
                     Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
                     Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
                     Latitude = ISNULL(@Latitude, Latitude),
-                    Longitude = ISNULL(@Longitude, Longitude)
+                    Longitude = ISNULL(@Longitude, Longitude),
+                    SeriesStart = ISNULL(@SeriesStart, SeriesStart),
+                    SeriesEnd = ISNULL(@SeriesEnd, SeriesEnd)
                 WHERE SST_Id = @SST_Id;
             END
         END
@@ -131,7 +145,8 @@ BEGIN
                     Mfd_Date = ISNULL(CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, Mfd_Date),
                     Exp_Date = ISNULL(CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, Exp_Date),
                     Comments = ISNULL(@Comments, Comments)
-                WHERE Pro_ID = @Actual_Pro_ID AND Batch_No = @Actual_Batch_No;
+                WHERE (@tpro_id IS NOT NULL AND Row_ID = @tpro_id)
+                   OR (@tpro_id IS NULL AND Pro_ID = @Actual_Pro_ID AND Batch_No = @Actual_Batch_No);
             END
         END
         ELSE
