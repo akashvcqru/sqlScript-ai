@@ -24,13 +24,15 @@ BEGIN
          END) AS RequestStatusFlag,
         M_Label_Request.Tracking_No,
         M_Label_Request.Flag,
+        M_Label_Request.Pro_ID,
         Pro_Reg.Comp_ID,
         (SELECT Comp_Name FROM Comp_Reg WHERE Comp_ID = Pro_Reg.Comp_ID) AS Comp_Name,
         COUNT(*) OVER() AS TotalRecords
     FROM M_Label_Request 
-    INNER JOIN M_Label ON M_Label_Request.Label_Code = M_Label.Label_Code 
-    INNER JOIN Pro_Reg ON M_Label_Request.Pro_ID = Pro_Reg.Pro_ID 
-    WHERE (@Comp_ID IS NULL OR Pro_Reg.Comp_ID = @Comp_ID)
+    LEFT JOIN M_Label ON M_Label_Request.Label_Code = M_Label.Label_Code 
+    LEFT JOIN Pro_Reg ON M_Label_Request.Pro_ID = Pro_Reg.Pro_ID 
+    WHERE LTRIM(RTRIM(Pro_Reg.Comp_ID)) = LTRIM(RTRIM(@Comp_ID))
+      AND Pro_Reg.Comp_ID IS NOT NULL
     ORDER BY M_Label_Request.Entry_Date DESC
     OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 END
