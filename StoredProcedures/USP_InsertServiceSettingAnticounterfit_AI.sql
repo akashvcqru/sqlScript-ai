@@ -26,11 +26,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingAnticounterfit_AI]
     @totalamont      NUMERIC(18,0) = 0,
 
     -- Batch-related fields (Like TracTrace)
-    @MRP            NUMERIC(18, 2) = NULL,
-    @Mfd_Date       VARCHAR(50)    = NULL,
-    @Exp_Date       VARCHAR(50)    = NULL,
-    -- Batch-related fields (Like TracTrace)
-    @MRP            NUMERIC(18, 2) = NULL,
+    @MRP            NUMERIC(18, 2) = 0,
     @Mfd_Date       VARCHAR(50)    = NULL,
     @Exp_Date       VARCHAR(50)    = NULL,
     @Batch_No       VARCHAR(100)   = NULL,
@@ -98,7 +94,7 @@ BEGIN
             IF @NewTPro_RowID IS NOT NULL
             BEGIN
                 UPDATE T_Pro
-                SET MRP = @MRP,
+                SET MRP = ISNULL(@MRP, 0),
                     Mfd_Date = CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
                     Exp_Date = CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
                     Comments = @Comments,
@@ -113,7 +109,7 @@ BEGIN
                 )
                 VALUES
                 (
-                    @Pro_ID, @Batch_No, @MRP, 
+                    @Pro_ID, @Batch_No, ISNULL(@MRP, 0), 
                     CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
                     CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
                     @Comments, ISNULL(@EntryDate, GETDATE())
