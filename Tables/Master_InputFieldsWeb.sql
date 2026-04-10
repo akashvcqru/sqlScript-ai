@@ -11,6 +11,9 @@ CREATE TABLE [dbo].[Master_InputFieldsWeb] (
     Placeholder VARCHAR(150),
     MaxLength INT,
     IsActive BIT DEFAULT 1,
-    CreatedDate DATETIME DEFAULT GETDATE()
+    createdby VARCHAR(50),
+    updatedby VARCHAR(50),
+    created_date DATETIME DEFAULT GETDATE(),
+    updated_date DATETIME
 );
 GO
