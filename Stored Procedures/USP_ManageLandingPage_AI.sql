@@ -122,9 +122,17 @@ BEGIN
     END
     ELSE IF @Action = 'List'
     BEGIN
+        -- Table 0: Landing Pages
         SELECT * FROM LandingPage 
         WHERE (@Comp_Id IS NULL OR Comp_Id = @Comp_Id)
         ORDER BY CreatedDate DESC;
+
+        -- Table 1: Field Configs for those Landing Pages
+        SELECT FC.*, MF.FieldName, MF.FieldType as BaseFieldType
+        FROM LandingPage_FieldConfig FC
+        INNER JOIN Master_InputFieldsWeb MF ON FC.FieldId = MF.FieldId
+        WHERE (@Comp_Id IS NULL OR FC.Comp_Id = @Comp_Id)
+        ORDER BY FC.Comp_Id, FC.Service_Id, FC.DisplayOrder;
     END
     ELSE IF @Action = 'GetById' OR @Action = 'GetByService'
     BEGIN
