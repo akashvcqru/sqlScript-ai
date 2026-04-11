@@ -54,12 +54,12 @@ BEGIN
         C.Comp_Name AS CompanyName,
         C.Comp_ID AS CompId,
         P.Pro_ID AS ProId,
-        ISNULL(LP.ProductImage1, '''') AS ProductImage
+        ISNULL(LP.ProductImage1, '') AS ProductImage
     FROM Pro_Reg P
     INNER JOIN Comp_Reg C ON P.Comp_ID = C.Comp_ID
-    INNER JOIN M_ServiceAssign ASG ON P.Pro_ID = ASG.Pro_ID
+    INNER JOIN M_ServiceSubscription ASG ON P.Pro_ID = ASG.Pro_ID
     LEFT JOIN LandingPage LP ON LP.Comp_Id = C.Comp_ID AND LP.Service_Id = ASG.Service_ID
-    WHERE P.Pro_ID = @Pro_ID;
+    WHERE P.Pro_ID = @Pro_ID AND ASG.IsActive = 1 AND ISNULL(ASG.IsDelete, 0) = 0;
 
     -- 4. Get Assigned Services
     SELECT 
@@ -67,8 +67,8 @@ BEGIN
         S.ServiceName,
         ASG.IsActive
     FROM M_Service S
-    INNER JOIN M_ServiceAssign ASG ON S.Service_ID = ASG.Service_ID
-    WHERE ASG.Pro_ID = @Pro_ID AND ASG.IsActive = 1;
+    INNER JOIN M_ServiceSubscription ASG ON S.Service_ID = ASG.Service_ID
+    WHERE ASG.Pro_ID = @Pro_ID AND ASG.IsActive = 1 AND ISNULL(ASG.IsDelete, 0) = 0;
 
     -- 5. Record the inquiry (mimicking ServiceLogic.cs)
     -- TODO: Implement PROC_InsertProductInquery if needed
