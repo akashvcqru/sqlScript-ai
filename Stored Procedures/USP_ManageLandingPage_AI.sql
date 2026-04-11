@@ -143,6 +143,12 @@ BEGIN
     END
     ELSE IF @Action = 'GetById' OR @Action = 'GetByService'
     BEGIN
+        -- If Service_Id is not provided, pick the first active landing page for the company
+        IF @Service_Id IS NULL OR @Service_Id = ''
+        BEGIN
+            SELECT TOP 1 @Service_Id = Service_Id FROM LandingPage WHERE Comp_Id = @Comp_Id AND IsActive = 1 ORDER BY CreatedDate DESC;
+        END
+
         -- Get Landing Page main data
         SELECT * FROM LandingPage WHERE Comp_Id = @Comp_Id AND Service_Id = @Service_Id;
         
