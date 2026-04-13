@@ -141,19 +141,39 @@ BEGIN
         WHERE (@Comp_Id IS NULL OR LP.Comp_Id = @Comp_Id)
         ORDER BY LP.Comp_Id, LP.Service_Id, FC.DisplayOrder;
     END
-    ELSE IF @Action = 'GetById' OR @Action = 'GetByService'
+    ELSE IF @Action = 'GetById' OR @Action = 'GetByService' OR @Action = 'GetByPageName'
     BEGIN
-        -- If Service_Id is not provided, pick the first active landing page for the company
-        IF @Service_Id IS NULL OR @Service_Id = ''
+        -- If PageName is provided, find the effective Service_Id and Comp_Id
+        IF @Action = 'GetByPageName' AND @PageName IS NOT NULL
         BEGIN
-            SELECT TOP 1 @Service_Id = Service_Id FROM LandingPage WHERE Comp_Id = @Comp_Id AND IsActive = 1 ORDER BY CreatedDate DESC;
+            SELECT TOP 1 @Service_Id = Service_Id, @Comp_Id = Comp_Id 
+            FROM LandingPage 
+            WHERE (
+                PageName = @PageName 
+                OR REPLACE(REPLACE(REPLACE(LOWER(PageName), ' ', '-'), '.', '-'), '_', '-') = @PageName
+            )
+            AND IsActive = 1;
+        END
+
+
+        -- If Service_Id is not provided, pick the first active landing page for the company
+        DECLARE @EffectiveServiceId VARCHAR(50) = @Service_Id;
+        
+        IF @EffectiveServiceId IS NULL OR @EffectiveServiceId = ''
+        BEGIN
+            SELECT TOP 1 @EffectiveServiceId = Service_Id 
+            FROM LandingPage 
+            WHERE Comp_Id = @Comp_Id AND IsActive = 1 
+            ORDER BY CreatedDate DESC;
         END
 
         -- Get Landing Page main data
-        SELECT * FROM LandingPage WHERE Comp_Id = @Comp_Id AND Service_Id = @Service_Id;
+        SELECT * FROM LandingPage 
+        WHERE Comp_Id = @Comp_Id AND Service_Id = @EffectiveServiceId;
         
         -- Get PageId for fetching configs
-        SELECT @PageId = PageId FROM LandingPage WHERE Comp_Id = @Comp_Id AND Service_Id = @Service_Id;
+        SELECT @PageId = PageId FROM LandingPage 
+        WHERE Comp_Id = @Comp_Id AND Service_Id = @EffectiveServiceId;
 
         -- Get Field Configs
         SELECT FC.*, MF.FieldName, MF.FieldType as BaseFieldType
@@ -162,5 +182,6 @@ BEGIN
         WHERE FC.PageId = @PageId
         ORDER BY FC.DisplayOrder;
     END
+
 END
 GO
