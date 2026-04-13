@@ -18,7 +18,9 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_ManageInputFieldsWeb_AI]
     @DefaultValidation VARCHAR(200) = NULL,
     @Placeholder VARCHAR(150) = NULL,
     @MaxLength INT = NULL,
-    @IsActive BIT = 1
+    @IsActive BIT = 1,
+    @createdby VARCHAR(50) = NULL,
+    @updatedby VARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -27,10 +29,10 @@ BEGIN
     BEGIN
         -- Insert Action
         INSERT INTO Master_InputFieldsWeb (
-            FieldName, Label, FieldType, DefaultValidation, Placeholder, MaxLength, IsActive, CreatedDate
+            FieldName, Label, FieldType, DefaultValidation, Placeholder, MaxLength, IsActive, created_date, createdby
         )
         VALUES (
-            @FieldName, @Label, @FieldType, @DefaultValidation, @Placeholder, @MaxLength, @IsActive, GETDATE()
+            @FieldName, @Label, @FieldType, @DefaultValidation, @Placeholder, @MaxLength, @IsActive, GETDATE(), @createdby
         );
         
         SELECT SCOPE_IDENTITY() AS NewFieldId, 'Added successfully' AS [Message], 1 AS [Status];
@@ -48,7 +50,9 @@ BEGIN
                 DefaultValidation = @DefaultValidation,
                 Placeholder = @Placeholder,
                 MaxLength = @MaxLength,
-                IsActive = @IsActive
+                IsActive = @IsActive,
+                updatedby = @updatedby,
+                updated_date = GETDATE()
             WHERE FieldId = @FieldId;
 
             SELECT @FieldId AS NewFieldId, 'Updated successfully' AS [Message], 1 AS [Status];

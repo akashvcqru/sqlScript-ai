@@ -28,6 +28,8 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    DECLARE @PageId INT;
+
     IF @Action = 'Add'
     BEGIN
         -- Check if already exists
@@ -48,15 +50,17 @@ BEGIN
             @IsActive, GETDATE()
         );
         
+        SET @PageId = SCOPE_IDENTITY();
+
         -- Insert field configurations from JSON
         IF @FieldConfigJson IS NOT NULL AND @FieldConfigJson <> ''
         BEGIN
             INSERT INTO LandingPage_FieldConfig (
-                Comp_Id, Service_Id, FieldId, IsRequired, DisplayOrder, IsVisible, 
+                PageId, FieldId, IsRequired, DisplayOrder, IsVisible, 
                 CustomLabel, CustomValidation, DefaultValue, CreatedDate
             )
             SELECT 
-                @Comp_Id, @Service_Id, FieldId, IsRequired, DisplayOrder, IsVisible, 
+                @PageId, FieldId, IsRequired, DisplayOrder, IsVisible, 
                 CustomLabel, CustomValidation, DefaultValue, GETDATE()
             FROM OPENJSON(@FieldConfigJson)
             WITH (
@@ -74,7 +78,9 @@ BEGIN
     END
     ELSE IF @Action = 'Update'
     BEGIN
-        IF EXISTS (SELECT 1 FROM LandingPage WHERE Comp_Id = @Comp_Id AND Service_Id = @Service_Id)
+        SELECT @PageId = PageId FROM LandingPage WHERE Comp_Id = @Comp_Id AND Service_Id = @Service_Id;
+
+        IF @PageId IS NOT NULL
         BEGIN
             UPDATE LandingPage
             SET 
@@ -87,19 +93,19 @@ BEGIN
                 ProductImage2 = @ProductImage2,
                 ProductImage3 = @ProductImage3,
                 IsActive = @IsActive
-            WHERE Comp_Id = @Comp_Id AND Service_Id = @Service_Id;
+            WHERE PageId = @PageId;
 
             -- Update field configurations: Delete existing and re-insert
             IF @FieldConfigJson IS NOT NULL AND @FieldConfigJson <> ''
             BEGIN
-                DELETE FROM LandingPage_FieldConfig WHERE Comp_Id = @Comp_Id AND Service_Id = @Service_Id;
+                DELETE FROM LandingPage_FieldConfig WHERE PageId = @PageId;
 
                 INSERT INTO LandingPage_FieldConfig (
-                    Comp_Id, Service_Id, FieldId, IsRequired, DisplayOrder, IsVisible, 
+                    PageId, FieldId, IsRequired, DisplayOrder, IsVisible, 
                     CustomLabel, CustomValidation, DefaultValue, CreatedDate
                 )
                 SELECT 
-                    @Comp_Id, @Service_Id, FieldId, IsRequired, DisplayOrder, IsVisible, 
+                    @PageId, FieldId, IsRequired, DisplayOrder, IsVisible, 
                     CustomLabel, CustomValidation, DefaultValue, GETDATE()
                 FROM OPENJSON(@FieldConfigJson)
                 WITH (
@@ -122,21 +128,60 @@ BEGIN
     END
     ELSE IF @Action = 'List'
     BEGIN
+        -- Table 0: Landing Pages
         SELECT * FROM LandingPage 
         WHERE (@Comp_Id IS NULL OR Comp_Id = @Comp_Id)
         ORDER BY CreatedDate DESC;
+
+        -- Table 1: Field Configs for those Landing Pages
+        SELECT FC.*, MF.FieldName, MF.FieldType as BaseFieldType
+        FROM LandingPage_FieldConfig FC
+        INNER JOIN LandingPage LP ON FC.PageId = LP.PageId
+        LEFT JOIN Master_InputFieldsWeb MF ON FC.FieldId = MF.FieldId
+        WHERE (@Comp_Id IS NULL OR LP.Comp_Id = @Comp_Id)
+        ORDER BY LP.Comp_Id, LP.Service_Id, FC.DisplayOrder;
     END
-    ELSE IF @Action = 'GetById' OR @Action = 'GetByService'
+    ELSE IF @Action = 'GetById' OR @Action = 'GetByService' OR @Action = 'GetByPageName'
     BEGIN
-        -- Get Landing Page main data
-        SELECT * FROM LandingPage WHERE Comp_Id = @Comp_Id AND Service_Id = @Service_Id;
+        -- If PageName is provided, find the effective Service_Id and Comp_Id
+        IF @Action = 'GetByPageName' AND @PageName IS NOT NULL
+        BEGIN
+            SELECT TOP 1 @Service_Id = Service_Id, @Comp_Id = Comp_Id 
+            FROM LandingPage 
+            WHERE (
+                PageName = @PageName 
+                OR REPLACE(REPLACE(REPLACE(LOWER(PageName), ' ', '-'), '.', '-'), '_', '-') = @PageName
+            )
+            AND IsActive = 1;
+        END
+
+
+        -- If Service_Id is not provided, pick the first active landing page for the company
+        DECLARE @EffectiveServiceId VARCHAR(50) = @Service_Id;
         
+        IF @EffectiveServiceId IS NULL OR @EffectiveServiceId = ''
+        BEGIN
+            SELECT TOP 1 @EffectiveServiceId = Service_Id 
+            FROM LandingPage 
+            WHERE Comp_Id = @Comp_Id AND IsActive = 1 
+            ORDER BY CreatedDate DESC;
+        END
+
+        -- Get Landing Page main data
+        SELECT * FROM LandingPage 
+        WHERE Comp_Id = @Comp_Id AND Service_Id = @EffectiveServiceId;
+        
+        -- Get PageId for fetching configs
+        SELECT @PageId = PageId FROM LandingPage 
+        WHERE Comp_Id = @Comp_Id AND Service_Id = @EffectiveServiceId;
+
         -- Get Field Configs
         SELECT FC.*, MF.FieldName, MF.FieldType as BaseFieldType
         FROM LandingPage_FieldConfig FC
-        INNER JOIN Master_InputFieldsWeb MF ON FC.FieldId = MF.FieldId
-        WHERE FC.Comp_Id = @Comp_Id AND FC.Service_Id = @Service_Id
+        LEFT JOIN Master_InputFieldsWeb MF ON FC.FieldId = MF.FieldId
+        WHERE FC.PageId = @PageId
         ORDER BY FC.DisplayOrder;
     END
+
 END
 GO
