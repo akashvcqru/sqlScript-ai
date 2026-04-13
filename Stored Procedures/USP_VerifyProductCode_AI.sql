@@ -33,12 +33,12 @@ BEGIN
     -- 2. Basic Code Validation
     -- Check if code exists and is dispatched/received
     SET @SQL = N'
-    SELECT @Pro_ID = Pro_ID, @Use_Count = ISNULL(Use_Count, 0), @ActualCompId = C.Comp_ID
+    SELECT @Pro_ID = M.Pro_ID, @Use_Count = ISNULL(M.Use_Count, 0), @ActualCompId = C.Comp_ID
     FROM ' + @TableName + ' M
     INNER JOIN Pro_Reg P ON M.Pro_ID = P.Pro_ID
     INNER JOIN Comp_Reg C ON P.Comp_ID = C.Comp_ID
-    WHERE Code1 = @Code1 AND Code2 = @Code2
-    AND (ScrapeFlag = 0 OR ScrapeFlag IS NULL)';
+    WHERE M.Code1 = @Code1 AND M.Code2 = @Code2
+    AND (M.ScrapeFlag = 0 OR M.ScrapeFlag IS NULL)';
 
     EXEC sp_executesql @SQL, 
         N'@Code1 VARCHAR(10), @Code2 VARCHAR(10), @Pro_ID VARCHAR(50) OUTPUT, @Use_Count INT OUTPUT, @ActualCompId VARCHAR(50) OUTPUT',
