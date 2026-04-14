@@ -26,9 +26,18 @@ BEGIN
     DECLARE @SQL NVARCHAR(MAX);
 
     -- 1. Identify which table to use (M_Code or M_Code_PFL)
-    -- This logic mimics ServiceLogic.cs for specific companies
     IF @Comp_Id = 'Comp-1693' 
+    BEGIN
         SET @TableName = 'M_Code_PFL';
+    END
+    ELSE IF @Comp_Id IS NULL OR @Comp_Id = ''
+    BEGIN
+        -- If Comp_Id is not provided, try to find the code in M_Code first, then M_Code_PFL
+        IF EXISTS (SELECT 1 FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2 AND (ScrapeFlag = 0 OR ScrapeFlag IS NULL))
+            SET @TableName = 'M_Code';
+        ELSE IF EXISTS (SELECT 1 FROM M_Code_PFL WHERE Code1 = @Code1 AND Code2 = @Code2 AND (ScrapeFlag = 0 OR ScrapeFlag IS NULL))
+            SET @TableName = 'M_Code_PFL';
+    END
 
     -- 2. Basic Code Validation
     -- Check if code exists and is dispatched/received
