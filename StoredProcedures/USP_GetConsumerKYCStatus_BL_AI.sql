@@ -7,19 +7,14 @@ CREATE PROCEDURE [dbo].[USP_GetConsumerKYCStatus_BL_AI]
 AS
 BEGIN
 SELECT 
-    mc.Kyc_status AS user_kyc_status,
-    mc.bank_status,
-    mc.upi_status,
-    mc.GST_Status,
-    mc.adharpancard_status,
-    mc.adharpancard_remark,
-    mc.bank_remark,
-    mc.upi_remark,
-    mc.GST_Remark,
-	mc.Is_Update_Profile,
 	mc.M_Consumerid,
 	mc.Vrkabel_User_Type,
-	mc.Role_ID
+	mc.Role_ID,
+    mc.panekycStatus,
+    mc.aadharkycStatus,
+    mc.bankekycStatus,
+    mc.UPIKYCSTATUS,
+    mc.VRKbl_KYC_status
 FROM M_Consumer mc 
 WHERE mc.MobileNo = @MobileNo
 END
