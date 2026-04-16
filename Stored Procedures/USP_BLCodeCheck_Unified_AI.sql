@@ -6,10 +6,10 @@ GO
 -- =============================================
 -- Author:        AI Assistant (Antigravity)
 -- Create date:   2026-04-14
--- Update date:   2026-04-16
--- Description:   Unified logic for BL registration and code check, 
---                including loyalty record insertions (M_Consumer_M_Code, 
---                BuiltLoyaltyMCodeCheck, BLoyaltyPointsEarned).
+-- Update date:   2026-04-17
+-- Description:   Unified logic for BL registration and code check with:
+--                - Loyalty record insertions (M_Consumer_M_Code, BuiltLoyaltyMCodeCheck, BLoyaltyPointsEarned)
+--                - Phase 2: Referral points logic & Frequency-based loyalty caps
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_BLCodeCheck_Unified_AI]
     @Code1 VARCHAR(10),
@@ -30,7 +30,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_BLCodeCheck_Unified_AI]
     @IfscCode NVARCHAR(20) = NULL,
     @AccountHolderName NVARCHAR(200) = NULL,
     @VerifyCode NVARCHAR(10) = NULL, -- OTP (Pass empty for loyalty check bypassing OTP)
-    @Mode NVARCHAR(50) = 'Website'
+    @Mode NVARCHAR(50) = 'Website',
+    @ReferralMobileNo NVARCHAR(15) = NULL -- Phase 2: Referrer's mobile for points award
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -43,6 +44,13 @@ BEGIN
     DECLARE @Pro_ID VARCHAR(50) = NULL;
     DECLARE @MConsumerMCodeid BIGINT = 0;
     DECLARE @SST_ID INT = 0;
+    
+    -- Phase 2: Referral & Frequency variables
+    DECLARE @ReferrerConsumerid INT = NULL;
+    DECLARE @FrequencyLimit INT = 0;
+    DECLARE @CurrentScanCount INT = 0;
+    DECLARE @ReferrerReferralSST_ID INT = 0;
+    DECLARE @ServiceID NVARCHAR(50) = NULL;
 
     -- Normalize mobile number (last 10 digits)
     SET @CleanMobile = RIGHT(@MobileNo, 10);
@@ -159,9 +167,9 @@ BEGIN
                         SELECT @MConsumerMCodeid = M_Consumer_MCodeid FROM M_Consumer_M_Code WHERE M_Consumerid = @M_Consumerid AND M_Codeid = @M_Codeid;
                     END
 
-                    -- D. Loyalty Awarding logic
+                    -- D. Loyalty Awarding logic with Phase 2 enhancements
                     -- Find the SST_ID for loyalty services (SRV1001 or SRV1005)
-                    SELECT TOP 1 @SST_ID = sst.SST_Id 
+                    SELECT TOP 1 @SST_ID = sst.SST_Id, @ServiceID = ss.Service_ID
                     FROM M_ServiceSubscriptionTrans sst
                     INNER JOIN M_ServiceSubscription ss ON sst.Subscribe_Id = ss.Subscribe_Id
                     WHERE ss.Pro_ID = @Pro_ID AND ss.IsActive = 1 AND sst.IsActive = 1
@@ -170,6 +178,37 @@ BEGIN
 
                     IF @SST_ID > 0 AND @MConsumerMCodeid > 0
                     BEGIN
+                        -- Phase 2: Check Frequency-Based Loyalty Caps
+                        -- Get frequency limit from M_ServiceSubscriptionTrans
+                        SELECT @FrequencyLimit = ISNULL([Frequency], 0) 
+                        FROM M_ServiceSubscriptionTrans 
+                        WHERE SST_Id = @SST_ID;
+
+                        -- If frequency limit is set (>0), check current scan count
+                        IF @FrequencyLimit > 0
+                        BEGIN
+                            -- Count scans in last period (Frequency = days)
+                            DECLARE @FrequencyStartDate DATETIME = DATEADD(DAY, -@FrequencyLimit, GETDATE());
+                            
+                            SELECT @CurrentScanCount = COUNT(1)
+                            FROM Pro_Enq pe
+                            INNER JOIN M_Code mc ON pe.Received_Code1 = mc.Code1 AND pe.Received_Code2 = mc.Code2
+                            INNER JOIN M_ServiceSubscriptionTrans mst ON mc.Pro_ID = (SELECT Pro_ID FROM M_ServiceSubscriptionTrans WHERE SST_Id = @SST_ID)
+                            WHERE RIGHT(pe.MobileNo, 10) = @CleanMobile
+                            AND pe.Is_Success = 1
+                            AND pe.Enq_Date >= @FrequencyStartDate;
+
+                            -- If frequency limit exceeded, block and return error
+                            IF @CurrentScanCount >= @FrequencyLimit
+                            BEGIN
+                                SET @ResultCode = 3; -- Frequency limit exceeded
+                                SET @Message = 'You have reached the maximum number of code scans for this service in the specified period. Please try again later.';
+                                ROLLBACK TRANSACTION;
+                                SELECT @ResultCode AS ResultCode, @Message AS Message, @Comp_ID AS Comp_ID, @Pro_ID AS Pro_ID;
+                                RETURN;
+                            END
+                        END
+
                         -- Insert BuiltLoyaltyMCodeCheck
                         INSERT INTO BuiltLoyaltyMCodeCheck (sst_id, M_Consumer_MCOdeid, M_Cunsumerid, Createdate, IsPointsAssigned)
                         VALUES (@SST_ID, @MConsumerMCodeid, @M_Consumerid, GETDATE(), 1);
@@ -180,9 +219,49 @@ BEGIN
                         DECLARE @Points INT, @Cash DECIMAL(18,2);
                         SELECT @Points = ISNULL(Points, 0), @Cash = ISNULL(IsCash, 0) FROM M_ServiceSubscriptionTrans WHERE SST_Id = @SST_ID;
 
-                        -- Insert BLoyaltyPointsEarned
+                        -- Insert BLoyaltyPointsEarned for main consumer
                         INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Points, Cash, ServiceName)
                         VALUES (@LoyaltyCheckID, @SST_ID, @M_Consumerid, GETDATE(), @Code1, @Code2, @Comp_ID, @Points, @Cash, 'buildloyalty');
+
+                        -- Phase 2: Referral Points Logic
+                        -- If referrer mobile is provided, award referral points to referrer
+                        IF @ReferralMobileNo IS NOT NULL AND @ReferralMobileNo <> ''
+                        BEGIN
+                            -- Find referrer's consumer ID
+                            SELECT TOP 1 @ReferrerConsumerid = M_Consumerid 
+                            FROM M_Consumer 
+                            WHERE RIGHT(MobileNo, 10) = RIGHT(@ReferralMobileNo, 10) AND IsDelete = 0;
+
+                            -- If referrer exists and is different from current consumer
+                            IF @ReferrerConsumerid IS NOT NULL AND @ReferrerConsumerid <> @M_Consumerid
+                            BEGIN
+                                -- Find referral service for same product (SRV1004 or similar)
+                                SELECT TOP 1 @ReferrerReferralSST_ID = sst.SST_Id
+                                FROM M_ServiceSubscriptionTrans sst
+                                INNER JOIN M_ServiceSubscription ss ON sst.Subscribe_Id = ss.Subscribe_Id
+                                WHERE ss.Pro_ID = @Pro_ID AND ss.IsActive = 1 AND sst.IsActive = 1
+                                AND ss.Service_ID IN ('SRV1004', 'SRV1005') -- Referral or Cash services
+                                ORDER BY sst.SST_Id DESC;
+
+                                -- If referral service exists, award points to referrer
+                                IF @ReferrerReferralSST_ID > 0
+                                BEGIN
+                                    DECLARE @ReferralPoints INT, @ReferralCash DECIMAL(18,2);
+                                    SELECT @ReferralPoints = ISNULL(Points, 0), @ReferralCash = ISNULL(IsCash, 0) 
+                                    FROM M_ServiceSubscriptionTrans WHERE SST_Id = @ReferrerReferralSST_ID;
+
+                                    -- Create BuiltLoyaltyMCodeCheck for referrer
+                                    INSERT INTO BuiltLoyaltyMCodeCheck (sst_id, M_Consumer_MCOdeid, M_Cunsumerid, Createdate, IsPointsAssigned)
+                                    VALUES (@ReferrerReferralSST_ID, @MConsumerMCodeid, @ReferrerConsumerid, GETDATE(), 1);
+                                    
+                                    DECLARE @ReferrerLoyaltyCheckID BIGINT = SCOPE_IDENTITY();
+
+                                    -- Insert BLoyaltyPointsEarned for referrer with referral flag
+                                    INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Points, Cash, ServiceName, refranceM_Consumerid, isPointsUsedReferral)
+                                    VALUES (@ReferrerLoyaltyCheckID, @ReferrerReferralSST_ID, @ReferrerConsumerid, GETDATE(), @Code1, @Code2, @Comp_ID, @ReferralPoints, @ReferralCash, 'referral', @M_Consumerid, 1);
+                                END
+                            END
+                        END
                     END
                 END
                 ELSE
