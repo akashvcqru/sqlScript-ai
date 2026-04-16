@@ -14,25 +14,26 @@ BEGIN
             CASE   
                 WHEN pe.Is_Success = 1 THEN 'Success'   
                 WHEN pe.Is_Success = 2 THEN 'Unsuccess'   
+                WHEN pe.Is_Success = 0 THEN 'Invalid'
                 ELSE 'Invalid'   
             END AS Status,  
             FORMAT(pe.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
-            cr.Comp_Name,  
-            pr.Pro_Name,  
-            CONCAT(Code1, Code2) AS [Code],  
+            ISNULL(cr.Comp_Name, 'N/A') AS Comp_Name,  
+            ISNULL(pr.Pro_Name, 'N/A') AS Pro_Name,  
+            CONCAT(pe.Received_Code1, pe.Received_Code2) AS [Code],  
             TRY_CAST(pe.Received_Code1 AS INT) AS Code1,  
             TRY_CAST(pe.Received_Code2 AS INT) AS Code2,  
             pe.MobileNo  
         FROM Pro_Enq pe  
-        INNER JOIN M_Code m   
+        LEFT JOIN M_Code m   
             ON TRY_CAST(pe.Received_Code1 AS INT) = m.Code1   
             AND TRY_CAST(pe.Received_Code2 AS INT) = m.Code2  
-        INNER JOIN Pro_Reg pr   
+        LEFT JOIN Pro_Reg pr   
             ON pr.Pro_ID = m.Pro_ID  
-        INNER JOIN Comp_Reg cr   
+        LEFT JOIN Comp_Reg cr   
             ON cr.Comp_ID = pr.Comp_ID  
         WHERE pe.MobileNo = @MobileNo   
-          AND cr.Comp_ID = @Comp_ID  
+          AND pe.Comp_ID = @Comp_ID  
     ),  
     ConsumerData AS (  
         SELECT   
