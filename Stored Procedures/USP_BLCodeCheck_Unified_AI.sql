@@ -12,8 +12,8 @@ GO
 --                - Phase 2: Referral points logic & Frequency-based loyalty caps
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_BLCodeCheck_Unified_AI]
-    @Code1 VARCHAR(10),
-    @Code2 VARCHAR(10),
+    @Code1 NUMERIC(5, 0),
+    @Code2 NUMERIC(8, 0),
     @MobileNo VARCHAR(15),
     @ConsumerName NVARCHAR(200) = NULL,
     @Email NVARCHAR(200) = NULL,
