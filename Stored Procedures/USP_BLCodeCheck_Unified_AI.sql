@@ -51,12 +51,15 @@ BEGIN
     IF @M_Consumerid IS NULL
     BEGIN
         -- REGISTER NEW USER
+        DECLARE @NewUser_ID NVARCHAR(50);
+        EXEC GetCodeGenValue 'Consumer', @NewUser_ID OUTPUT;
+
         INSERT INTO M_Consumer (
-            MobileNo, ConsumerName, Email, City, [state], PinCode, [Address], Other_Role, UPIId, 
+            User_ID, MobileNo, ConsumerName, Email, City, [state], PinCode, [Address], Other_Role, UPIId, 
             Entry_Date, IsActive, IsDelete, [Password], Comp_id
         )
         VALUES (
-            @MobileNo, @ConsumerName, @Email, @City, @State, @PinCode, @Address, @Other_Role, @UPI, 
+            @NewUser_ID, @MobileNo, @ConsumerName, @Email, @City, @State, @PinCode, @Address, @Other_Role, @UPI, 
             GETDATE(), 1, 0, CAST(FLOOR(RAND() * 90000 + 10000) AS VARCHAR(5)), @Comp_ID
         );
         
@@ -103,35 +106,46 @@ BEGIN
         END
         ELSE
         BEGIN
-            INSERT INTO M_BankAccount (M_Consumerid, Account_No, IFSC_Code, Account_HolderNm, Entry_Date, IsDelete)
-            VALUES (@M_Consumerid, @AccountNumber, @IfscCode, @AccountHolderName, GETDATE(), 0);
+            INSERT INTO M_BankAccount (M_Consumerid, Account_No, IFSC_Code, Account_HolderNm, Entry_Date)
+            VALUES (@M_Consumerid, @AccountNumber, @IfscCode, @AccountHolderName, GETDATE());
         END
     END
 
-    -- Final Step: Product Code Verification
-    -- We capture the results from USP_VerifyProductCode_AI to return them with correct column names
-    DECLARE @VerificationResults TABLE (
-        ProductName NVARCHAR(200),
-        CompanyName NVARCHAR(200),
-        CompId NVARCHAR(50),
-        ProId NVARCHAR(50),
-        ProductImage NVARCHAR(MAX),
-        Message NVARCHAR(MAX),
-        IsValid INT
-    );
+    -- 5. Code Check Logging & Use Count Increment
+    IF @Code1 IS NOT NULL AND @Code1 <> '' AND @Code2 IS NOT NULL AND @Code2 <> ''
+    BEGIN
+        DECLARE @TableName NVARCHAR(50) = 'M_Code';
+        IF @Comp_ID = 'Comp-1693' OR NOT EXISTS (SELECT 1 FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2)
+            SET @TableName = 'M_Code_PFL';
+            
+        DECLARE @SQL NVARCHAR(MAX);
+        DECLARE @UseCount INT;
+        DECLARE @ActualProId VARCHAR(50);
+        
+        SET @SQL = N'SELECT @UseCount = ISNULL(Use_Count, 0), @ActualProId = Pro_ID FROM ' + @TableName + ' WHERE Code1 = @Code1 AND Code2 = @Code2';
+        EXEC sp_executesql @SQL, N'@Code1 VARCHAR(10), @Code2 VARCHAR(10), @UseCount INT OUTPUT, @ActualProId VARCHAR(50) OUTPUT', @Code1, @Code2, @UseCount OUTPUT, @ActualProId OUTPUT;
 
-    INSERT INTO @VerificationResults (ProductName, CompanyName, CompId, ProId, ProductImage, Message, IsValid)
-    EXEC USP_VerifyProductCode_AI @Code1 = @Code1, @Code2 = @Code2, @Latitude = @Latitude, @Longitude = @Longitude, @Comp_Id = @Comp_ID;
+        IF @ActualProId IS NOT NULL AND @UseCount = 0
+        BEGIN
+            -- First use, increment counter (Marks code as checked)
+            SET @SQL = N'UPDATE ' + @TableName + ' SET Use_Count = ISNULL(Use_Count, 0) + 1 WHERE Code1 = @Code1 AND Code2 = @Code2';
+            EXEC sp_executesql @SQL, N'@Code1 VARCHAR(10), @Code2 VARCHAR(10)', @Code1, @Code2;
+            
+            -- Insert interaction history (Best effort mapping to standard schema)
+            BEGIN TRY
+                INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID)
+                VALUES (@Code1, @Code2, RIGHT(@MobileNo, 10), 'WEB', @Mode, 1, GETDATE(), @Comp_ID);
+            END TRY
+            BEGIN CATCH
+            END CATCH
+        END
+    END
 
     SELECT 
-        ProductName, 
-        CompanyName, 
-        CompId, 
-        ProId, 
-        ProductImage, 
-        Message, 
-        IsValid AS ResultCode
-    FROM @VerificationResults;
+        @ResultCode AS ResultCode,
+        @Message AS Message,
+        @Comp_ID AS Comp_ID,
+        NULL AS Pro_ID;
 
 END
 GO
