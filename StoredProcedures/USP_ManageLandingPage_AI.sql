@@ -12,6 +12,7 @@ GO
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_ManageLandingPage_AI]
     @Action VARCHAR(20) = 'List',
+    @PageId INT = NULL,
     @PageName VARCHAR(150) = NULL,
     @BrandName VARCHAR(150) = NULL,
     @Comp_Id VARCHAR(50) = NULL,
@@ -22,13 +23,12 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_ManageLandingPage_AI]
     @ProductImage1 VARCHAR(500) = NULL,
     @ProductImage2 VARCHAR(500) = NULL,
     @ProductImage3 VARCHAR(500) = NULL,
+    @ColorCode VARCHAR(50) = NULL,
     @IsActive BIT = 1,
     @FieldConfigJson NVARCHAR(MAX) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
-
-    DECLARE @PageId INT;
 
     IF @Action = 'Add'
     BEGIN
@@ -42,12 +42,12 @@ BEGIN
         INSERT INTO LandingPage (
             Comp_Id, Service_Id, PageName, BrandName, ServiceType, 
             LogoUrl, BackgroundImageUrl, ProductImage1, ProductImage2, ProductImage3, 
-            IsActive, CreatedDate
+            ColorCode, IsActive, CreatedDate
         )
         VALUES (
             @Comp_Id, @Service_Id, @PageName, @BrandName, @ServiceType, 
             @LogoUrl, @BackgroundImageUrl, @ProductImage1, @ProductImage2, @ProductImage3, 
-            @IsActive, GETDATE()
+            @ColorCode, @IsActive, GETDATE()
         );
         
         SET @PageId = SCOPE_IDENTITY();
@@ -78,7 +78,10 @@ BEGIN
     END
     ELSE IF @Action = 'Update'
     BEGIN
-        SELECT @PageId = PageId FROM LandingPage WHERE Comp_Id = @Comp_Id AND Service_Id = @Service_Id;
+        IF @PageId IS NULL
+        BEGIN
+            SELECT @PageId = PageId FROM LandingPage WHERE Comp_Id = @Comp_Id AND Service_Id = @Service_Id;
+        END
 
         IF @PageId IS NOT NULL
         BEGIN
@@ -92,6 +95,7 @@ BEGIN
                 ProductImage1 = @ProductImage1,
                 ProductImage2 = @ProductImage2,
                 ProductImage3 = @ProductImage3,
+                ColorCode = @ColorCode,
                 IsActive = @IsActive
             WHERE PageId = @PageId;
 
