@@ -70,7 +70,7 @@ BEGIN
             WHEN ISNULL(pr.Pro_Desc, '') = '' THEN '---'
             ELSE pr.Pro_Desc
         END                                                   AS ProDesc,
-        '../Data/Sound/'
+        '/assets/Product/comp-'
             + SUBSTRING(pr.Comp_ID, 6, 4)
             + '/' + pr.Pro_ID
             + '/' + pr.Pro_ID + '.mp3'                        AS SoundPath,
@@ -81,7 +81,10 @@ BEGIN
         pr.Pro_Entry_Date,
         pr.Label_Code,
         ISNULL(pr.BatchSize, 0)                               AS BatchSize,
-        ISNULL(pr.Dispatch_Location, '')                      AS Dispatch_Location
+        ISNULL(pr.Dispatch_Location, '')                      AS Dispatch_Location,
+        '/assets/Product/comp-' 
+            + SUBSTRING(pr.Comp_ID, 6, 4) 
+            + '/' + pr.Pro_ID + '.jpg'                        AS ImgPath
     FROM   Pro_Reg pr
     LEFT JOIN M_Label ml ON pr.Label_Code = ml.Label_Code
     WHERE
