@@ -34,11 +34,14 @@ BEGIN
         (SELECT 
             (SELECT ISNULL(SUM(TRY_CAST(RedeemPoints AS INT)), 0) 
              FROM BPointsTransaction WHERE RedeemBy = @M_Consumerid AND bpstatus <> 'FAILURE')
-            + 
+            +             (SELECT ISNULL(SUM(Amount), 0) 
+              FROM ClaimDetails cl 
+              WHERE RIGHT(cl.Mobileno, 10) = RIGHT(@MobileNo, 10) AND cl.Isapproved <> 2
+                AND (cl.Comp_id = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND cl.Comp_ID IN ('Comp-1650', 'Comp-1567'))))
+            +
             (SELECT ISNULL(SUM(Amount), 0) 
-             FROM ClaimDetails cl 
-             WHERE RIGHT(cl.Mobileno, 10) = RIGHT(@MobileNo, 10) AND cl.Isapproved <> 2
-               AND (cl.Comp_id = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND cl.Comp_ID IN ('Comp-1650', 'Comp-1567'))))
+             FROM tblUPITransactionDetails 
+             WHERE RIGHT(Mobileno, 10) = RIGHT(@MobileNo, 10) AND Status IN ('Pending','Success') AND Comp_id = @CompID AND Code2 > 0)
         ) as ReedemPoints,
         (SELECT COUNT(pe.Received_Code1) 
          FROM Pro_Enq pe 
