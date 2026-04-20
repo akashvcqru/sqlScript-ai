@@ -31,8 +31,15 @@ BEGIN
         (SELECT COUNT(pe.Received_Code1) 
          FROM Pro_Enq pe 
          WHERE pe.MobileNo = @MobileNo) as TotalCode,
-        (SELECT ISNULL(SUM(TRY_CAST(RedeemPoints AS INT)), 0) 
-         FROM BPointsTransaction WHERE RedeemBy = @M_Consumerid AND bpstatus <> 'FAILURE') as ReedemPoints,
+        (SELECT 
+            (SELECT ISNULL(SUM(TRY_CAST(RedeemPoints AS INT)), 0) 
+             FROM BPointsTransaction WHERE RedeemBy = @M_Consumerid AND bpstatus <> 'FAILURE')
+            + 
+            (SELECT ISNULL(SUM(Amount), 0) 
+             FROM ClaimDetails cl 
+             WHERE RIGHT(cl.Mobileno, 10) = RIGHT(@MobileNo, 10) AND cl.Isapproved <> 2
+               AND (cl.Comp_id = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND cl.Comp_ID IN ('Comp-1650', 'Comp-1567'))))
+        ) as ReedemPoints,
         (SELECT COUNT(pe.Received_Code1) 
          FROM Pro_Enq pe 
          WHERE pe.MobileNo = @MobileNo AND pe.Is_Success = 1) as SuccessCode,
@@ -59,11 +66,11 @@ BEGIN
 
     -- Result Set 3: Claim Amounts Service-Wise
     SELECT 
-        Service_ID,
+        ISNULL(Service_ID, 'SRV1001') as Service_ID,
         SUM(Amount) as ClaimAmount
     FROM ClaimDetails cl
     WHERE RIGHT(cl.Mobileno, 10) = RIGHT(@MobileNo, 10) AND cl.Isapproved <> 2
       AND (cl.Comp_id = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND cl.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-    GROUP BY Service_ID;
+    GROUP BY ISNULL(Service_ID, 'SRV1001');
 END
 GO
