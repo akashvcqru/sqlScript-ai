@@ -1,0 +1,183 @@
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- Exec [dbo].[SP_GetGeoLocationDataForMap_AI] 'Comp-1152','SRV1005','Today',null,null
+CREATE PROCEDURE [dbo].[SP_GetGeoLocationDataForMap_AI]
+    @Comp_Id NVARCHAR(15),	
+	@ServiceID nvarchar(20)=NULL,
+     @TimeWindow NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, QUARTER
+    @FromDate DATE = NULL,
+    @ToDate DATE = NULL
+	
+AS
+BEGIN
+   SET NOCOUNT ON;
+
+    -- DEFAULT SERVICE
+    SET @ServiceID = 'SRV1018'
+
+    ---------------------------------------------------------
+    -- Normalize TimeWindow (NULL = ALL DATA)
+    ---------------------------------------------------------
+    IF (
+           @TimeWindow IS NULL
+        OR LTRIM(RTRIM(@TimeWindow)) = ''
+        OR LOWER(LTRIM(RTRIM(@TimeWindow))) = 'null'
+    )
+        SET @TimeWindow = NULL;
+    ELSE
+        SET @TimeWindow = UPPER(@TimeWindow);
+
+    ---------------------------------------------------------
+    -- Date Range Calculation
+    ---------------------------------------------------------
+    DECLARE @StartDate DATETIME = NULL;
+    DECLARE @EndDate   DATETIME = NULL;
+
+    -- Explicit date range has highest priority
+    IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
+    BEGIN
+        SET @StartDate = @FromDate;
+        SET @EndDate   = DATEADD(SECOND, -1, DATEADD(DAY, 1, @ToDate));
+    END
+    ELSE IF (@TimeWindow IS NOT NULL)
+    BEGIN
+        SET DATEFIRST 1; -- Monday
+
+        IF (@TimeWindow = 'TODAY')
+        BEGIN
+            SET @StartDate = CAST(GETDATE() AS DATE);
+            SET @EndDate   = GETDATE();
+        END
+        ELSE IF (@TimeWindow = 'YESTERDAY')
+        BEGIN
+            SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
+            SET @EndDate   = DATEADD(SECOND, -1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF (@TimeWindow = 'WEEK') -- Current week (Mon → Today)
+        BEGIN
+            SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
+            SET @EndDate   = GETDATE();
+        END
+        ELSE IF (@TimeWindow = 'LASTWEEK') -- Previous full week
+        BEGIN
+            SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(SECOND, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0));
+        END
+        ELSE IF (@TimeWindow = 'MONTH') -- Current month
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+            SET @EndDate   = GETDATE();
+        END
+        ELSE IF (@TimeWindow = 'LASTMONTH') -- Previous month
+        BEGIN
+            SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(SECOND, -1,
+                                DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0));
+        END
+        ELSE IF (@TimeWindow = 'QUARTER') -- Rolling 90 days
+        BEGIN
+            SET @StartDate = DATEADD(DAY, -90, GETDATE());
+            SET @EndDate   = GETDATE();
+        END
+    END
+    -- ELSE → ALL DATA (StartDate & EndDate remain NULL)
+
+    ---------------------------------------------------------
+    -- FINAL RESULT
+    ---------------------------------------------------------
+    IF (@Comp_Id = 'Comp-1152' AND @ServiceID = 'SRV1018') -- AC
+    BEGIN
+        SELECT  
+            G.Latitude,
+            G.Longitude,
+            G.MobileNo,
+            G.Enq_Date,
+            CONCAT(G.Code1, G.Code2) AS UniqueCode,
+            G.DisplayName,
+            CASE 
+                WHEN P.Is_Success = 1 THEN 'Authenticate'
+                WHEN P.Is_Success = 2 THEN 'Re-Authenticate'
+                ELSE 'Invalid'
+            END AS UniqueCodeStatus
+        FROM GeoLocationData G WITH (NOLOCK)
+        INNER JOIN Pro_Enq P WITH (NOLOCK)
+            ON P.Received_Code1 = G.Code1 
+           AND P.Received_Code2 = G.Code2
+        INNER JOIN M_Code MC WITH (NOLOCK)
+            ON MC.Code1 = G.Code1 
+           AND MC.Code2 = G.Code2
+        WHERE
+            G.Comp_Id = @Comp_Id
+            AND MC.Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WHERE Pro_Name LIKE 'AC_%')
+            AND (@StartDate IS NULL OR G.Enq_Date >= @StartDate)
+            AND (@EndDate   IS NULL OR G.Enq_Date <= @EndDate);
+    END
+    ELSE IF (@Comp_Id = 'Comp-1152' AND @ServiceID <> 'SRV1018') -- Bloyalty
+    BEGIN
+        ;WITH CTE AS
+        (
+            SELECT  
+                G.Latitude,
+                G.Longitude,
+                G.MobileNo,
+                G.Enq_Date,
+                CONCAT(G.Code1, G.Code2) AS UniqueCode,
+                G.DisplayName,
+                P.Is_Success,
+                ROW_NUMBER() OVER
+                (
+                    PARTITION BY CONCAT(G.Code1, G.Code2)
+                    ORDER BY G.Enq_Date
+                ) AS rn
+            FROM GeoLocationData G WITH (NOLOCK)
+            INNER JOIN ConsumerPointsCashDetails P WITH (NOLOCK)
+                ON P.Code1 = G.Code1
+               AND P.Code2 = G.Code2
+            WHERE
+                G.Comp_Id = @Comp_Id
+                AND P.Cash > 0
+                AND (@StartDate IS NULL OR G.Enq_Date >= @StartDate)
+                AND (@EndDate   IS NULL OR G.Enq_Date <= @EndDate)
+        )
+        SELECT
+            Latitude,
+            Longitude,
+            MobileNo,
+            Enq_Date,
+            UniqueCode,
+            DisplayName,
+            CASE
+                WHEN Is_Success = 0 THEN 'Invalid'
+                WHEN rn = 1 THEN 'Authenticate'
+                ELSE 'Re-Authenticate'
+            END AS UniqueCodeStatus
+        FROM CTE;
+    END
+    ELSE
+    BEGIN
+        SELECT  
+            G.Latitude,
+            G.Longitude,
+            G.MobileNo,
+            G.Enq_Date,
+            CONCAT(G.Code1, G.Code2) AS UniqueCode,
+            G.DisplayName,
+            CASE 
+                WHEN P.Is_Success = 1 THEN 'Authenticate'
+                WHEN P.Is_Success = 2 THEN 'Re-Authenticate'
+                ELSE 'Invalid'
+            END AS UniqueCodeStatus
+        FROM GeoLocationData G WITH (NOLOCK)
+        INNER JOIN Pro_Enq P WITH (NOLOCK)
+            ON P.Received_Code1 = G.Code1
+           AND P.Received_Code2 = G.Code2
+        WHERE
+            G.Comp_Id = @Comp_Id
+            AND (@StartDate IS NULL OR G.Enq_Date >= @StartDate)
+            AND (@EndDate   IS NULL OR G.Enq_Date <= @EndDate);
+    END
+END
+GO
