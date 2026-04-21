@@ -175,7 +175,7 @@ BEGIN
         WHERE M_Consumerid = @M_Consumerid 
           AND Comp_Id = @ActualComp_ID
           AND CAST(ReqDate AS DATE) = CAST(GETDATE() AS DATE)
-          AND Status IN ('Success', 'Pending');
+          AND Status = 'Success';
 
         -------------------------------------------------------------------
         -- 3. UPSERT Vendor KYC Status
@@ -379,7 +379,7 @@ BEGIN
 
         COMMIT TRANSACTION;
          -- Return extra metadata needed for payout triggering in API
-         SELECT 1 AS ResultCode, @Message + @AwardMessage AS Message, @EarningAmount AS Amount, @PrimaryServiceID AS ServiceID, @ActualComp_ID AS Comp_ID, @IsPayoutAllowed AS IsPayoutAllowed, @TransactionID AS TransactionID, @ReferenceId AS ReferenceId;
+         SELECT 1 AS ResultCode, @Message + @AwardMessage AS Message, @EarningAmount AS Amount, @PrimaryServiceID AS ServiceID, @ActualComp_ID AS Comp_ID, @IsPayoutAllowed AS IsPayoutAllowed, @TransactionID AS TransactionID, @ReferenceId AS ReferenceId, @M_Consumerid AS M_Consumerid;
 
     END TRY
     BEGIN CATCH
