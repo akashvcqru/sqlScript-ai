@@ -110,7 +110,7 @@ IF UPPER(@TimeWindow) = 'LASTMONTH'
         S.State,
         S.City,
         U.PinCode,
-        B.Benefit AS TotalEarned,
+        B.Benefit,
         (SELECT COUNT(*) FROM Pro_Enq PE WHERE PE.MobileNo = U.MobileNo AND PE.Comp_ID = @CompId AND PE.Enq_Date >= @StartDate AND PE.Enq_Date < DATEADD(DAY, 1, @EndDate)) AS TotalScans,
         ISNULL(C.ClaimsAmount, 0) + ISNULL(P.UPIAmount, 0) AS ClaimsAmount,
         B.LastActionDate
