@@ -66,6 +66,8 @@ BEGIN
         DECLARE @IsApprovalReq BIT = 0;
         DECLARE @TodaySum FLOAT = 0;
         DECLARE @IsPayoutAllowed BIT = 1;
+        DECLARE @TransactionID BIGINT = NULL;
+        DECLARE @ReferenceId VARCHAR(30) = NULL;
 
         -------------------------------------------------------------------
         -- 1. IDENTIFY THE CODE (Support M_Code and M_Code_PFL)
@@ -330,14 +332,14 @@ BEGIN
                     ELSE IF @EarningAmount > 0 AND @CurrServiceID = 'SRV1029'
                     BEGIN
                         -- 1. Insert into tblUPITransactionDetails
-                        DECLARE @ReferenceId VARCHAR(30) = REPLACE(@ActualComp_ID, '-', '') + FORMAT(GETDATE(), 'yyMMddHHmmss');
+                        SET @ReferenceId = REPLACE(@ActualComp_ID, '-', '') + FORMAT(GETDATE(), 'yyMMddHHmmss');
 
                         INSERT INTO tblUPITransactionDetails 
                         (M_Consumerid, MobileNo, Code1, Code2, Amount, Comp_Id, Status, ReqDate, ConsumerName, UPI_Id, Remarks, FinalStatus, FinalRemarks, RefenceId)
                         VALUES 
                         (@M_Consumerid, @MobileNo, @dCode1, @dCode2, @EarningAmount, @ActualComp_ID, 'Pending', GETDATE(), @ConsumerName, @AccountNumber, 'Instant Cash Payout', 'Pending', 'Initial Record', @ReferenceId);
 
-                        DECLARE @TransactionID BIGINT = SCOPE_IDENTITY();
+                        SET @TransactionID = SCOPE_IDENTITY();
 
                         -- 2. Update tblCashWalletBalance (Ledger Transaction)
                         DECLARE @OldWalletBal DECIMAL(18,2) = 0;
@@ -375,15 +377,7 @@ BEGIN
 
         IF @Message = '' OR @Message IS NULL SET @Message = 'Success! Code Verified.';
 
-                                 SET @IsPayoutAllowed = 0;
-                             END
-                         END
-                     END
-                 END
-             END
-         END
- 
-         COMMIT TRANSACTION;
+        COMMIT TRANSACTION;
          -- Return extra metadata needed for payout triggering in API
          SELECT 1 AS ResultCode, @Message + @AwardMessage AS Message, @EarningAmount AS Amount, @PrimaryServiceID AS ServiceID, @ActualComp_ID AS Comp_ID, @IsPayoutAllowed AS IsPayoutAllowed, @TransactionID AS TransactionID, @ReferenceId AS ReferenceId;
 
