@@ -14,13 +14,13 @@ BEGIN
         SELECT @TotalCode = COUNT(Pro_Enq.[Received_Code1])
         FROM M_Consumer as mc
         INNER JOIN Pro_Enq ON Pro_Enq.MobileNo = mc.MobileNo
-        INNER JOIN M_code ON CAST(M_Code.Code1 as nvarchar(5)) = Pro_Enq.Received_Code1 AND CAST(M_Code.Code2 as nvarchar(8)) = Pro_Enq.Received_Code2
+        INNER JOIN M_code ON CAST(M_Code.Code1 as nvarchar(20)) = Pro_Enq.Received_Code1 AND CAST(M_Code.Code2 as nvarchar(20)) = Pro_Enq.Received_Code2
         INNER JOIN Pro_Reg ON Pro_Reg.Pro_ID = M_Code.Pro_ID
         INNER JOIN Comp_Reg ON Comp_Reg.Comp_ID = Pro_Reg.Comp_ID
         WHERE Comp_Reg.Comp_ID = @compid
           AND [M_Consumerid] = @M_consumerid
 
-        SELECT @TotalEarnedPoints = ISNULL(SUM(CAST([RedeemPoints] AS INT)), 0)
+        SELECT @TotalEarnedPoints = ISNULL(SUM(TRY_CAST([RedeemPoints] AS INT)), 0)
         FROM [BPointsTransaction] with(nolock)
         WHERE [RedeemBy] = @M_consumerid
           AND bpstatus <> 'FAILURE'
@@ -28,14 +28,14 @@ BEGIN
         SELECT @SuccessCode = COUNT(Pro_Enq.[Received_Code1])
         FROM M_Consumer as mc
         INNER JOIN Pro_Enq ON Pro_Enq.MobileNo = mc.MobileNo
-        INNER JOIN M_code ON CAST(M_Code.Code1 as nvarchar(5)) = Pro_Enq.Received_Code1 AND CAST(M_Code.Code2 as nvarchar(8)) = Pro_Enq.Received_Code2
+        INNER JOIN M_code ON CAST(M_Code.Code1 as nvarchar(20)) = Pro_Enq.Received_Code1 AND CAST(M_Code.Code2 as nvarchar(20)) = Pro_Enq.Received_Code2
         INNER JOIN Pro_Reg ON Pro_Reg.Pro_ID = M_Code.Pro_ID
         INNER JOIN Comp_Reg ON Comp_Reg.Comp_ID = Pro_Reg.Comp_ID
         WHERE Comp_Reg.Comp_ID = @compid
           AND [M_Consumerid] = @M_consumerid
           AND Is_Success = 1
 
-        SELECT @TotalCash = ISNULL(SUM(Cash), 0)
+        SELECT @TotalCash = ISNULL(SUM(TRY_CAST(Cash AS DECIMAL(18,2))), 0)
         FROM dbo.BLoyaltyPointsEarned
         WHERE M_Consumerid = @M_consumerid
           AND (compid = @compid or (@compid IN ('Comp-1650', 'Comp-1567') and compid IN ('Comp-1650', 'Comp-1567') ))
