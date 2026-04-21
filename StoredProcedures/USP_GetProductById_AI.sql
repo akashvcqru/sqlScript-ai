@@ -28,7 +28,7 @@ BEGIN
             WHEN ISNULL(pr.Pro_Desc, '') = '' THEN '---'
             ELSE pr.Pro_Desc
         END                                                   AS ProDesc,
-        '../Data/Sound/'
+        '/assets/Product/comp-'
             + SUBSTRING(pr.Comp_ID, 6, 4)
             + '/' + pr.Pro_ID
             + '/' + pr.Pro_ID + '.mp3'                        AS SoundPath,
@@ -40,8 +40,9 @@ BEGIN
         pr.Label_Code,
         ISNULL(pr.BatchSize, 0)                               AS BatchSize,
         ISNULL(pr.Dispatch_Location, '')                      AS Dispatch_Location,
-        -- Correctly construct ImgPath (matching logic from GetProductList)
-        (SELECT TOP 1 [PrPrefix] FROM [Code_Gen] WHERE [Prfor] = 'Product') + pr.Pro_ID + '.jpg' AS ImgPath -- This is a placeholder, usually it's just Pro_ID + extension
+        '/assets/Product/comp-' 
+            + SUBSTRING(pr.Comp_ID, 6, 4) 
+            + '/' + pr.Pro_ID + '.jpg'                        AS ImgPath -- This is a placeholder, usually it's just Pro_ID + extension
     FROM   Pro_Reg pr
     LEFT JOIN M_Label ml ON pr.Label_Code = ml.Label_Code
     WHERE
