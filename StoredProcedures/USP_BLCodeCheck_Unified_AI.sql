@@ -129,7 +129,7 @@ BEGIN
         END
 
         -- 5. Code Check & Loyalty Logic
-        IF @Code1 IS NOT NULL AND @Code1 <> '' AND @Code2 IS NOT NULL AND @Code2 <> ''
+        IF @Code1 IS NOT NULL AND @Code2 IS NOT NULL
         BEGIN
             -- Identify Code and Product
             SELECT @M_Codeid = Row_ID, @Pro_ID = Pro_ID FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2;
@@ -144,7 +144,7 @@ BEGIN
             BEGIN
                 -- Check if already scanned
                 DECLARE @ExistingEnqCount INT;
-                SELECT @ExistingEnqCount = COUNT(*) FROM Pro_Enq WHERE Received_Code1 = @Code1 AND Received_Code2 = @Code2 AND Is_Success = 1;
+                SELECT @ExistingEnqCount = COUNT(*) FROM Pro_Enq WHERE Received_Code1 = CAST(@Code1 AS VARCHAR(5)) AND Received_Code2 = CAST(@Code2 AS VARCHAR(8)) AND Is_Success = '1';
 
                 IF @ExistingEnqCount = 0 OR @Comp_ID = 'Comp-1693' -- Allow Patanjali re-scans if configured
                 BEGIN
@@ -192,11 +192,11 @@ BEGIN
                             
                             SELECT @CurrentScanCount = COUNT(1)
                             FROM Pro_Enq pe
-                            INNER JOIN M_Code mc ON pe.Received_Code1 = mc.Code1 AND pe.Received_Code2 = mc.Code2
-                            INNER JOIN M_ServiceSubscriptionTrans mst ON mc.Pro_ID = (SELECT Pro_ID FROM M_ServiceSubscriptionTrans WHERE SST_Id = @SST_ID)
+                            INNER JOIN M_Code mc ON pe.Received_Code1 = CAST(mc.Code1 AS VARCHAR(5)) AND pe.Received_Code2 = CAST(mc.Code2 AS VARCHAR(8))
                             WHERE RIGHT(pe.MobileNo, 10) = @CleanMobile
                             AND pe.Is_Success = 1
-                            AND pe.Enq_Date >= @FrequencyStartDate;
+                            AND pe.Enq_Date >= @FrequencyStartDate
+                            AND mc.Pro_ID = @Pro_ID;
 
                             -- If frequency limit exceeded, block and return error
                             IF @CurrentScanCount >= @FrequencyLimit
