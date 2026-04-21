@@ -7,7 +7,7 @@ CREATE procedure [dbo].[USP_Consumerpoint_AI]
 @M_Consumerid varchar(50)
 as
 begin
-SELECT COALESCE(SUM(TRY_CAST(bp.Points AS INT)), 0) 
+SELECT COALESCE(SUM(TRY_CAST(bp.Points AS INT)), 0) as TotalPoints
 FROM BLoyaltyPointsEarned bp
 INNER JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id
 INNER JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
