@@ -330,8 +330,12 @@ BEGIN
                     ELSE IF @EarningAmount > 0 AND @CurrServiceID = 'SRV1029'
                     BEGIN
                         -- 1. Insert into tblUPITransactionDetails
-                        INSERT INTO tblUPITransactionDetails (M_Consumerid, MobileNo, Code1, Code2, Amount, Comp_Id, Status, ReqDate)
-                        VALUES (@M_Consumerid, @MobileNo, @dCode1, @dCode2, @EarningAmount, @ActualComp_ID, 'Pending', GETDATE());
+                        DECLARE @ReferenceId VARCHAR(30) = REPLACE(@ActualComp_ID, '-', '') + FORMAT(GETDATE(), 'yyMMddHHmmss');
+
+                        INSERT INTO tblUPITransactionDetails 
+                        (M_Consumerid, MobileNo, Code1, Code2, Amount, Comp_Id, Status, ReqDate, ConsumerName, UPI_Id, Remarks, FinalStatus, FinalRemarks, RefenceId)
+                        VALUES 
+                        (@M_Consumerid, @MobileNo, @dCode1, @dCode2, @EarningAmount, @ActualComp_ID, 'Pending', GETDATE(), @ConsumerName, @AccountNumber, 'Instant Cash Payout', 'Pending', 'Initial Record', @ReferenceId);
 
                         DECLARE @TransactionID BIGINT = SCOPE_IDENTITY();
 
@@ -371,9 +375,17 @@ BEGIN
 
         IF @Message = '' OR @Message IS NULL SET @Message = 'Success! Code Verified.';
 
-        COMMIT TRANSACTION;
-        -- Return extra metadata needed for payout triggering in API
-        SELECT 1 AS ResultCode, @Message + @AwardMessage AS Message, @EarningAmount AS Amount, @PrimaryServiceID AS ServiceID, @ActualComp_ID AS Comp_ID, @IsPayoutAllowed AS IsPayoutAllowed;
+                                 SET @IsPayoutAllowed = 0;
+                             END
+                         END
+                     END
+                 END
+             END
+         END
+ 
+         COMMIT TRANSACTION;
+         -- Return extra metadata needed for payout triggering in API
+         SELECT 1 AS ResultCode, @Message + @AwardMessage AS Message, @EarningAmount AS Amount, @PrimaryServiceID AS ServiceID, @ActualComp_ID AS Comp_ID, @IsPayoutAllowed AS IsPayoutAllowed, @TransactionID AS TransactionID, @ReferenceId AS ReferenceId;
 
     END TRY
     BEGIN CATCH
