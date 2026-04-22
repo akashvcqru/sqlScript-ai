@@ -95,7 +95,7 @@ BEGIN
             @Pro_ID = Pro_ID,
             @Series_Order = TRY_CAST(ISNULL(Series_Order,0) AS INT),
             @Series_Serial = TRY_CAST(ISNULL(Series_Serial,0) AS INT)
-        FROM M_Code WITH (UPDLOCK)
+        FROM M_Code WITH (UPDLOCK, ROWLOCK)
         WHERE Code1 = @dCode1 AND Code2 = @dCode2;
 
         -- If not found, check M_Code_PFL
@@ -104,10 +104,10 @@ BEGIN
             SELECT 
                 @M_Codeid = Row_ID, 
                 @Pro_ID = Pro_ID,
-                @Series_Order = 0, -- PFL doesn't always have order/serial in same structure
+                @Series_Order = 0, 
                 @Series_Serial = 0,
                 @IsPFL = 1
-            FROM M_Code_PFL WITH (UPDLOCK)
+            FROM M_Code_PFL WITH (UPDLOCK, ROWLOCK)
             WHERE Code1 = @dCode1 AND Code2 = @dCode2;
         END
 
@@ -140,7 +140,12 @@ BEGIN
         -------------------------------------------------------------------
         -- 2. UPSERT M_Consumer
         -------------------------------------------------------------------
-        SELECT @M_Consumerid = M_Consumerid FROM M_Consumer WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10);
+        DECLARE @Mobile10 VARCHAR(10) = RIGHT(@MobileNo, 10);
+        
+        -- Optimized lookup to use index on MobileNo
+        SELECT @M_Consumerid = M_Consumerid FROM M_Consumer 
+        WHERE (MobileNo = @Mobile10 OR MobileNo = '91' + @Mobile10 OR MobileNo = '0' + @Mobile10)
+          AND IsDelete = 0;
 
         IF @M_Consumerid IS NULL
         BEGIN
