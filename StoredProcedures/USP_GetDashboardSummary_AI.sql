@@ -39,7 +39,7 @@ BEGIN
               WHERE RIGHT(cl.Mobileno, 10) = RIGHT(@MobileNo, 10) AND cl.Isapproved <> 2
                 AND (cl.Comp_id = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND cl.Comp_ID IN ('Comp-1650', 'Comp-1567'))))
             +
-            (SELECT ISNULL(SUM(Amount), 0) 
+            (SELECT ISNULL(SUM(ISNULL(Points_Val, Amount)), 0) 
              FROM tblUPITransactionDetails 
              WHERE RIGHT(Mobileno, 10) = RIGHT(@MobileNo, 10) AND Status IN ('Pending','Success') AND Comp_id = @CompID AND Code2 > 0)
         ) as ReedemPoints,
@@ -79,7 +79,7 @@ BEGIN
         UNION ALL
         SELECT 
             'SRV1029' as Service_ID,
-            Amount as ClaimAmount
+            ISNULL(Points_Val, Amount) as ClaimAmount
         FROM tblUPITransactionDetails 
         WHERE RIGHT(Mobileno, 10) = RIGHT(@MobileNo, 10) 
           AND Status IN ('Pending','Success') 
