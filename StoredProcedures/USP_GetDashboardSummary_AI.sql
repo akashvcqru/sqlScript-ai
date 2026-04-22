@@ -68,12 +68,24 @@ BEGIN
     GROUP BY ms.Service_ID, ms_name.ServiceName;
 
     -- Result Set 3: Claim Amounts Service-Wise
-    SELECT 
-        ISNULL(Service_ID, 'SRV1001') as Service_ID,
-        SUM(Amount) as ClaimAmount
-    FROM ClaimDetails cl
-    WHERE RIGHT(cl.Mobileno, 10) = RIGHT(@MobileNo, 10) AND cl.Isapproved <> 2
-      AND (cl.Comp_id = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND cl.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-    GROUP BY ISNULL(Service_ID, 'SRV1001');
+    SELECT Service_ID, SUM(ClaimAmount) as ClaimAmount
+    FROM (
+        SELECT 
+            ISNULL(Service_ID, 'SRV1001') as Service_ID,
+            Amount as ClaimAmount
+        FROM ClaimDetails cl
+        WHERE RIGHT(cl.Mobileno, 10) = RIGHT(@MobileNo, 10) AND cl.Isapproved <> 2
+          AND (cl.Comp_id = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND cl.Comp_ID IN ('Comp-1650', 'Comp-1567')))
+        UNION ALL
+        SELECT 
+            'SRV1029' as Service_ID,
+            Amount as ClaimAmount
+        FROM tblUPITransactionDetails 
+        WHERE RIGHT(Mobileno, 10) = RIGHT(@MobileNo, 10) 
+          AND Status IN ('Pending','Success') 
+          AND Comp_id = @CompID 
+          AND Code2 > 0
+    ) t
+    GROUP BY Service_ID;
 END
 GO
