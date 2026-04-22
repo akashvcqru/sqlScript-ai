@@ -252,8 +252,12 @@ BEGIN
             SELECT @UseCount = TRY_CAST(ISNULL(Use_Count, 0) AS INT) FROM M_Code WHERE Row_ID = @M_Codeid;
 
         -- Log Inquiry
+        DECLARE @Is_Success VARCHAR(5) = '1';
+        IF @UseCount > 0
+            SET @Is_Success = '2';
+
         INSERT INTO Pro_Enq (Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, Is_Success, Comp_ID)
-        VALUES (@Mode, GETDATE(), 'InstantCashAPI', @MobileNo, @Code1, @Code2, '1', @ActualComp_ID);
+        VALUES (@Mode, GETDATE(), 'InstantCashAPI', @MobileNo, @Code1, @Code2, @Is_Success, @ActualComp_ID);
 
         IF @UseCount > 0
         BEGIN
