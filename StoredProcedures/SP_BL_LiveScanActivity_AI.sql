@@ -83,7 +83,7 @@ BEGIN
             ELSE 'INVALID'
         END AS RESULT,
         (S.Code1 + S.Code2) AS UniqueCode,
-        CAST(S.Enq_Date AS DATE) AS ScanDate
+        S.Enq_Date AS ScanDate
     FROM #Scans S
     INNER JOIN M_Code MCd WITH (NOLOCK)
             ON S.Code1 = CAST(MCd.Code1 AS NVARCHAR(20))
