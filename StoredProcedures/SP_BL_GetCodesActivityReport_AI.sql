@@ -166,7 +166,9 @@ BEGIN
         Code2,
         MobileNo,
         State,
-        City
+        City,
+        Latitude,
+        Longitude
     INTO #Geo
     FROM (
         SELECT 
@@ -237,8 +239,8 @@ BEGIN
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
             END AS Result,
-            E.Latitude,
-            E.Longitude
+            ISNULL(NULLIF(E.Latitude, ''), G.Latitude) AS Latitude,
+            ISNULL(NULLIF(E.Longitude, ''), G.Longitude) AS Longitude
         --FROM #Enq E
 		FROM
 		(
@@ -296,8 +298,8 @@ BEGIN
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
             END AS Result,
-            E.Latitude,
-            E.Longitude
+            ISNULL(NULLIF(E.Latitude, ''), G.Latitude) AS Latitude,
+            ISNULL(NULLIF(E.Longitude, ''), G.Longitude) AS Longitude
         FROM #Enq E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
