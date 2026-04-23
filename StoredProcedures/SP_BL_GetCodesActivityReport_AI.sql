@@ -4,9 +4,9 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 -- exec [dbo].[SP_BL_GetCodesActivityReport_AI] 'Comp-1869',NULL,'2026-01-02','2026-01-07',NULL,NULL,NULL,1,10,1
-CREATE PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
+ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
-    @TimeWindow NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
+    @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
      @FromDate DATE  = NULL,                -- NEW
     @ToDate DATE  = NULL,                  -- NEW
     @CodeStatusFilter NVARCHAR(20) = NULL,     -- NEW (Verified, Already Scanned, Invalid)
@@ -43,39 +43,39 @@ BEGIN
     END
     ELSE
     BEGIN
-        SET @TimeWindow = UPPER(@TimeWindow);
+        SET @datePreset = UPPER(@datePreset);
 
-        IF (@TimeWindow = 'TODAY')
+        IF (@datePreset = 'TODAY')
         BEGIN
             SET @StartDate = CAST(GETDATE() AS DATE);
             SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
-        ELSE IF (@TimeWindow = 'YESTERDAY')
+        ELSE IF (@datePreset = 'YESTERDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
             SET @EndDate   = CAST(GETDATE() AS DATE);
         END
-        ELSE IF (@TimeWindow = 'WEEK')
+        ELSE IF (@datePreset = 'WEEK')
         BEGIN
             SET @StartDate = DATEADD(DAY, -7, GETDATE());
             SET @EndDate   = GETDATE();
         END
-        ELSE IF (@TimeWindow = 'LASTWEEK')
+        ELSE IF (@datePreset = 'LASTWEEK')
         BEGIN
             SET @StartDate = DATEADD(DAY, -14, CAST(GETDATE() AS DATE));
             SET @EndDate   = DATEADD(DAY, -7, CAST(GETDATE() AS DATE));
         END
-        ELSE IF (@TimeWindow = 'MONTH')
+        ELSE IF (@datePreset = 'MONTH')
         BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
             SET @EndDate   = GETDATE();
         END
-        ELSE IF (@TimeWindow = 'LASTMONTH')
+        ELSE IF (@datePreset = 'LASTMONTH')
         BEGIN
             SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
             SET @EndDate   = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0);
         END
-        ELSE IF (@TimeWindow = 'QUARTER')
+        ELSE IF (@datePreset = 'QUARTER')
         BEGIN
             SET @StartDate = DATEADD(DAY, -90, GETDATE());
             SET @EndDate   = GETDATE();
