@@ -1,3 +1,6 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetLiveScanTracking_AI]    Script Date: 4/23/2026 7:14:42 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -7,7 +10,7 @@ GO
 -- Create date: 2026-04-02
 -- Description: Get live scan tracking report for the last 30 days
 -- =============================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetLiveScanTracking_AI]
+ALTER   PROCEDURE [dbo].[USP_GetLiveScanTracking_AI]
     @Comp_ID NVARCHAR(50),
     @datePreset NVARCHAR(20) = 'month',
     @FromDate DATETIME = NULL,
@@ -85,7 +88,12 @@ BEGIN
         pr.Pro_ID AS VariantSKU,
         mc.Batch_No AS BatchNo,
         ISNULL(pe.Received_Code1, '') + ISNULL(pe.Received_Code2, '') AS UniqueCode,
-        CASE WHEN pe.Is_Success = 1 THEN 'Genuine' ELSE 'Duplicate/Invalid' END AS ScanResult,
+        CASE 
+            WHEN mc.Code1 IS NULL THEN 'Invalid'
+            WHEN pe.Is_Success = 2 THEN 'Duplicate'
+            WHEN pe.Is_Success = 1 THEN 'Genuine'
+            ELSE 'Invalid' 
+        END AS ScanResult,
         CASE WHEN mc.Use_Count <= 1 THEN 'First' ELSE 'Repeat' END AS FirstOrRepeat,
         ISNULL(mc.Use_Count, 0) AS TotalScansForUID,
         ISNULL(pe.City, '') AS City,
@@ -109,11 +117,11 @@ BEGIN
     LEFT JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
     LEFT JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
     LEFT JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
-        --AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
-        --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
-        --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+        AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
+            BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
+                AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     LEFT JOIN M_Consumer mcn ON mcn.MobileNo = pe.MobileNo
-    WHERE pe.Comp_ID = @Comp_ID
+    WHERE pe.Comp_ID = @Comp_ID and mcn.IsDelete = 0
       AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
       AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
       AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
@@ -122,4 +130,3 @@ BEGIN
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
     OPTION (RECOMPILE);
 END
-GO
