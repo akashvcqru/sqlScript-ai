@@ -75,6 +75,10 @@ BEGIN
         ISNULL(MC.ConsumerName, 'Not Registered') AS ConsumerName,
         PR.Pro_Name,
         G.[State],
+        G.City,
+        G.Postcode AS PinCode,
+        G.Latitude,
+        G.Longitude,
         S.MobileNo,
         ISNULL(P.TotalPoints,0) AS Points,
         CASE 
