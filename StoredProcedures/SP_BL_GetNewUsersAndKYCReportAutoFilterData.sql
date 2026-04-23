@@ -190,7 +190,6 @@ BEGIN
         MC.UPIId,
         MC.UpiidImage,
         MC.Selfie_image,
-        MC.Comp_id,
         MC.UPIKYCSTATUS,
         MC.teslapayoutmode,
         VKS.Entry_Date,
