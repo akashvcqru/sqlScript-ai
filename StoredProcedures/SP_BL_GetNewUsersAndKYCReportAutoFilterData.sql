@@ -30,27 +30,6 @@ BEGIN
     DECLARE @Offset INT = (@Page - 1) * @Limit;
 
     ------------------------------------------------------
-    -- Fetch KYC Requirements
-    ------------------------------------------------------
-    DECLARE 
-        @AadharCardReq NVARCHAR(10) = 'No',
-        @PANCardReq NVARCHAR(10) = 'No',
-        @UPIReq NVARCHAR(10) = 'No',
-        @AccountDetails NVARCHAR(10) = 'No';
-
-    ;WITH Req AS (
-        SELECT j.[key], j.[value]
-        FROM claimKycForWebMVC c
-        CROSS APPLY OPENJSON(c.kyc_Details) j
-        WHERE c.Comp_ID = @Comp_Id
-    )
-    SELECT
-        @AadharCardReq = CASE WHEN EXISTS (SELECT 1 FROM Req WHERE [key]='AadharCard' AND [value]='Yes') THEN 'Yes' ELSE 'No' END,
-        @PANCardReq = CASE WHEN EXISTS (SELECT 1 FROM Req WHERE [key]='PANCard' AND [value]='Yes') THEN 'Yes' ELSE 'No' END,
-        @UPIReq = CASE WHEN EXISTS (SELECT 1 FROM Req WHERE [key]='UPI' AND [value]='Yes') THEN 'Yes' ELSE 'No' END,
-        @AccountDetails = CASE WHEN EXISTS (SELECT 1 FROM Req WHERE [key]='AccountDetails' AND [value]='Yes') THEN 'Yes' ELSE 'No' END;
-
-    ------------------------------------------------------
     -- Date Range
     ------------------------------------------------------
     DECLARE @StartDate DATE = NULL;
@@ -93,7 +72,7 @@ BEGIN
         BEGIN
             SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
-                               DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
+                                DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
         END
 
         ELSE IF (@TimeWindow = 'MONTH')
@@ -103,7 +82,7 @@ BEGIN
         BEGIN
             SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
-                               DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0));
+                                DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0));
         END
 
         ELSE IF (@TimeWindow = 'QUARTER')
@@ -150,8 +129,8 @@ BEGIN
     DECLARE @SQLData NVARCHAR(MAX) = N'
     SELECT
         MC.ConsumerName,
-        MC.Email,
         MC.MobileNo,
+        MC.Email,
         MC.City,
         MC.cin_number,
         MC.ref_cin_number,
@@ -195,7 +174,7 @@ BEGIN
         VKS.kycremark AS remark,
         VKS.kycremark, -- Keep original name too
 
-        -- Bank Information (Latest Bank Record from OUTER APPLY)
+        -- Bank Information (Latest Bank Record)
         MB.[Bank_Name] AS bankName,
         MB.Account_HolderNm,
         MB.Account_No,
