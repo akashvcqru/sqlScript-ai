@@ -14,7 +14,8 @@ ALTER PROCEDURE [dbo].[USP_GetWarrantyReportByMobile_AI]
   @MobileNo varchar(50),
   @TimeWindow NVARCHAR(20) = NULL,
   @Page INT = 1,
-  @Limit INT = 10
+  @Limit INT = 10,
+  @Comp_Id VARCHAR(50) = NULL
 )
 AS
 BEGIN
@@ -246,6 +247,7 @@ BEGIN
         LEFT JOIN #wrr wr ON enq.received_code1 = wr.code1 AND enq.received_code2 = wr.code2
         LEFT JOIN VW_getservicesubscribe serv_tran WITH (NOLOCK) ON serv_tran.Subscribe_Id = sub.Subscribe_Id 
         WHERE serv.[Service_ID] = 'SRV1023'
+          AND (@Comp_Id IS NULL OR @Comp_Id = '' OR cr.comp_id = @Comp_Id)
     )
     SELECT * FROM MainResult
     ORDER BY [enq_date] DESC
@@ -264,6 +266,7 @@ BEGIN
         LEFT JOIN M_ServiceSubscription sub WITH (NOLOCK) ON sub.Pro_id = code.Pro_id
         LEFT JOIN m_service serv WITH (NOLOCK) ON serv.service_id = sub.service_id
         WHERE serv.[Service_ID] = 'SRV1023'
+          AND (@Comp_Id IS NULL OR @Comp_Id = '' OR sub.comp_id = @Comp_Id)
     ) count_query;
 
     DROP TABLE #wrr;
