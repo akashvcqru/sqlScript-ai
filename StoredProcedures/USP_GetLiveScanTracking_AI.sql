@@ -1,6 +1,6 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetLiveScanTracking_AI]    Script Date: 4/23/2026 7:14:42 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetLiveScanTracking_AI]    Script Date: 4/24/2026 10:52:42 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -39,7 +39,7 @@ BEGIN
     END
     ELSE
     BEGIN
-        IF @datePreset IS NULL OR @datePreset = '' SET @datePreset = 'month'
+        IF @datePreset IS NULL OR @datePreset = '' SET @datePreset = 'week'
         
         DECLARE @today DATE = CAST(GETDATE() AS DATE)
 
@@ -50,18 +50,36 @@ BEGIN
         END
         ELSE IF @datePreset = 'week'
         BEGIN
-            SET @finalFromDate = DATEADD(DAY, -7, @today)
+            -- Start of current week (Monday)
+            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
             SET @finalToDate = GETDATE()
         END
-        ELSE IF @datePreset = 'month' OR @datePreset = 'last30days'
+        ELSE IF @datePreset = 'lastweek'
         BEGIN
-            SET @finalFromDate = DATEADD(DAY, -30, @today)
+            -- Start of last week (Monday)
+            DECLARE @thisMonday DATE = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
+            SET @finalFromDate = DATEADD(DAY, -7, @thisMonday)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(@thisMonday AS DATETIME))
+        END
+        ELSE IF @datePreset = 'month'
+        BEGIN
+            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
+            SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'lastmonth'
+        BEGIN
+            SET @finalFromDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1))
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME))
+        END
+        ELSE IF @datePreset = 'quarter'
+        BEGIN
+            SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
             SET @finalToDate = GETDATE()
         END
         ELSE
         BEGIN
-            -- Default to last 30 days
-            SET @finalFromDate = DATEADD(DAY, -30, @today)
+            -- Default to week
+            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
             SET @finalToDate = GETDATE()
         END
     END
@@ -116,13 +134,13 @@ BEGIN
     FROM Pro_Enq pe
     LEFT JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
     LEFT JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
-    LEFT JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
-        AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
-            BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
-                AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+    --LEFT JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
+     --   AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
+     --       BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
+     --           AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     LEFT JOIN M_Consumer mcn ON mcn.MobileNo = pe.MobileNo
     WHERE pe.Comp_ID = @Comp_ID and mcn.IsDelete = 0
-      AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
+     -- AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
       AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
       AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
     ORDER BY pe.Enq_Date DESC
