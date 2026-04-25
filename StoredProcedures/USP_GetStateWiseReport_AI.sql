@@ -103,6 +103,7 @@
             WHERE pe.Comp_ID = @Comp_ID
             AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
             AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
+            AND (ISNULL(pe.State, '') <> '' OR ISNULL(pe.City, '') <> '' OR ISNULL(mc.PinCode, '') <> '')
         ),
         LocationGroups AS (
             SELECT 
