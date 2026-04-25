@@ -32,6 +32,7 @@ CREATE TABLE [dbo].[BrandSettings_AI](
 	[Refraltagline] [nvarchar](max) NULL,
 	[Multiuserregistrationfield] [nvarchar](max) NULL,
 	[Dashboardiconsmultiuser] [nvarchar](max) NULL,
+	[InvoiceAmountPercentage] [decimal](18, 2) NULL,
  CONSTRAINT [PK__BrandSet_AI] PRIMARY KEY CLUSTERED 
 (
 	[row_ID] ASC
