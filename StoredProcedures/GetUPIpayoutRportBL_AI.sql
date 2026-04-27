@@ -1,15 +1,17 @@
-/****** Object:  StoredProcedure [dbo].[GetUPIpayoutRportBL_AI] ******/
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[GetUPIpayoutRportBL_AI]    Script Date: 4/27/2026 3:59:57 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE PROCEDURE [dbo].[GetUPIpayoutRportBL_AI]
+ALTER PROCEDURE [dbo].[GetUPIpayoutRportBL_AI]
 (
       @Compid        NVARCHAR(50),
       @FromDate      DATE = NULL,
       @ToDate        DATE = NULL,
-      @Window        NVARCHAR(20) = NULL,
+      @datePreset        NVARCHAR(20) = NULL,
       @StatusFilter  NVARCHAR(30) = NULL,   -- Success / Pending / Failed
       @MobileNo      NVARCHAR(20) = NULL,
       @Page          INT = NULL,
@@ -44,7 +46,7 @@ BEGIN
     -------------------------------------------------
     DECLARE @StartDate DATE, @EndDate DATE;
     DECLARE @Today DATE = CAST(GETDATE() AS DATE);
-    DECLARE @Win NVARCHAR(20) = UPPER(ISNULL(@Window,''));
+    DECLARE @Win NVARCHAR(20) = UPPER(ISNULL(@datePreset,''));
 
     IF @FromDate IS NOT NULL AND @ToDate IS NOT NULL
     BEGIN
@@ -111,21 +113,30 @@ BEGIN
         m.MobileNo,
         p.Code1,
         p.Code2,
-        p.UPI_Id,
+        --p.UPI_Id,
+		CASE 
+            WHEN p.UPI_Id is null
+                THEN p.account_no
+            ELSE p.UPI_Id
+        END AS UPI_Id,
+
 
         ISNULL(w.OldBal,0) AS OldBal,
 
-        CASE 
+       /* CASE 
             WHEN @Compid = 'Comp-1727'
                 THEN p.Amount + ISNULL(p.tdsAmount,0)
             ELSE p.Amount
-        END AS Amount,
+        END AS Amount,*/
+		p.Amount + ISNULL(p.tdsAmount,0) AS Amount,
 
-        CASE 
+       /* CASE 
             WHEN @Compid = 'Comp-1727'
                 THEN p.Amount
             ELSE (p.Amount - ISNULL(p.tdsAmount,0))
         END AS FinalPayment,
+		*/
+		p.Amount AS FinalPayment,
 
         p.tdsAmount,
         p.tdsper,
@@ -147,7 +158,7 @@ BEGIN
         END AS BankRemark,
 
         p.ReqDate,
-        p.FinalStatus,
+        p.Remarks AS FinalStatus,
 
         CASE   
             WHEN ISNULL(p.Code1,'') = '' 
@@ -205,4 +216,3 @@ BEGIN
         WHERE (@StatusFilter IS NULL OR BankStatus = @StatusFilter);
     END
 END
-GO
