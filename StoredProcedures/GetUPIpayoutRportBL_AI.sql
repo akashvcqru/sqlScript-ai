@@ -60,7 +60,7 @@ BEGIN
             SET @StartDate = @Today;
             SET @EndDate   = DATEADD(DAY,1,@Today);
         END
-        ELSE IF @Win = 'YESTERDAY'
+        ELSE IF @Win = 'LASTDAY'
         BEGIN
             SET @StartDate = DATEADD(DAY,-1,@Today);
             SET @EndDate   = @Today;
@@ -95,8 +95,18 @@ BEGIN
         END
         ELSE IF @Win = 'QUARTER'
         BEGIN
-            SET @StartDate = DATEADD(DAY,-90,@Today);
+            SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @Today) - 1, 0);
+            SET @EndDate   = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @Today), 0);
+        END
+        ELSE IF @Win = 'YEAR'
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(@Today), 1, 1);
             SET @EndDate   = DATEADD(DAY,1,@Today);
+        END
+        ELSE IF @Win = 'LASTYEAR'
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(@Today) - 1, 1, 1);
+            SET @EndDate   = DATEFROMPARTS(YEAR(@Today), 1, 1);
         END
         ELSE
         BEGIN

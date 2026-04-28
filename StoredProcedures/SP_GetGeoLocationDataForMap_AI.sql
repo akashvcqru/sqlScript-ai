@@ -51,7 +51,7 @@ BEGIN
             SET @StartDate = CAST(GETDATE() AS DATE);
             SET @EndDate   = GETDATE();
         END
-        ELSE IF (@TimeWindow = 'YESTERDAY')
+        ELSE IF (@TimeWindow = 'LASTDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
             SET @EndDate   = DATEADD(SECOND, -1, CAST(GETDATE() AS DATE));
@@ -77,10 +77,20 @@ BEGIN
             SET @EndDate   = DATEADD(SECOND, -1,
                                 DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0));
         END
-        ELSE IF (@TimeWindow = 'QUARTER') -- Rolling 90 days
+        ELSE IF (@TimeWindow = 'QUARTER') -- Previous quarter
         BEGIN
-            SET @StartDate = DATEADD(DAY, -90, GETDATE());
+            SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(SECOND, -1, DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0));
+        END
+        ELSE IF (@TimeWindow = 'YEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
             SET @EndDate   = GETDATE();
+        END
+        ELSE IF (@TimeWindow = 'LASTYEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+            SET @EndDate   = DATEADD(SECOND, -1, DATEFROMPARTS(YEAR(GETDATE()), 1, 1));
         END
     END
     -- ELSE → ALL DATA (StartDate & EndDate remain NULL)

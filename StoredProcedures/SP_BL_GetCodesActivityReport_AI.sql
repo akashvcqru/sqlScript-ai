@@ -53,25 +53,27 @@ BEGIN
             SET @StartDate = CAST(GETDATE() AS DATE);
             SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
-        ELSE IF (@datePreset = 'YESTERDAY')
+        ELSE IF (@datePreset = 'LASTDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
             SET @EndDate   = CAST(GETDATE() AS DATE);
         END
         ELSE IF (@datePreset = 'WEEK')
         BEGIN
-            SET @StartDate = DATEADD(DAY, -7, GETDATE());
-            SET @EndDate   = GETDATE();
+            SET DATEFIRST 1;
+            SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
         ELSE IF (@datePreset = 'LASTWEEK')
         BEGIN
-            SET @StartDate = DATEADD(DAY, -14, CAST(GETDATE() AS DATE));
-            SET @EndDate   = DATEADD(DAY, -7, CAST(GETDATE() AS DATE));
+            SET DATEFIRST 1;
+            SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
         END
         ELSE IF (@datePreset = 'MONTH')
         BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
-            SET @EndDate   = GETDATE();
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
         ELSE IF (@datePreset = 'LASTMONTH')
         BEGIN
@@ -80,8 +82,23 @@ BEGIN
         END
         ELSE IF (@datePreset = 'QUARTER')
         BEGIN
-            SET @StartDate = DATEADD(DAY, -90, GETDATE());
-            SET @EndDate   = GETDATE();
+            SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
+        END
+        ELSE IF (@datePreset = 'YEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF (@datePreset = 'LASTYEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+            SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        END
+        ELSE IF (@datePreset = 'ALL')
+        BEGIN
+            SET @StartDate = '1900-01-01';
+            SET @EndDate   = '2100-01-01';
         END
         ELSE
         BEGIN
