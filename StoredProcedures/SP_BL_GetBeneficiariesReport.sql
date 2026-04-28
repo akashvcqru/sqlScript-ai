@@ -179,10 +179,11 @@ BEGIN
         bp.M_ConsumerId,
         SUM(ISNULL(bp.Points,0)) AS Benefit,
         MAX(bp.UpdateDate) AS LastScan
-    FROM BLoyaltyPointsEarned bp
-    INNER JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
-    INNER JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
-    WHERE ms.Comp_ID IN ('Comp-1567','Comp-1650')
+    FROM BLoyaltyPointsEarned bp WITH (NOLOCK)
+    -- LEFT JOIN to ensure we capture points even if subscription link is missing in some records
+    LEFT JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
+    LEFT JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
+    WHERE (bp.CompId IN ('Comp-1567','Comp-1650') OR ms.Comp_ID IN ('Comp-1567','Comp-1650'))
       AND (@StartDate IS NULL OR bp.UpdateDate >= @StartDate)
       AND (@EndDate   IS NULL OR bp.UpdateDate <  @EndDate)
     GROUP BY bp.M_ConsumerId;
@@ -202,21 +203,20 @@ BEGIN
     GROUP BY M_ConsumerId; */
 	SELECT
         bp.M_ConsumerId,
-		--CASE WHEN @Comp_Id='Comp-1274' THEN  SUM(ISNULL(bp.Cash,0)) ELSE  SUM(ISNULL(bp.Points,0)) END Benefit,
 		CAST(
-    CASE 
-        WHEN @Comp_Id = 'Comp-1274' 
-            THEN SUM(ISNULL(bp.Cash,0)) * 1.10   -- add 10% extra
-        ELSE 
-            SUM(ISNULL(bp.Points,0))
-    END
-AS DECIMAL(18,2)) AS Benefit,
-       -- SUM(ISNULL(bp.Points,0)) AS Benefit,
+            CASE 
+                WHEN @Comp_Id = 'Comp-1274' 
+                    THEN SUM(ISNULL(bp.Cash,0)) * 1.10   -- add 10% extra
+                ELSE 
+                    SUM(ISNULL(bp.Points,0))
+            END
+        AS DECIMAL(18,2)) AS Benefit,
         MAX(bp.UpdateDate) AS LastScan
-    FROM BLoyaltyPointsEarned bp
-    INNER JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
-    INNER JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
-    WHERE  CompId = @Comp_Id
+    FROM BLoyaltyPointsEarned bp WITH (NOLOCK)
+    -- Using LEFT JOIN to be safe, but primarily relying on bp.CompId
+    LEFT JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
+    LEFT JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
+    WHERE bp.CompId = @Comp_Id
       AND (@StartDate IS NULL OR bp.UpdateDate >= @StartDate)
       AND (@EndDate   IS NULL OR bp.UpdateDate <  @EndDate)
     GROUP BY bp.M_ConsumerId;
@@ -373,6 +373,13 @@ END
             U.MobileNo     LIKE '%' + @Search + '%' OR
             U.City         LIKE '%' + @Search + '%' OR
             U.State        LIKE '%' + @Search + '%'
+        )
+        -- Date Filter Correction: When a date range is selected, only show users with activity
+        AND (
+            @Win = 'ALL' 
+            OR B.M_ConsumerId IS NOT NULL 
+            OR C.Mobileno IS NOT NULL 
+            OR UU.M_Consumerid IS NOT NULL
         );
 
     ---------------------------------------------------------
