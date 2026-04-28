@@ -18,7 +18,13 @@ BEGIN
     DECLARE @StartDate DATE, @EndDate DATE;
     DECLARE @PrevStartDate DATE, @PrevEndDate DATE;
     DECLARE @Days INT;
-    DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
+    DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
+    
+    -- Normalize the filter string
+    SET @Win = REPLACE(@Win, ' ', '');
+    IF @Win = 'THISMONTH' SET @Win = 'MONTH';
+    IF @Win = 'THISWEEK' SET @Win = 'WEEK';
+    IF @Win = 'QUARTER(90DAYS)' SET @Win = 'QUARTER';
 
     IF @Win = 'TODAY'          SET @Days = 1;
     ELSE IF @Win = 'YESTERDAY' SET @Days = 1;
@@ -28,6 +34,15 @@ BEGIN
     ELSE IF @Win = 'YEAR'      SET @Days = 365;
     ELSE IF @Win = 'LASTYEAR'  SET @Days = 365;
     ELSE                       SET @Days = 30; -- Default to Month/30 days
+
+    -- Fetch Company Registration Date for optimization
+    DECLARE @CompRegDate DATE;
+    SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
+    FROM Comp_Reg WITH (NOLOCK) 
+    WHERE Comp_ID = @CompId AND Status = 1;
+
+    IF @CompRegDate IS NULL 
+        SET @CompRegDate = '2000-01-01';
 
     IF @Win = 'MONTH'
     BEGIN
@@ -80,13 +95,13 @@ BEGIN
     SELECT @RegUsers_Current = COUNT(*) 
     FROM M_Consumer AS MC WITH (NOLOCK)
     INNER JOIN tbl_Vendorvisekycstatus AS VC WITH (NOLOCK) ON VC.M_consumerId = MC.M_Consumerid
-    WHERE VC.Comp_ID = @CompId AND MC.IsDelete = 0;
+    WHERE VC.Comp_ID = @CompId AND MC.IsDelete = 0 AND MC.Entry_Date >= @CompRegDate;
 
     SELECT @RegUsers_Prev = COUNT(*) 
     FROM M_Consumer AS MC WITH (NOLOCK)
     INNER JOIN tbl_Vendorvisekycstatus AS VC WITH (NOLOCK) ON VC.M_consumerId = MC.M_Consumerid
     WHERE VC.Comp_ID = @CompId AND MC.IsDelete = 0
-      AND MC.Entry_Date < @StartDate;
+      AND MC.Entry_Date >= @CompRegDate AND MC.Entry_Date < @StartDate;
 
     ---------------------------------------------------------
     -- 2. ACTIVE USERS (Users with activity in period)
@@ -108,12 +123,12 @@ BEGIN
 
     SELECT @QrCreated_Current = COUNT(*) 
     FROM M_Code WITH (NOLOCK)
-    WHERE Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WHERE Comp_ID = @CompId);
+    WHERE Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WHERE Comp_ID = @CompId) AND Allot_Date >= @CompRegDate;
 
     SELECT @QrCreated_Prev = COUNT(*) 
     FROM M_Code WITH (NOLOCK)
     WHERE Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WHERE Comp_ID = @CompId)
-      AND Allot_Date < @StartDate;
+      AND Allot_Date >= @CompRegDate AND Allot_Date < @StartDate;
 
     ---------------------------------------------------------
     -- 4. QR CODES VERIFIED (Total)
@@ -122,11 +137,11 @@ BEGIN
 
     SELECT @QrVerified_Current = COUNT(*) 
     FROM Pro_Enq WITH (NOLOCK)
-    WHERE Comp_ID = @CompId;
+    WHERE Comp_ID = @CompId AND Enq_Date >= @CompRegDate;
 
     SELECT @QrVerified_Prev = COUNT(*) 
     FROM Pro_Enq WITH (NOLOCK)
-    WHERE Comp_ID = @CompId AND Enq_Date < @StartDate;
+    WHERE Comp_ID = @CompId AND Enq_Date >= @CompRegDate AND Enq_Date < @StartDate;
 
     ---------------------------------------------------------
     -- 5. TOTAL CASH UTILIZED (Total Payouts)
