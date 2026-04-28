@@ -4,18 +4,18 @@ SET QUOTED_IDENTIFIER ON
 GO
 -- =============================================
 -- Author:      AI
--- Create date: 2026-04-02
--- Description: Get code status details and summary for a specific company
+-- Create date: 2026-04-28
+-- Description: Get code status details and summary for a specific serial number
 -- =============================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetCodeStatus_AI]
-    @RecievedCode1 NVARCHAR(10),
-    @RecievedCode2 NVARCHAR(10),
-    @Comp_ID NVARCHAR(50), 
-    @Type NVARCHAR(20) = NULL ,  -- DETAILS | SUMMARY | NULL
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetCodeStatusBySerialNumber_AI]
+    @Pro_ID VARCHAR(6),
+    @Series_Order INT,
+    @Series_Serial INT,
+    @Comp_ID NVARCHAR(50),
+    @Type NVARCHAR(20) = NULL,
     @Page INT = NULL,
     @Limit INT = NULL,
-    @IsExport BIT = NULL,
-    @ServiceID NVARCHAR(50) = NULL
+    @IsExport BIT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -30,6 +30,20 @@ BEGIN
 
     IF @Type IS NOT NULL
         SET @Type = UPPER(LTRIM(RTRIM(@Type)));
+
+    ---------------------------------------------------------
+    -- Get Code1 and Code2 from M_Code based on Serial
+    ---------------------------------------------------------
+    DECLARE @RecievedCode1 NVARCHAR(10);
+    DECLARE @RecievedCode2 NVARCHAR(10);
+
+    SELECT 
+        @RecievedCode1 = Code1, 
+        @RecievedCode2 = Code2 
+    FROM M_Code 
+    WHERE Pro_ID = @Pro_ID 
+      AND Series_Order = @Series_Order 
+      AND Series_Serial = @Series_Serial;
 
     ---------------------------------------------------------
     -- Subscription Temp Table
@@ -52,14 +66,13 @@ BEGIN
     INNER JOIN Pro_Reg pr 
         ON pr.Pro_id = ss.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
-      AND (@ServiceID IS NULL OR ss.Service_ID = @ServiceID)
       AND sst.IsActive = 1 AND sst.IsDelete = 0
       AND ss.IsActive = 1 AND ss.IsDelete = 0;
 
     ---------------------------------------------------------
-    -- Code Status Temp
+    -- Final Data Temp Table
     ---------------------------------------------------------
-    IF OBJECT_ID('tempdb..#CodeStatus') IS NOT NULL DROP TABLE #CodeStatus;
+    IF OBJECT_ID('tempdb..#FinalData') IS NOT NULL DROP TABLE #FinalData;
 
     SELECT
         CASE WHEN PE.Is_Success = 1 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
@@ -68,8 +81,9 @@ BEGIN
         PE.Enq_Date,
         ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS UniqueCode,
         PE.MobileNo,
-        ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode
-    INTO #CodeStatus
+        ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
+        pr.Pro_Name
+    INTO #FinalData
     FROM Pro_Enq PE
     INNER JOIN M_Code mc 
         ON mc.Code1 = PE.Received_Code1
@@ -98,7 +112,7 @@ BEGIN
         IF (@IsExport = 1)
         BEGIN
             SELECT *
-            FROM #CodeStatus
+            FROM #FinalData
             ORDER BY Enq_Date DESC;
         END
         ELSE
@@ -106,23 +120,23 @@ BEGIN
             DECLARE @Offset INT = (@Page - 1) * @Limit;
 
             SELECT *
-            FROM #CodeStatus
+            FROM #FinalData
             ORDER BY Enq_Date DESC
             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
         END
     END
 
     ---------------------------------------------------------
-    -- PAGINATION META
+    -- META RESULT
     ---------------------------------------------------------
     IF (@IsExport = 0 AND (@Type IS NULL OR @Type = '' OR @Type = 'DETAILS'))
     BEGIN
         SELECT
-            COUNT(1) AS TotalRecords,
-            @Page  AS CurrentPage,
+            COUNT(*) AS TotalRecords,
+            @Page AS CurrentPage,
             @Limit AS [Limit],
-            CAST(CEILING(COUNT(1) * 1.0 / @Limit) AS INT) AS TotalPages
-        FROM #CodeStatus;
+            CEILING(COUNT(*) * 1.0 / @Limit) AS TotalPages
+        FROM #FinalData;
     END
 
     ---------------------------------------------------------
@@ -163,8 +177,7 @@ BEGIN
             ON MS.Service_ID = ss.Service_ID
         WHERE PE.Received_Code1 = @RecievedCode1
           AND PE.Received_Code2 = @RecievedCode2
-          AND pr.Comp_ID = @Comp_ID
-          AND (@ServiceID IS NULL OR ss.Service_ID = @ServiceID)        
+          AND pr.Comp_ID = @Comp_ID       
         ORDER BY PE.Enq_Date DESC;
     END
 END
