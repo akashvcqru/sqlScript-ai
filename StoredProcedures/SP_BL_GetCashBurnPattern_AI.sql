@@ -115,7 +115,7 @@ SET @PrevStartDate = DATEADD(DAY, -DATEDIFF(DAY, @StartDate, DATEADD(DAY, 1, @En
     ---------------------------------------------------------------
     -- LABEL HANDLING AND OUTPUT 1 (CHART DATA)
     ---------------------------------------------------------------
-    IF @Win IN ('WEEK','LASTWEEK')
+    IF @Win IN ('WEEK', 'THISWEEK', 'LASTWEEK')
     BEGIN
         SELECT  
             DATENAME(WEEKDAY, Dt) AS Label,
@@ -124,10 +124,17 @@ SET @PrevStartDate = DATEADD(DAY, -DATEDIFF(DAY, @StartDate, DATEADD(DAY, 1, @En
         FROM #FinalDaily
         ORDER BY Dt;
     END
-    ELSE IF @Win IN ('TODAY','YESTERDAY','MONTH','LASTMONTH','YEAR','LASTYEAR')
+    ELSE IF @Win IN ('MONTH', 'THISMONTH', 'LASTMONTH')
     BEGIN
         SELECT  
-            CONVERT(VARCHAR(10), Dt, 120) AS Label,
+            CONCAT(DAY(Dt), 
+                CASE 
+                    WHEN DAY(Dt) % 10 = 1 AND DAY(Dt) % 100 <> 11 THEN 'st'
+                    WHEN DAY(Dt) % 10 = 2 AND DAY(Dt) % 100 <> 12 THEN 'nd'
+                    WHEN DAY(Dt) % 10 = 3 AND DAY(Dt) % 100 <> 13 THEN 'rd'
+                    ELSE 'th' 
+                END, 
+                ' ', DATENAME(MONTH, Dt)) AS Label,
             CashBurn,
             0 AS ChangePercent
         FROM #FinalDaily
@@ -152,7 +159,7 @@ SET @PrevStartDate = DATEADD(DAY, -DATEDIFF(DAY, @StartDate, DATEADD(DAY, 1, @En
             FROM Monthly
         )
         SELECT  
-            CONCAT(DATENAME(MONTH, MonthDate), ' ', YEAR(MonthDate)) AS Label,
+            DATENAME(MONTH, MonthDate) AS Label,
             CashBurn,
             CASE WHEN PrevBurn = 0 THEN 0
                  ELSE ((CashBurn - PrevBurn) * 100.0) / PrevBurn END AS ChangePercent
@@ -162,13 +169,13 @@ SET @PrevStartDate = DATEADD(DAY, -DATEDIFF(DAY, @StartDate, DATEADD(DAY, 1, @En
     ELSE
     BEGIN
         SELECT  
-            CONCAT(DATENAME(MONTH, Dt), ' ', YEAR(Dt)) AS Label,
+            DATENAME(MONTH, Dt) AS Label,
             SUM(CashBurn) AS CashBurn,
             0 AS ChangePercent
         FROM #FinalDaily
         GROUP BY YEAR(Dt), MONTH(Dt), DATENAME(MONTH, Dt)
         ORDER BY MIN(Dt);
-    END
+    END;
 
     ---------------------------------------------------------------
     -- SUMMARY TOTALS
