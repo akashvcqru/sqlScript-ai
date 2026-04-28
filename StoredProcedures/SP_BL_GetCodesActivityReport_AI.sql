@@ -35,6 +35,9 @@ BEGIN
     ----------------------------------------------------
     -- Date Range (SAFE FOR DATE TYPE)
     ----------------------------------------------------
+    DECLARE @CompanyStartDate DATETIME;
+    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+
     DECLARE @StartDate DATETIME;
     DECLARE @EndDate   DATETIME;
 
@@ -95,16 +98,16 @@ BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
             SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
         END
-        ELSE IF (@datePreset = 'ALL')
+        ELSE IF (@datePreset = 'ALL' OR @datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR @datePreset = 'NULL')
         BEGIN
-            SET @StartDate = '1900-01-01';
-            SET @EndDate   = '2100-01-01';
+            SET @StartDate = CAST(@CompanyStartDate AS DATE);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
         ELSE
         BEGIN
-            -- Default fallback (last 7 days)
-            SET @StartDate = DATEADD(DAY, -7, GETDATE());
-            SET @EndDate   = GETDATE();
+            -- Default fallback (ALL)
+            SET @StartDate = CAST(@CompanyStartDate AS DATE);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
     END
 

@@ -32,6 +32,9 @@ BEGIN
     ------------------------------------------------------
     -- Date Range
     ------------------------------------------------------
+    DECLARE @CompanyStartDate DATETIME;
+    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+
     DECLARE @StartDate DATE = NULL;
     DECLARE @EndDate   DATE = NULL;
 
@@ -105,8 +108,8 @@ BEGIN
 
         ELSE -- ALL / NULL
         BEGIN
-            SET @StartDate = NULL;
-            SET @EndDate   = NULL;
+            SET @StartDate = CAST(@CompanyStartDate AS DATE);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
     END
 

@@ -33,6 +33,9 @@ BEGIN
     ---------------------------------------------------------
     -- Date Range Calculation
     ---------------------------------------------------------
+    DECLARE @CompanyStartDate DATETIME;
+    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+
     DECLARE @StartDate DATETIME = NULL;
     DECLARE @EndDate   DATETIME = NULL;
 
@@ -93,7 +96,13 @@ BEGIN
             SET @EndDate   = DATEADD(SECOND, -1, DATEFROMPARTS(YEAR(GETDATE()), 1, 1));
         END
     END
-    -- ELSE → ALL DATA (StartDate & EndDate remain NULL)
+    
+    IF (@StartDate IS NULL AND @EndDate IS NULL)
+    BEGIN
+        -- ALL DATA fallback
+        SET @StartDate = CAST(@CompanyStartDate AS DATE);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
 
     ---------------------------------------------------------
     -- FINAL RESULT
