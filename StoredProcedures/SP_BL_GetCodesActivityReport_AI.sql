@@ -1,9 +1,12 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 4/28/2026 11:05:47 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- exec [dbo].[SP_BL_GetCodesActivityReport_AI] 'Comp-1869',NULL,'2026-01-02','2026-01-07',NULL,NULL,NULL,1,10,1
+-- exec [dbo].[SP_BL_GetCodesActivityReport_AI] 'Comp-1727',NULL,'2026-01-02','2026-01-07',NULL,NULL,NULL,1,10,1
 ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
@@ -99,12 +102,17 @@ BEGIN
         Enq_Date,
         Dial_Mode,
         Is_Success,
-        MobileNo,
-        Latitude,
-        Longitude
+        MobileNo
     INTO #Enq
     FROM Pro_Enq
-    WHERE Comp_ID = @Comp_Id
+	INNER JOIN M_code M 
+	    ON Received_Code1 = CAST(code1 AS VARCHAR(50))
+	 AND Received_Code2 = CAST(Code2 AS VARCHAR(50))
+   -- ON Received_Code1 = M.code1 
+   --AND Received_Code2 = M.Code2
+   INNER JOIN Pro_Reg PR
+   ON PR.Pro_ID=M.Pro_ID
+    WHERE PR.Comp_ID = @Comp_Id
       AND Enq_Date >= @StartDate
       AND Enq_Date <  @EndDate
       AND (@DialModeFilter IS NULL OR Dial_Mode = @DialModeFilter);
@@ -166,9 +174,7 @@ BEGIN
         Code2,
         MobileNo,
         State,
-        City,
-        Latitude,
-        Longitude
+        City
     INTO #Geo
     FROM (
         SELECT 
@@ -238,9 +244,7 @@ BEGIN
                 WHEN E.Is_Success = 1 THEN 'Verified'
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
-            END AS Result,
-            ISNULL(NULLIF(E.Latitude, ''), G.Latitude) AS Latitude,
-            ISNULL(NULLIF(E.Longitude, ''), G.Longitude) AS Longitude
+            END AS Result
         --FROM #Enq E
 		FROM
 		(
@@ -297,9 +301,7 @@ BEGIN
                 WHEN E.Is_Success = 1 THEN 'Verified'
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
-            END AS Result,
-            ISNULL(NULLIF(E.Latitude, ''), G.Latitude) AS Latitude,
-            ISNULL(NULLIF(E.Longitude, ''), G.Longitude) AS Longitude
+            END AS Result
         FROM #Enq E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
@@ -353,4 +355,3 @@ BEGIN
             );
     END
 END
-GO
