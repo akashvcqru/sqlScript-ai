@@ -12,7 +12,7 @@ CREATE PROCEDURE USP_GetProductList_AI
     @PageNumber    INT = 1,
     @PageSize      INT = 10,
     @SearchQuery   NVARCHAR(200) = '',
-    @TimeWindow    NVARCHAR(50) = '',
+    @datePreset    NVARCHAR(50) = '',
     @FromDate      DATETIME = NULL,
     @ToDate        DATETIME = NULL
 AS
@@ -23,35 +23,46 @@ BEGIN
     DECLARE @CalculatedFromDate DATETIME = NULL;
     DECLARE @CalculatedToDate DATETIME = NULL;
 
-    IF @TimeWindow = 'this week'
+    DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(@datePreset)));
+    
+    IF @Win = 'THIS WEEK' OR @Win = 'WEEK'
     BEGIN
         SET @CalculatedFromDate = DATEADD(week, DATEDIFF(week, 0, GETDATE()), 0);
         SET @CalculatedToDate = GETDATE();
     END
-    ELSE IF @TimeWindow = 'lastweek' OR @TimeWindow = 'last week'
+    ELSE IF @Win = 'LAST WEEK' OR @Win = 'LASTWEEK'
     BEGIN
         SET @CalculatedFromDate = DATEADD(week, DATEDIFF(week, 7, GETDATE()), 0);
         SET @CalculatedToDate = DATEADD(second, -1, DATEADD(week, DATEDIFF(week, 0, GETDATE()), 0));
     END
-    ELSE IF @TimeWindow = 'this month'
+    ELSE IF @Win = 'THIS MONTH' OR @Win = 'MONTH'
     BEGIN
         SET @CalculatedFromDate = DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0);
         SET @CalculatedToDate = GETDATE();
     END
-    ELSE IF @TimeWindow = 'last month'
+    ELSE IF @Win = 'LAST MONTH' OR @Win = 'LASTMONTH'
     BEGIN
         SET @CalculatedFromDate = DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0);
         SET @CalculatedToDate = DATEADD(second, -1, DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0));
     END
-    ELSE IF @TimeWindow = 'quarter'
+    ELSE IF @Win = 'QUARTER'
     BEGIN
         SET @CalculatedFromDate = DATEADD(quarter, DATEDIFF(quarter, 0, GETDATE()), 0);
         SET @CalculatedToDate = GETDATE();
     END
-    ELSE IF @FromDate IS NOT NULL OR @ToDate IS NOT NULL OR @TimeWindow = 'from to date'
+    ELSE IF @Win = 'YEAR'
+    BEGIN
+        SET @CalculatedFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        SET @CalculatedToDate = GETDATE();
+    END
+    ELSE IF @Win = 'LASTYEAR'
+    BEGIN
+        SET @CalculatedFromDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+        SET @CalculatedToDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31);
+    END
+    ELSE IF @FromDate IS NOT NULL OR @ToDate IS NOT NULL OR @Win = 'FROM TO DATE'
     BEGIN
         SET @CalculatedFromDate = @FromDate;
-        -- Ensure ToDate includes the entire day if time wasn't strictly provided
         SET @CalculatedToDate = ISNULL(DATEADD(day, 1, @ToDate), GETDATE()); 
     END
 

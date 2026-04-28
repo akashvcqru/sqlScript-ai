@@ -9,7 +9,7 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_TopBeneficiaries_AI]
 (  
     @CompId     NVARCHAR(50),  
-    @TimeWindow NVARCHAR(20) = NULL
+    @datePreset NVARCHAR(20) = NULL
 )  
 AS  
 BEGIN  
@@ -18,23 +18,52 @@ BEGIN
   DECLARE @StartDate DATETIME, @EndDate DATETIME;
   SET @EndDate = CAST(GETDATE() AS DATETIME);
 
-  SET @StartDate =
-    CASE UPPER(@TimeWindow)
-        WHEN 'TODAY' THEN CAST(CAST(@EndDate AS DATE) AS DATETIME)
-        WHEN 'WEEK' THEN DATEADD(DAY, -7, @EndDate)
-        WHEN 'LASTWEEK' THEN DATEADD(DAY, -14, @EndDate)
-        WHEN 'MONTH' THEN DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0)
-        WHEN 'LASTMONTH' THEN DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate) - 1, 0)
-        WHEN 'QUARTER' THEN DATEADD(DAY, -90, @EndDate)
-        WHEN 'ALL' THEN DATEADD(DAY, -10000, @EndDate)
-        ELSE DATEADD(DAY, -7, @EndDate)
-    END;
-
-if UPPER(@TimeWindow) = 'MONTH'
-    SET @EndDate = EOMONTH(@EndDate);
-
-IF UPPER(@TimeWindow) = 'LASTMONTH'
-    SET @EndDate = EOMONTH(DATEADD(MONTH, -1, @EndDate));
+  DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, 'WEEK'))));
+  
+  IF @Win = 'TODAY'
+  BEGIN
+      SET @StartDate = CAST(CAST(@EndDate AS DATE) AS DATETIME);
+  END
+  ELSE IF @Win = 'WEEK'
+  BEGIN
+      SET @StartDate = DATEADD(DAY, -7, @EndDate);
+  END
+  ELSE IF @Win = 'LASTWEEK'
+  BEGIN
+      SET @StartDate = DATEADD(DAY, -14, @EndDate);
+  END
+  ELSE IF @Win = 'MONTH'
+  BEGIN
+      SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0);
+      SET @EndDate = EOMONTH(@EndDate);
+  END
+  ELSE IF @Win = 'LASTMONTH'
+  BEGIN
+      SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate) - 1, 0);
+      SET @EndDate = EOMONTH(DATEADD(MONTH, -1, @EndDate));
+  END
+  ELSE IF @Win = 'QUARTER'
+  BEGIN
+      SET @StartDate = DATEADD(DAY, -90, @EndDate);
+  END
+  ELSE IF @Win = 'YEAR'
+  BEGIN
+      SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+      SET @EndDate = GETDATE();
+  END
+  ELSE IF @Win = 'LASTYEAR'
+  BEGIN
+      SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+      SET @EndDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31);
+  END
+  ELSE IF @Win = 'ALL'
+  BEGIN
+      SET @StartDate = DATEADD(DAY, -10000, @EndDate);
+  END
+  ELSE
+  BEGIN
+      SET @StartDate = DATEADD(DAY, -7, @EndDate);
+  END
 
     IF OBJECT_ID('tempdb..#Users') IS NOT NULL DROP TABLE #Users;
 
