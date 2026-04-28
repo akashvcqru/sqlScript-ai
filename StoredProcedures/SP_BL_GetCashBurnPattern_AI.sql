@@ -23,53 +23,53 @@ BEGIN
 -- Default end date
 SET @EndDate = CAST(GETDATE() AS DATE);
 SET DATEFIRST 1;
-DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
+DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
 
--- Time window logic
-IF @Win = 'MONTH'
+-- Normalize the filter string
+SET @Win = REPLACE(@Win, ' ', '');
+IF @Win = 'THISMONTH' SET @Win = 'MONTH';
+IF @Win = 'THISWEEK' SET @Win = 'WEEK';
+IF @Win = 'QUARTER(90DAYS)' SET @Win = 'QUARTER';
+
+-- Fetch Company Registration Date for optimization
+DECLARE @CompRegDate DATE;
+SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
+FROM Comp_Reg WITH (NOLOCK) 
+WHERE Comp_ID = @CompId AND Status = 1;
+
+IF @CompRegDate IS NULL 
+    SET @CompRegDate = '2000-01-01';
+
+IF @Win = 'WEEK' OR @Win = 'THISWEEK'
 BEGIN
-    SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), MONTH(@EndDate), 1);
+    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0); -- Monday
+    SET @EndDate = CAST(GETDATE() AS DATE);
+END
+ELSE IF @Win = 'LASTWEEK'
+BEGIN
+    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0); -- Prev Monday
+    SET @EndDate = DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0)); -- Prev Sunday
+END
+ELSE IF @Win = 'MONTH' OR @Win = 'THISMONTH'
+BEGIN
+    SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+    SET @EndDate = CAST(GETDATE() AS DATE);
 END
 ELSE IF @Win = 'LASTMONTH'
 BEGIN
-    SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate) - 1, 0);
-    SET @EndDate   = EOMONTH(DATEADD(MONTH, -1, @EndDate));
+    SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+    SET @EndDate = EOMONTH(DATEADD(MONTH, -1, GETDATE()));
 END
-ELSE IF @Win = 'TODAY'
+ELSE IF @Win = 'QUARTER'
 BEGIN
-    SET @StartDate = @EndDate;
-END
-ELSE IF @Win = 'YESTERDAY'
-BEGIN
-    SET @StartDate = DATEADD(DAY, -1, @EndDate);
-    SET @EndDate   = DATEADD(DAY, -1, @EndDate);
-END
-ELSE IF (@Win = 'WEEK')
-BEGIN
-    SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @EndDate), @EndDate);
-END
-ELSE IF (@Win = 'LASTWEEK')
-BEGIN
-    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate) - 1, 0);
-    SET @EndDate   = DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
-END
-ELSE IF (@Win = 'QUARTER')
-BEGIN
-    SET @StartDate = DATEADD(DAY, -90, @EndDate);
-END
-ELSE IF @Win = 'YEAR'
-BEGIN
-    SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), 1, 1);
-    SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
-END
-ELSE IF @Win = 'LASTYEAR'
-BEGIN
-    SET @StartDate = DATEFROMPARTS(YEAR(@EndDate) - 1, 1, 1);
-    SET @EndDate   = DATEFROMPARTS(YEAR(@EndDate), 1, 1);
+    SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+    SET @EndDate = DATEADD(DAY, -1, DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0));
 END
 ELSE
 BEGIN
-    SET @StartDate = DATEADD(DAY, -7, @EndDate);
+    -- Default to THIS WEEK
+    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+    SET @EndDate = CAST(GETDATE() AS DATE);
 END
 
 SET @PrevStartDate = DATEADD(DAY, -DATEDIFF(DAY, @StartDate, DATEADD(DAY, 1, @EndDate)), @StartDate);
@@ -83,6 +83,7 @@ SET @PrevStartDate = DATEADD(DAY, -DATEDIFF(DAY, @StartDate, DATEADD(DAY, 1, @En
      INTO #CashBurn
      FROM tblUPITransactionDetails ut WITH (NOLOCK) 
      WHERE ut.Status = 'Success' AND Comp_Id=@CompId
+       AND ut.ReqDate >= @CompRegDate
 	   AND CAST(ut.ReqDate AS DATE) BETWEEN @StartDate AND @EndDate
      GROUP BY CAST(ut.ReqDate AS DATE);
 		
@@ -189,6 +190,7 @@ SET @PrevStartDate = DATEADD(DAY, -DATEDIFF(DAY, @StartDate, DATEADD(DAY, 1, @En
      INTO #CashBurnPrev
      FROM tblUPITransactionDetails ut WITH (NOLOCK) 
      WHERE ut.Status = 'Success' AND Comp_Id=@CompId
+       AND ut.ReqDate >= @CompRegDate
 	   AND CAST(ut.ReqDate AS DATE) BETWEEN @PrevStartDate AND DATEADD(DAY, -1, @StartDate)
      GROUP BY CAST(ut.ReqDate AS DATE);
 

@@ -26,14 +26,10 @@ BEGIN
     IF @Win = 'THISWEEK' SET @Win = 'WEEK';
     IF @Win = 'QUARTER(90DAYS)' SET @Win = 'QUARTER';
 
-    IF @Win = 'TODAY'          SET @Days = 1;
-    ELSE IF @Win = 'YESTERDAY' SET @Days = 1;
-    ELSE IF @Win = 'LASTWEEK'  SET @Days = 14;
-    ELSE IF @Win = 'WEEK'      SET @Days = 7;
-    ELSE IF @Win = 'QUARTER'   SET @Days = 90;
-    ELSE IF @Win = 'YEAR'      SET @Days = 365;
-    ELSE IF @Win = 'LASTYEAR'  SET @Days = 365;
-    ELSE                       SET @Days = 30; -- Default to Month/30 days
+    IF @Win = 'LASTWEEK'  SET @Days = 14;
+    ELSE IF @Win = 'WEEK' OR @Win = 'THISWEEK' SET @Days = 7;
+    ELSE IF @Win = 'QUARTER' SET @Days = 90;
+    ELSE SET @Days = 30; -- Default to Month/30 days
 
     -- Fetch Company Registration Date for optimization
     DECLARE @CompRegDate DATE;
@@ -44,47 +40,48 @@ BEGIN
     IF @CompRegDate IS NULL 
         SET @CompRegDate = '2000-01-01';
 
-    IF @Win = 'MONTH'
+    IF @Win = 'WEEK' OR @Win = 'THISWEEK'
+    BEGIN
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0); -- Monday
+        SET @EndDate = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        SET @PrevStartDate = DATEADD(WEEK, -1, @StartDate);
+        SET @PrevEndDate = @StartDate;
+    END
+    ELSE IF @Win = 'LASTWEEK'
+    BEGIN
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0); -- Prev Monday
+        SET @EndDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0); -- Current Monday
+        SET @PrevStartDate = DATEADD(WEEK, -1, @StartDate);
+        SET @PrevEndDate = @StartDate;
+    END
+    ELSE IF @Win = 'MONTH' OR @Win = 'THISMONTH'
     BEGIN
         SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
-        SET @EndDate   = DATEADD(DAY, 1, EOMONTH(GETDATE()));
+        SET @EndDate = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         SET @PrevStartDate = DATEADD(MONTH, -1, @StartDate);
-        SET @PrevEndDate   = @StartDate;
+        SET @PrevEndDate = @StartDate;
     END
     ELSE IF @Win = 'LASTMONTH'
     BEGIN
-        SET @StartDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1));
-        SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+        SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+        SET @EndDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0);
         SET @PrevStartDate = DATEADD(MONTH, -1, @StartDate);
-        SET @PrevEndDate   = @StartDate;
+        SET @PrevEndDate = @StartDate;
     END
-    ELSE IF @Win = 'YEAR'
+    ELSE IF @Win = 'QUARTER'
     BEGIN
-        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
-        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
-        SET @PrevStartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
-        SET @PrevEndDate   = @StartDate;
-    END
-    ELSE IF @Win = 'LASTYEAR'
-    BEGIN
-        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
-        SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
-        SET @PrevStartDate = DATEFROMPARTS(YEAR(GETDATE()) - 2, 1, 1);
-        SET @PrevEndDate   = @StartDate;
-    END
-    ELSE IF @Win = 'YESTERDAY'
-    BEGIN
-        SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
-        SET @EndDate   = CAST(GETDATE() AS DATE);
-        SET @PrevStartDate = DATEADD(DAY, -1, @StartDate);
-        SET @PrevEndDate   = @StartDate;
+        SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+        SET @EndDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
+        SET @PrevStartDate = DATEADD(QUARTER, -1, @StartDate);
+        SET @PrevEndDate = @StartDate;
     END
     ELSE
     BEGIN
-        SET @StartDate = DATEADD(DAY, -@Days, CAST(GETDATE() AS DATE));
-        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
-        SET @PrevStartDate = DATEADD(DAY, -@Days, @StartDate);
-        SET @PrevEndDate   = @StartDate;
+        -- Default to THIS WEEK
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+        SET @EndDate = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        SET @PrevStartDate = DATEADD(WEEK, -1, @StartDate);
+        SET @PrevEndDate = @StartDate;
     END;
 
     ---------------------------------------------------------
