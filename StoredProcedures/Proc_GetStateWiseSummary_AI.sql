@@ -13,81 +13,63 @@ CREATE OR ALTER PROCEDURE [dbo].[Proc_GetStateWiseSummary_AI]
 AS
 BEGIN
   SET NOCOUNT ON;
+  SET DATEFIRST 1;
 
 DECLARE @StartDate DATE;
 DECLARE @EndDate   DATE;
 
 DECLARE @Today DATE = CAST(GETDATE() AS DATE);
-DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
+DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
 
--- Monday as first day of week
-SET DATEFIRST 1;
+-- Normalize the filter string (consistent with other dashboard SPs)
+SET @Win = REPLACE(@Win, ' ', '');
+IF @Win = 'THISMONTH' SET @Win = 'MONTH';
+IF @Win = 'THISWEEK' SET @Win = 'WEEK';
+IF @Win = 'QUARTER(90DAYS)' SET @Win = 'QUARTER';
 
-------------------------------------------------
--- START DATE (CALENDAR-BASED)
-------------------------------------------------
-SET @StartDate =
-    CASE
-        -- TODAY
-        WHEN @Win = 'TODAY'
-            THEN @Today
+-- Fetch Company Registration Date for optimization
+DECLARE @CompRegDate DATE;
+SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
+FROM Comp_Reg WITH (NOLOCK) 
+WHERE Comp_ID = @Comp_Id AND Status = 1;
 
-        -- CURRENT WEEK (Monday → Today)
-        WHEN @Win = 'WEEK'
-            THEN DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today)
-
-        -- LAST WEEK (Previous Monday)
-        WHEN @Win = 'LASTWEEK'
-            THEN DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today) - 1, 0)
-
-        -- CURRENT MONTH (1st → Today)
-        WHEN @Win = 'MONTH'
-            THEN DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)
-
-        -- LAST MONTH (1st of previous month)
-        WHEN @Win = 'LASTMONTH'
-            THEN DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1))
-
-        -- QUARTER (Rolling last 90 days)
-        WHEN @Win = 'QUARTER'
-            THEN DATEADD(DAY, -90, @Today)
-
-        -- YEAR
-        WHEN @Win = 'YEAR'
-            THEN DATEFROMPARTS(YEAR(@Today), 1, 1)
-
-        -- LAST YEAR
-        WHEN @Win = 'LASTYEAR'
-            THEN DATEFROMPARTS(YEAR(@Today) - 1, 1, 1)
-
-        -- DEFAULT → CURRENT MONTH
-        ELSE DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)
-    END;
+IF @CompRegDate IS NULL 
+    SET @CompRegDate = '2000-01-01';
 
 ------------------------------------------------
--- END DATE (CALENDAR-BASED)
+-- DATE RANGE LOGIC (Standardized with other SPs)
 ------------------------------------------------
-SET @EndDate =
-    CASE
-        -- LAST WEEK → Previous Sunday
-        WHEN @Win = 'LASTWEEK'
-            THEN DATEADD(
-                    DAY,
-                    -1,
-                    DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today), 0)
-                 )
-
-        -- LAST MONTH → Last day of previous month
-        WHEN @Win = 'LASTMONTH'
-            THEN EOMONTH(@Today, -1)
-
-        -- LAST YEAR → Last day of previous year
-        WHEN @Win = 'LASTYEAR'
-            THEN DATEADD(DAY, -1, DATEFROMPARTS(YEAR(@Today), 1, 1))
-
-        -- ALL OTHERS → Today
-        ELSE @Today
-    END;
+IF @Win = 'WEEK'
+BEGIN
+    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0); -- Monday
+    SET @EndDate = CAST(GETDATE() AS DATE);
+END
+ELSE IF @Win = 'LASTWEEK'
+BEGIN
+    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0); -- Prev Monday
+    SET @EndDate = DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0)); -- Prev Sunday
+END
+ELSE IF @Win = 'MONTH'
+BEGIN
+    SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+    SET @EndDate = CAST(GETDATE() AS DATE);
+END
+ELSE IF @Win = 'LASTMONTH'
+BEGIN
+    SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+    SET @EndDate = EOMONTH(DATEADD(MONTH, -1, GETDATE()));
+END
+ELSE IF @Win = 'QUARTER'
+BEGIN
+    SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+    SET @EndDate = DATEADD(DAY, -1, DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0));
+END
+ELSE
+BEGIN
+    -- Default to THIS WEEK
+    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+    SET @EndDate = CAST(GETDATE() AS DATE);
+END
 
     -------------------------------------------------------------------
     -- BENEFITS REPORT
@@ -96,7 +78,7 @@ SET @EndDate =
     BEGIN
 
         -------------------------------------------------------------------
-        -- RESULT 2️⃣ : REGION SUMMARY + % SHARE
+        -- RESULT 1: REGION SUMMARY + % SHARE (Cards at bottom)
         -------------------------------------------------------------------
         ;WITH RegionPoints AS (
             SELECT 
@@ -117,6 +99,7 @@ SET @EndDate =
             INNER JOIN M_Consumer C WITH (NOLOCK)
                 ON B.M_ConsumerId = C.M_ConsumerId
             WHERE B.Compid = @Comp_Id
+              AND B.UpdateDate >= @CompRegDate
               AND CAST(B.UpdateDate AS DATE) BETWEEN @StartDate AND @EndDate
             GROUP BY 
                 CASE 
@@ -154,38 +137,10 @@ SET @EndDate =
         ORDER BY R.Region;
 
         -------------------------------------------------------------------
-        -- RESULT 3️⃣ : UNIVERSAL REGION × LABEL HEATMAP
+        -- RESULT 2: REGION × LABEL HEATMAP (Chart data)
+        -- Weekly grouping for MONTH/QUARTER, daily for WEEK
         -------------------------------------------------------------------
-       ;WITH LabelSource AS (
-            SELECT 
-                CASE 
-                    -- WEEK / LASTWEEK → Mon, Tue
-                    WHEN @Win IN ('WEEK','LASTWEEK')
-                        THEN LEFT(DATENAME(WEEKDAY, Dt), 3)
- 
-                    -- MONTH / LASTMONTH → 14 JAN 25
-                    WHEN @Win IN ('MONTH','LASTMONTH')
-                        THEN FORMAT(Dt, 'dd MMM yy', 'en-US')
- 
-                    -- QUARTER → JAN 25
-                    WHEN @Win = 'QUARTER'
-                        THEN FORMAT(Dt, 'MMM yy', 'en-US')
-
-                    -- YEAR / LASTYEAR → JAN 25
-                    WHEN @Win IN ('YEAR','LASTYEAR')
-                        THEN FORMAT(Dt, 'MMM yy', 'en-US')
- 
-                    ELSE FORMAT(Dt, 'dd MMM yy', 'en-US')
-                END AS Label,
-                Dt
-            FROM (
-                SELECT DATEADD(DAY, v.number, @StartDate) AS Dt
-                FROM master..spt_values v
-                WHERE v.type = 'P'
-                  AND v.number <= DATEDIFF(DAY, @StartDate, @EndDate)
-            ) X
-        ),
-        Base AS (
+       ;WITH Base AS (
             SELECT 
                 CAST(B.UpdateDate AS DATE) AS Dt,
                 CASE 
@@ -204,28 +159,52 @@ SET @EndDate =
             INNER JOIN M_Consumer C WITH (NOLOCK)
                 ON B.M_ConsumerId = C.M_ConsumerId
             WHERE B.Compid = @Comp_Id
+              AND B.UpdateDate >= @CompRegDate
               AND CAST(B.UpdateDate AS DATE) BETWEEN @StartDate AND @EndDate
-        ),
-        Mapped AS (
-            SELECT 
-                L.Label,
-                L.Dt,
-                B.Region,
-                B.Points
-            FROM LabelSource L
-            LEFT JOIN Base B ON B.Dt = L.Dt
         )
+
+        -- Dynamic label logic based on preset
         SELECT 
-            Label,
-            SUM(CASE WHEN Region = 'North' THEN Points END) AS North_Points,
-            SUM(CASE WHEN Region = 'South' THEN Points END) AS South_Points,
-            SUM(CASE WHEN Region = 'East'  THEN Points END) AS East_Points,
-            SUM(CASE WHEN Region = 'West'  THEN Points END) AS West_Points,
-            SUM(CASE WHEN Region = 'Other' THEN Points END) AS Other_Points
-        FROM Mapped
-        GROUP BY Label
+            CASE 
+                -- WEEK / LASTWEEK → Day names (Mon, Tue, etc.)
+                WHEN @Win IN ('WEEK','LASTWEEK')
+                    THEN LEFT(DATENAME(WEEKDAY, Dt), 3)
+
+                -- MONTH / LASTMONTH → Week N
+                WHEN @Win IN ('MONTH','LASTMONTH')
+                    THEN 'Week ' + CAST(
+                        DATEDIFF(WEEK, @StartDate, Dt) + 1 
+                        AS VARCHAR(2))
+
+                -- QUARTER → Month name (Jan, Feb, etc.)
+                WHEN @Win = 'QUARTER'
+                    THEN LEFT(DATENAME(MONTH, Dt), 3)
+
+                -- Default → Week N
+                ELSE 'Week ' + CAST(
+                    DATEDIFF(WEEK, @StartDate, Dt) + 1 
+                    AS VARCHAR(2))
+            END AS Label,
+
+            SUM(CASE WHEN Region = 'North' THEN Points ELSE 0 END) AS North_Points,
+            SUM(CASE WHEN Region = 'South' THEN Points ELSE 0 END) AS South_Points,
+            SUM(CASE WHEN Region = 'East'  THEN Points ELSE 0 END) AS East_Points,
+            SUM(CASE WHEN Region = 'West'  THEN Points ELSE 0 END) AS West_Points,
+            SUM(CASE WHEN Region = 'Other' THEN Points ELSE 0 END) AS Other_Points
+        FROM Base
+        GROUP BY 
+            CASE 
+                WHEN @Win IN ('WEEK','LASTWEEK')
+                    THEN LEFT(DATENAME(WEEKDAY, Dt), 3)
+                WHEN @Win IN ('MONTH','LASTMONTH')
+                    THEN 'Week ' + CAST(DATEDIFF(WEEK, @StartDate, Dt) + 1 AS VARCHAR(2))
+                WHEN @Win = 'QUARTER'
+                    THEN LEFT(DATENAME(MONTH, Dt), 3)
+                ELSE 'Week ' + CAST(DATEDIFF(WEEK, @StartDate, Dt) + 1 AS VARCHAR(2))
+            END
         ORDER BY MIN(Dt);
 
         RETURN;
     END
 END
+GO
