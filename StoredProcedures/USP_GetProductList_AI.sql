@@ -14,7 +14,8 @@ CREATE PROCEDURE USP_GetProductList_AI
     @SearchQuery   NVARCHAR(200) = '',
     @datePreset    NVARCHAR(50) = '',
     @FromDate      DATETIME = NULL,
-    @ToDate        DATETIME = NULL
+    @ToDate        DATETIME = NULL,
+    @Status        NVARCHAR(50) = ''
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -118,6 +119,11 @@ BEGIN
         AND (
             @CalculatedToDate IS NULL 
             OR pr.Pro_Entry_Date <= @CalculatedToDate
+        )
+        AND (
+            ISNULL(@Status, '') = ''
+            OR (@Status = 'Verified' AND pr.Doc_Flag = 1 AND pr.Sound_Flag = 1)
+            OR (@Status = 'Pending' AND (ISNULL(pr.Doc_Flag, 0) != 1 OR ISNULL(pr.Sound_Flag, 0) != 1))
         )
     ORDER BY pr.Pro_Entry_Date DESC
     OFFSET (@PageNumber - 1) * @PageSize ROWS 
