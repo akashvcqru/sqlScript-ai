@@ -4,9 +4,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE PROCEDURE [dbo].[
-    
-]
+ALTER PROCEDURE [dbo].[SP_BL_GetPaymentClaimReport]
 (
     @Comp_Id        VARCHAR(20),
     @TimeWindow     NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER

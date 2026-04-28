@@ -4,7 +4,7 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 -- Exec [dbo].[SP_GetGeoLocationDataForMap_AI] 'Comp-1152','SRV1005','Today',null,null
-CREATE PROCEDURE [dbo].[SP_GetGeoLocationDataForMap_AI]
+ALTER PROCEDURE [dbo].[SP_GetGeoLocationDataForMap_AI]
     @Comp_Id NVARCHAR(15),	
 	@ServiceID nvarchar(20)=NULL,
      @TimeWindow NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, QUARTER

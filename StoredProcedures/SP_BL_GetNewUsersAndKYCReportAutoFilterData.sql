@@ -4,7 +4,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]
+ALTER PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]
     @Comp_Id VARCHAR(15),
     @TimeWindow NVARCHAR(20) = NULL ,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
     @FromDate DATE = NULL,              
