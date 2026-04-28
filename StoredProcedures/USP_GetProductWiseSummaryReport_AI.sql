@@ -1,3 +1,6 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetProductWiseSummaryReport_AI]    Script Date: 4/24/2026 10:49:15 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -7,7 +10,7 @@ GO
 -- Create date: 2026-04-02
 -- Description: Get product-wise summary report for a specific company
 -- =============================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetProductWiseSummaryReport_AI]
+ALTER   PROCEDURE [dbo].[USP_GetProductWiseSummaryReport_AI]
     @Comp_ID NVARCHAR(50),
     @datePreset NVARCHAR(20) = 'week',
     @FromDate DATETIME = NULL,
@@ -70,7 +73,7 @@ BEGIN
         END
         ELSE IF @datePreset = 'quarter'
         BEGIN
-            SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0)
+            SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
             SET @finalToDate = GETDATE()
         END
         ELSE
@@ -106,12 +109,12 @@ BEGIN
         FROM Pro_Enq pe
         INNER JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
         INNER JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
-        INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
+        --INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
             --AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
             --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
             --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
         WHERE pe.Comp_ID = @Comp_ID AND pe.IsActive = 1
-          AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
+        --  AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
           AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
         GROUP BY pr.Pro_ID, pe.State
@@ -142,7 +145,7 @@ BEGIN
         COUNT(*) OVER() AS TotalRecords
     FROM Pro_Reg pr
     LEFT JOIN #tempM_Code mc ON mc.Pro_ID = pr.Pro_ID
-    LEFT JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
+    --LEFT JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
         --AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
         --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
         --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
@@ -152,7 +155,7 @@ BEGIN
           AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
     LEFT JOIN TopStates ts ON ts.Pro_ID = pr.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
-      AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
+     -- AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
     GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, ts.State, ts.ScanCount
     ORDER BY pr.Pro_Name
     OFFSET (@PageNumber - 1) * @PageSize ROWS
@@ -160,4 +163,3 @@ BEGIN
     OPTION (RECOMPILE);
 END
 
-GO

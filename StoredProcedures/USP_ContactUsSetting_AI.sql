@@ -13,7 +13,7 @@ BEGIN
     DECLARE @CurrentContactUsData NVARCHAR(MAX);
     
     -- Fetch existing data
-    SELECT @CurrentContactUsData = [ContactUsContains] FROM [dbo].[BrandSettings] WHERE [Comp_ID] = @Comp_ID;
+    SELECT @CurrentContactUsData = [ContactUsContains] FROM [dbo].[BrandSettings_AI] WHERE [Comp_ID] = @Comp_ID;
 
     IF @CurrentContactUsData IS NOT NULL
     BEGIN
@@ -26,7 +26,7 @@ BEGIN
         SET @CurrentContactUsData = JSON_MODIFY(@CurrentContactUsData, '$.AboutUsLink', ISNULL(@AboutUsLink, JSON_VALUE(@CurrentContactUsData, '$.AboutUsLink')));
         SET @CurrentContactUsData = JSON_MODIFY(@CurrentContactUsData, '$.PrivacyPolicyLink', ISNULL(@PrivacyPolicyLink, JSON_VALUE(@CurrentContactUsData, '$.PrivacyPolicyLink')));
 
-        UPDATE [dbo].[BrandSettings]
+        UPDATE [dbo].[BrandSettings_AI]
         SET [ContactUsContains] = @CurrentContactUsData,
             [Updated_Date] = GETDATE(),
             [Updated_by] = 'API'
@@ -49,9 +49,9 @@ BEGIN
             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
         );
 
-        IF EXISTS (SELECT 1 FROM [dbo].[BrandSettings] WHERE [Comp_ID] = @Comp_ID)
+        IF EXISTS (SELECT 1 FROM [dbo].[BrandSettings_AI] WHERE [Comp_ID] = @Comp_ID)
         BEGIN
-            UPDATE [dbo].[BrandSettings]
+            UPDATE [dbo].[BrandSettings_AI]
             SET [ContactUsContains] = @NewContactUsData,
                 [Updated_Date] = GETDATE(),
                 [Updated_by] = 'API'
@@ -59,7 +59,7 @@ BEGIN
         END
         ELSE
         BEGIN
-            INSERT INTO [dbo].[BrandSettings] ([Comp_ID], [ContactUsContains], [Created_Date], [Created_by], [IsActive], [IsDelete])
+            INSERT INTO [dbo].[BrandSettings_AI] ([Comp_ID], [ContactUsContains], [Created_Date], [Created_by], [IsActive], [IsDelete])
             VALUES (@Comp_ID, @NewContactUsData, GETDATE(), 'API', 1, 0);
         END
         

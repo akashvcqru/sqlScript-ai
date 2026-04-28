@@ -70,7 +70,7 @@ BEGIN
         END
         ELSE IF @datePreset = 'quarter'
         BEGIN
-            SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0)
+            SET @finalFromDate =  DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
             SET @finalToDate = GETDATE()
         END
         ELSE
@@ -112,12 +112,12 @@ BEGIN
     FROM Pro_Enq pe
     INNER JOIN M_Consumer mc ON pe.MobileNo = mc.MobileNo
     INNER JOIN #tempM_Code mc_tbl ON mc_tbl.Code1 = pe.Received_Code1 AND mc_tbl.Code2 = pe.Received_Code2
-    INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc_tbl.Pro_ID 
+   -- INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc_tbl.Pro_ID 
         --AND CONCAT(FORMAT(mc_tbl.Series_Order, '000#'), FORMAT(mc_tbl.Series_Serial, '000#')) 
         --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
         --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     WHERE pe.Comp_ID = @Comp_ID
-      AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
+   --   AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
       AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
       AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
     GROUP BY mc.MobileNo, mc.State, mc.City, mc.Email, mc.PinCode
