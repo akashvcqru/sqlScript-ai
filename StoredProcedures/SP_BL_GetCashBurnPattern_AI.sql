@@ -9,7 +9,7 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCashBurnPattern_AI]
 (
     @CompId NVARCHAR(50),
-    @TimeWindow NVARCHAR(20)= NULL
+    @datePreset NVARCHAR(20)= NULL
 )
 AS
 BEGIN
@@ -23,42 +23,49 @@ BEGIN
 -- Default end date
 SET @EndDate = CAST(GETDATE() AS DATE);
 SET DATEFIRST 1;
+DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
 
 -- Time window logic
-IF UPPER(@TimeWindow) = 'MONTH'
+IF @Win = 'MONTH'
 BEGIN
     SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), MONTH(@EndDate), 1);
 END
-ELSE IF UPPER(@TimeWindow) = 'LASTMONTH'
+ELSE IF @Win = 'LASTMONTH'
 BEGIN
     SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate) - 1, 0);
     SET @EndDate   = EOMONTH(DATEADD(MONTH, -1, @EndDate));
 END
-ELSE IF UPPER(@TimeWindow) = 'TODAY'
+ELSE IF @Win = 'TODAY'
 BEGIN
     SET @StartDate = @EndDate;
 END
-ELSE IF UPPER(@TimeWindow) = 'YESTERDAY'
+ELSE IF @Win = 'YESTERDAY'
 BEGIN
     SET @StartDate = DATEADD(DAY, -1, @EndDate);
     SET @EndDate   = DATEADD(DAY, -1, @EndDate);
 END
-ELSE IF (UPPER(@TimeWindow) = 'WEEK')
+ELSE IF (@Win = 'WEEK')
 BEGIN
     SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @EndDate), @EndDate);
 END
-ELSE IF (UPPER(@TimeWindow) = 'LASTWEEK')
+ELSE IF (@Win = 'LASTWEEK')
 BEGIN
     SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate) - 1, 0);
     SET @EndDate   = DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
 END
-ELSE IF (UPPER(@TimeWindow) = 'QUARTER')
+ELSE IF (@Win = 'QUARTER')
 BEGIN
     SET @StartDate = DATEADD(DAY, -90, @EndDate);
 END
-ELSE IF UPPER(@TimeWindow) = 'YEAR'
+ELSE IF @Win = 'YEAR'
 BEGIN
-    SET @StartDate = DATEADD(YEAR, -1, @EndDate);
+    SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), 1, 1);
+    SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+END
+ELSE IF @Win = 'LASTYEAR'
+BEGIN
+    SET @StartDate = DATEFROMPARTS(YEAR(@EndDate) - 1, 1, 1);
+    SET @EndDate   = DATEFROMPARTS(YEAR(@EndDate), 1, 1);
 END
 ELSE
 BEGIN
@@ -107,7 +114,7 @@ SET @PrevStartDate = DATEADD(DAY, -DATEDIFF(DAY, @StartDate, DATEADD(DAY, 1, @En
     ---------------------------------------------------------------
     -- LABEL HANDLING AND OUTPUT 1 (CHART DATA)
     ---------------------------------------------------------------
-    IF UPPER(@TimeWindow) IN ('WEEK','LASTWEEK')
+    IF @Win IN ('WEEK','LASTWEEK')
     BEGIN
         SELECT  
             DATENAME(WEEKDAY, Dt) AS Label,
@@ -116,7 +123,7 @@ SET @PrevStartDate = DATEADD(DAY, -DATEDIFF(DAY, @StartDate, DATEADD(DAY, 1, @En
         FROM #FinalDaily
         ORDER BY Dt;
     END
-    ELSE IF UPPER(@TimeWindow) IN ('TODAY','YESTERDAY','MONTH','LASTMONTH')
+    ELSE IF @Win IN ('TODAY','YESTERDAY','MONTH','LASTMONTH','YEAR','LASTYEAR')
     BEGIN
         SELECT  
             CONVERT(VARCHAR(10), Dt, 120) AS Label,
@@ -125,7 +132,7 @@ SET @PrevStartDate = DATEADD(DAY, -DATEDIFF(DAY, @StartDate, DATEADD(DAY, 1, @En
         FROM #FinalDaily
         ORDER BY Dt;
     END
-    ELSE IF UPPER(@TimeWindow) = 'QUARTER'
+    ELSE IF @Win = 'QUARTER'
     BEGIN
         ;WITH Monthly AS 
         (

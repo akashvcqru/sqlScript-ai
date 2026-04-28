@@ -9,7 +9,7 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCOverview_AI]
 (
     @CompId NVARCHAR(50),
-    @TimeWindow NVARCHAR(20)=NULL
+    @datePreset NVARCHAR(20)=NULL
 )
 AS
 BEGIN
@@ -26,51 +26,63 @@ BEGIN
         @Label1 NVARCHAR(50), @Label2 NVARCHAR(50), @Label3 NVARCHAR(50);
 
         SET DATEFIRST 1;
+        DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
 
         SET @StartDate =
 CASE 
-    WHEN UPPER(@TimeWindow) = 'TODAY' THEN @Today
-    WHEN UPPER(@TimeWindow) = 'YESTERDAY' THEN DATEADD(DAY, -1, @Today)
-    WHEN UPPER(@TimeWindow) = 'WEEK' THEN DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today)
-    WHEN UPPER(@TimeWindow) = 'LASTWEEK' THEN DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today) - 1, 0)
-    WHEN UPPER(@TimeWindow) = 'MONTH' THEN DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)
-    WHEN UPPER(@TimeWindow) = 'LASTMONTH' THEN DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1))
-    WHEN UPPER(@TimeWindow) = 'QUARTER' THEN DATEADD(DAY, -90, @Today)
+    WHEN @Win = 'TODAY' THEN @Today
+    WHEN @Win = 'YESTERDAY' THEN DATEADD(DAY, -1, @Today)
+    WHEN @Win = 'WEEK' THEN DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today)
+    WHEN @Win = 'LASTWEEK' THEN DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today) - 1, 0)
+    WHEN @Win = 'MONTH' THEN DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)
+    WHEN @Win = 'LASTMONTH' THEN DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1))
+    WHEN @Win = 'QUARTER' THEN DATEADD(DAY, -90, @Today)
+    WHEN @Win = 'YEAR' THEN DATEFROMPARTS(YEAR(@Today), 1, 1)
+    WHEN @Win = 'LASTYEAR' THEN DATEFROMPARTS(YEAR(@Today) - 1, 1, 1)
     ELSE DATEADD(DAY, -7, @Today)
 END;
 
 SET @EndDate =
 CASE
-    WHEN UPPER(@TimeWindow) = 'MONTH' THEN EOMONTH(@Today)
-    WHEN UPPER(@TimeWindow) = 'LASTMONTH' THEN EOMONTH(DATEADD(MONTH, -1, @Today))
-    ELSE @Today
+    WHEN @Win = 'MONTH' THEN DATEADD(DAY, 1, @Today)
+    WHEN @Win = 'LASTMONTH' THEN DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)
+    WHEN @Win = 'YEAR' THEN DATEADD(DAY, 1, @Today)
+    WHEN @Win = 'LASTYEAR' THEN DATEFROMPARTS(YEAR(@Today), 1, 1)
+    ELSE DATEADD(DAY, 1, @Today)
 END;
 
     ---------------------------
     --  Determine buckets/labels
     ---------------------------
-    IF UPPER(ISNULL(@TimeWindow, 'WEEK')) = 'WEEK'
+    IF @Win = 'WEEK'
     BEGIN
         SET @Bucket1Start = 0; SET @Bucket1End = 2;
         SET @Bucket2Start = 3; SET @Bucket2End = 7;
         SET @Bucket3Start = 8;
         SET @Label1 = '0-2 Days'; SET @Label2 = '3-7 Days'; SET @Label3 = '>7 Days';
     END
-    ELSE IF UPPER(@TimeWindow) = 'MONTH'
+    ELSE IF @Win = 'MONTH'
     BEGIN
         SET @Bucket1Start = 0; SET @Bucket1End = 15;
         SET @Bucket2Start = 16; SET @Bucket2End = 30;
         SET @Bucket3Start = 31;
         SET @Label1 = '0-15 Days'; SET @Label2 = '16-30 Days'; SET @Label3 = '>30 Days';
     END
-    ELSE IF UPPER(@TimeWindow) = 'QUARTER'
+    ELSE IF @Win = 'QUARTER'
     BEGIN
         SET @Bucket1Start = 0; SET @Bucket1End = 30;
         SET @Bucket2Start = 31; SET @Bucket2End = 60;
         SET @Bucket3Start = 61;
         SET @Label1 = '0-30 Days'; SET @Label2 = '31-60 Days'; SET @Label3 = '>60 Days';
     END
-    ELSE IF UPPER(@TimeWindow) = 'LASTWEEK'
+    ELSE IF @Win = 'YEAR' OR @Win = 'LASTYEAR'
+    BEGIN
+        SET @Bucket1Start = 0; SET @Bucket1End = 90;
+        SET @Bucket2Start = 91; SET @Bucket2End = 180;
+        SET @Bucket3Start = 181;
+        SET @Label1 = '0-3 Months'; SET @Label2 = '3-6 Months'; SET @Label3 = '>6 Months';
+    END
+    ELSE IF @Win = 'LASTWEEK'
     BEGIN
         SET @Bucket1Start = 0; SET @Bucket1End = 1;
         SET @Bucket2Start = 2; SET @Bucket2End = 4;

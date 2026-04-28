@@ -10,7 +10,7 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetHighestCounterfeitActivities_AI]
 (
     @Comp_Id VARCHAR(20),
-    @Window  NVARCHAR(10) = NULL
+    @datePreset  NVARCHAR(20) = NULL
 )
 AS
 BEGIN
@@ -21,7 +21,7 @@ BEGIN
     ------------------------------------------------------
     DECLARE @StartDate DATE, @EndDate DATE;
     DECLARE @Today DATE = CAST(GETDATE() AS DATE);
-    DECLARE @Win NVARCHAR(10) = UPPER(ISNULL(@Window, ''));
+    DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
 
     IF @Win = 'TODAY'
     BEGIN
@@ -61,6 +61,16 @@ BEGIN
     BEGIN
         SET @StartDate = DATEADD(DAY, -90, @Today);
         SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'YEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), 1, 1);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTYEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today) - 1, 1, 1);
+        SET @EndDate   = DATEFROMPARTS(YEAR(@Today), 1, 1);
     END
     ELSE IF @Win = 'ALL'
     BEGIN

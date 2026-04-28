@@ -8,7 +8,7 @@ GO
 
 CREATE OR ALTER PROCEDURE [dbo].[Proc_GetStateWiseSummary_AI]
       @Comp_Id VARCHAR(30),
-      @TimeWindow NVARCHAR(20) = NULL,
+      @datePreset NVARCHAR(20) = NULL,
       @Type NVARCHAR(20)
 AS
 BEGIN
@@ -18,6 +18,7 @@ DECLARE @StartDate DATE;
 DECLARE @EndDate   DATE;
 
 DECLARE @Today DATE = CAST(GETDATE() AS DATE);
+DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
 
 -- Monday as first day of week
 SET DATEFIRST 1;
@@ -28,28 +29,36 @@ SET DATEFIRST 1;
 SET @StartDate =
     CASE
         -- TODAY
-        WHEN UPPER(@TimeWindow) = 'TODAY'
+        WHEN @Win = 'TODAY'
             THEN @Today
 
         -- CURRENT WEEK (Monday → Today)
-        WHEN UPPER(@TimeWindow) = 'WEEK'
+        WHEN @Win = 'WEEK'
             THEN DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today)
 
         -- LAST WEEK (Previous Monday)
-        WHEN UPPER(@TimeWindow) = 'LASTWEEK'
+        WHEN @Win = 'LASTWEEK'
             THEN DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today) - 1, 0)
 
         -- CURRENT MONTH (1st → Today)
-        WHEN UPPER(@TimeWindow) = 'MONTH'
+        WHEN @Win = 'MONTH'
             THEN DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)
 
         -- LAST MONTH (1st of previous month)
-        WHEN UPPER(@TimeWindow) = 'LASTMONTH'
+        WHEN @Win = 'LASTMONTH'
             THEN DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1))
 
         -- QUARTER (Rolling last 90 days)
-        WHEN UPPER(@TimeWindow) = 'QUARTER'
+        WHEN @Win = 'QUARTER'
             THEN DATEADD(DAY, -90, @Today)
+
+        -- YEAR
+        WHEN @Win = 'YEAR'
+            THEN DATEFROMPARTS(YEAR(@Today), 1, 1)
+
+        -- LAST YEAR
+        WHEN @Win = 'LASTYEAR'
+            THEN DATEFROMPARTS(YEAR(@Today) - 1, 1, 1)
 
         -- DEFAULT → CURRENT MONTH
         ELSE DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)
@@ -61,7 +70,7 @@ SET @StartDate =
 SET @EndDate =
     CASE
         -- LAST WEEK → Previous Sunday
-        WHEN UPPER(@TimeWindow) = 'LASTWEEK'
+        WHEN @Win = 'LASTWEEK'
             THEN DATEADD(
                     DAY,
                     -1,
@@ -69,8 +78,12 @@ SET @EndDate =
                  )
 
         -- LAST MONTH → Last day of previous month
-        WHEN UPPER(@TimeWindow) = 'LASTMONTH'
+        WHEN @Win = 'LASTMONTH'
             THEN EOMONTH(@Today, -1)
+
+        -- LAST YEAR → Last day of previous year
+        WHEN @Win = 'LASTYEAR'
+            THEN DATEADD(DAY, -1, DATEFROMPARTS(YEAR(@Today), 1, 1))
 
         -- ALL OTHERS → Today
         ELSE @Today
@@ -147,17 +160,21 @@ SET @EndDate =
             SELECT 
                 CASE 
                     -- WEEK / LASTWEEK → Mon, Tue
-                    WHEN UPPER(@TimeWindow) IN ('WEEK','LASTWEEK')
+                    WHEN @Win IN ('WEEK','LASTWEEK')
                         THEN LEFT(DATENAME(WEEKDAY, Dt), 3)
-
+ 
                     -- MONTH / LASTMONTH → 14 JAN 25
-                    WHEN UPPER(@TimeWindow) IN ('MONTH','LASTMONTH')
+                    WHEN @Win IN ('MONTH','LASTMONTH')
                         THEN FORMAT(Dt, 'dd MMM yy', 'en-US')
-
+ 
                     -- QUARTER → JAN 25
-                    WHEN UPPER(@TimeWindow) = 'QUARTER'
+                    WHEN @Win = 'QUARTER'
                         THEN FORMAT(Dt, 'MMM yy', 'en-US')
 
+                    -- YEAR / LASTYEAR → JAN 25
+                    WHEN @Win IN ('YEAR','LASTYEAR')
+                        THEN FORMAT(Dt, 'MMM yy', 'en-US')
+ 
                     ELSE FORMAT(Dt, 'dd MMM yy', 'en-US')
                 END AS Label,
                 Dt

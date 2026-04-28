@@ -12,7 +12,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetCodeStatus_AI]
     @RecievedCode2 NVARCHAR(10),
     @Comp_ID NVARCHAR(50), 
     @Type NVARCHAR(20) = NULL ,  -- DETAILS | SUMMARY | NULL
-    @TimeWindow NVARCHAR(20) = NULL,
+    @datePreset NVARCHAR(20) = NULL,
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
     @Page INT = NULL,
@@ -35,14 +35,14 @@ BEGIN
         SET @Type = UPPER(LTRIM(RTRIM(@Type)));
 
     ---------------------------------------------------------
-    -- Normalize TimeWindow
+    -- Normalize datePreset
     ---------------------------------------------------------
     IF (
-           @TimeWindow IS NULL
-        OR LTRIM(RTRIM(@TimeWindow)) = ''
-        OR UPPER(@TimeWindow) = 'NULL'
+           @datePreset IS NULL
+        OR LTRIM(RTRIM(@datePreset)) = ''
+        OR UPPER(@datePreset) = 'NULL'
     )
-        SET @TimeWindow = NULL;
+        SET @datePreset = NULL;
 
     ---------------------------------------------------------
     -- Date Calculation
@@ -57,30 +57,35 @@ BEGIN
     END
     ELSE
     BEGIN
-        IF @TimeWindow IS NOT NULL
+        IF @datePreset IS NOT NULL
         BEGIN
-            SET @TimeWindow = UPPER(@TimeWindow);
+            SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
 
-            IF (@TimeWindow = 'MONTH')
+            IF (@datePreset = 'MONTH')
                 SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
-            ELSE IF (@TimeWindow = 'LASTMONTH')
+            ELSE IF (@datePreset = 'LASTMONTH')
             BEGIN
                 SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
                 SET @EndDate   = DATEADD(SECOND, -1,
                                  DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0));
             END
-            ELSE IF (@TimeWindow = 'QUARTER')
+            ELSE IF (@datePreset = 'QUARTER')
                 SET @StartDate = DATEADD(DAY, -90, GETDATE());
-            ELSE IF (@TimeWindow = 'WEEK')
+            ELSE IF (@datePreset = 'WEEK')
                 SET @StartDate = DATEADD(DAY, -7, GETDATE());
-            ELSE IF (@TimeWindow = 'YEAR')
+            ELSE IF (@datePreset = 'YEAR')
                 SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
-            ELSE IF (@TimeWindow = 'ALL')
+            ELSE IF (@datePreset = 'LASTYEAR')
+            BEGIN
+                SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+                SET @EndDate   = DATEADD(SECOND, -1, DATEFROMPARTS(YEAR(GETDATE()), 1, 1));
+            END
+            ELSE IF (@datePreset = 'ALL')
             BEGIN
                 SET @StartDate = NULL;
                 SET @EndDate   = NULL;
             END
-            ELSE IF (@TimeWindow = 'TODAY')
+            ELSE IF (@datePreset = 'TODAY')
             BEGIN
                 SET @StartDate = CAST(GETDATE() AS DATE);
                 SET @EndDate = GETDATE();

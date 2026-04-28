@@ -9,7 +9,7 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_LiveScanActivity_AI]
 (
     @CompId NVARCHAR(50),
-    @TimeWindow NVARCHAR(20)=NULL
+    @datePreset NVARCHAR(20)=NULL
 )
 AS
 BEGIN
@@ -24,25 +24,58 @@ BEGIN
 
     SET DATEFIRST 1;
 
-    SET @StartDate =
-        CASE
-            WHEN UPPER(@TimeWindow) = 'TODAY' THEN @Today
-            WHEN UPPER(@TimeWindow) = 'YESTERDAY' THEN DATEADD(DAY, -1, @Today)
-            WHEN UPPER(@TimeWindow) = 'WEEK' THEN DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today)
-            WHEN UPPER(@TimeWindow) = 'LASTWEEK' THEN DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today) - 1, 0)
-            WHEN UPPER(@TimeWindow) = 'MONTH' THEN DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)
-            WHEN UPPER(@TimeWindow) = 'LASTMONTH' THEN DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1))
-            WHEN UPPER(@TimeWindow) = 'QUARTER' THEN DATEADD(DAY, -90, @Today)
-            ELSE DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1) -- default MONTH
-        END;
+    DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, 'MONTH'))));
 
-    SET @EndDate =
-        CASE
-            WHEN UPPER(@TimeWindow) = 'YESTERDAY' THEN DATEADD(DAY, -1, @Today)
-            WHEN UPPER(@TimeWindow) = 'LASTWEEK' THEN DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today), 0))
-            WHEN UPPER(@TimeWindow) = 'LASTMONTH' THEN EOMONTH(@Today, -1)
-            ELSE @Today
-        END;
+    IF @Win = 'TODAY'
+    BEGIN
+        SET @StartDate = @Today;
+        SET @EndDate = @Today;
+    END
+    ELSE IF @Win = 'YESTERDAY'
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -1, @Today);
+        SET @EndDate = DATEADD(DAY, -1, @Today);
+    END
+    ELSE IF @Win = 'WEEK'
+    BEGIN
+        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
+        SET @EndDate = @Today;
+    END
+    ELSE IF @Win = 'LASTWEEK'
+    BEGIN
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today) - 1, 0);
+        SET @EndDate = DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today), 0));
+    END
+    ELSE IF @Win = 'MONTH'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @EndDate = @Today;
+    END
+    ELSE IF @Win = 'LASTMONTH'
+    BEGIN
+        SET @StartDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1));
+        SET @EndDate = EOMONTH(@Today, -1);
+    END
+    ELSE IF @Win = 'QUARTER'
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -90, @Today);
+        SET @EndDate = @Today;
+    END
+    ELSE IF @Win = 'YEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        SET @EndDate = GETDATE();
+    END
+    ELSE IF @Win = 'LASTYEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+        SET @EndDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31);
+    END
+    ELSE
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @EndDate = @Today;
+    END
 
     IF OBJECT_ID('tempdb..#Scans') IS NOT NULL DROP TABLE #Scans;
 
