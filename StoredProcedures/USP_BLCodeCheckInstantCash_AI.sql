@@ -59,6 +59,22 @@ BEGIN
         DECLARE @Message NVARCHAR(Max) = '';
         DECLARE @AwardMessage NVARCHAR(Max) = '';
         DECLARE @IsPFL BIT = 0;
+        
+        DECLARE @ReturnAmount DECIMAL(18,2) = 0;
+        DECLARE @ReturnServiceID VARCHAR(50) = '';
+        DECLARE @ReturnIsPayoutAllowed BIT = 1;
+        DECLARE @ReturnTransactionID BIGINT = NULL;
+        DECLARE @ReturnReferenceId VARCHAR(30) = NULL;
+        DECLARE @ReturnMConsumerid BIGINT = NULL;
+
+        -- New Variables for Limits & Flags
+        DECLARE @DailyLimit FLOAT = 0;
+        DECLARE @IsClaimReq BIT = 0;
+        DECLARE @IsApprovalReq BIT = 0;
+        DECLARE @TodaySum FLOAT = 0;
+        DECLARE @IsPayoutAllowed BIT = 1;
+        DECLARE @TransactionID BIGINT = NULL;
+        DECLARE @ReferenceId VARCHAR(30) = NULL;
 
         -------------------------------------------------------------------
         -- 1. IDENTIFY THE CODE (Support M_Code and M_Code_PFL)
@@ -79,7 +95,7 @@ BEGIN
             @Pro_ID = Pro_ID,
             @Series_Order = TRY_CAST(ISNULL(Series_Order,0) AS INT),
             @Series_Serial = TRY_CAST(ISNULL(Series_Serial,0) AS INT)
-        FROM M_Code WITH (UPDLOCK)
+        FROM M_Code WITH (UPDLOCK, ROWLOCK)
         WHERE Code1 = @dCode1 AND Code2 = @dCode2;
 
         -- If not found, check M_Code_PFL
@@ -88,10 +104,10 @@ BEGIN
             SELECT 
                 @M_Codeid = Row_ID, 
                 @Pro_ID = Pro_ID,
-                @Series_Order = 0, -- PFL doesn't always have order/serial in same structure
+                @Series_Order = 0, 
                 @Series_Serial = 0,
                 @IsPFL = 1
-            FROM M_Code_PFL WITH (UPDLOCK)
+            FROM M_Code_PFL WITH (UPDLOCK, ROWLOCK)
             WHERE Code1 = @dCode1 AND Code2 = @dCode2;
         END
 
@@ -124,7 +140,12 @@ BEGIN
         -------------------------------------------------------------------
         -- 2. UPSERT M_Consumer
         -------------------------------------------------------------------
-        SELECT @M_Consumerid = M_Consumerid FROM M_Consumer WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10);
+        DECLARE @Mobile10 VARCHAR(10) = RIGHT(@MobileNo, 10);
+        
+        -- Optimized lookup to use index on MobileNo
+        SELECT @M_Consumerid = M_Consumerid FROM M_Consumer 
+        WHERE (MobileNo = @Mobile10 OR MobileNo = '91' + @Mobile10 OR MobileNo = '0' + @Mobile10)
+          AND IsDelete = 0;
 
         IF @M_Consumerid IS NULL
         BEGIN
@@ -150,6 +171,39 @@ BEGIN
             WHERE M_Consumerid = @M_Consumerid;
         END
 
+        SET @ReturnMConsumerid = @M_Consumerid;
+
+        -- Fallback for ConsumerName if NULL
+        IF @ConsumerName IS NULL OR @ConsumerName = ''
+        BEGIN
+            SELECT TOP 1 @ConsumerName = ConsumerName FROM M_Consumer WHERE M_Consumerid = @M_Consumerid;
+            
+            IF @ConsumerName IS NULL OR @ConsumerName = ''
+            BEGIN
+                SELECT TOP 1 @ConsumerName = Account_HolderNm FROM M_BankAccount WHERE M_Consumerid = @M_Consumerid ORDER BY Row_ID DESC;
+            END
+            
+            IF @ConsumerName IS NULL OR @ConsumerName = '' SET @ConsumerName = 'Consumer';
+        END
+
+        -------------------------------------------------------------------
+        -- 2.b FETCH LIMITS & FLAGS
+        -------------------------------------------------------------------
+        SELECT TOP 1 
+            @DailyLimit = ISNULL(Daily_Limit, 0),
+            @IsClaimReq = ISNULL(IsClaimReq, 0),
+            @IsApprovalReq = ISNULL(IsApprovalReq, 0)
+        FROM tbl_UPILimitDetails
+        WHERE Comp_ID = @ActualComp_ID AND Service_ID = 'SRV1029';
+
+        -- Check today's total for this consumer (Include Pending to prevent over-limit transfers)
+        SELECT @TodaySum = ISNULL(SUM(Amount), 0)
+        FROM tblUPITransactionDetails
+        WHERE M_Consumerid = @M_Consumerid 
+          AND Comp_Id = @ActualComp_ID
+          AND CAST(ReqDate AS DATE) = CAST(GETDATE() AS DATE)
+          AND Status IN ('Success', 'Pending');
+
         -------------------------------------------------------------------
         -- 3. UPSERT Vendor KYC Status
         -------------------------------------------------------------------
@@ -166,8 +220,17 @@ BEGIN
         BEGIN
             IF NOT EXISTS (SELECT 1 FROM M_BankAccount WHERE M_Consumerid = @M_Consumerid AND Account_No = @AccountNumber)
             BEGIN
-                INSERT INTO M_BankAccount (M_Consumerid, Account_No, IFSC_Code, Bank_Name, Account_HolderNm, Entry_Date)
-                VALUES (@M_Consumerid, @AccountNumber, @IfscCode, @Mode, @AccountHolderName, GETDATE());
+                -- Generate Bank_ID
+                DECLARE @Bank_ID NVARCHAR(50);
+                SELECT TOP 1 @Bank_ID = PrPrefix + CONVERT(varchar, PrStart) FROM Code_Gen WHERE Prfor = 'Account' AND PrFlag = 1;
+                
+                IF @Bank_ID IS NULL
+                    SET @Bank_ID = 'ACC' + CAST(CAST(RAND() * 89999 + 10000 AS INT) AS VARCHAR);
+                ELSE
+                    UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'Account' AND PrFlag = 1;
+
+                INSERT INTO M_BankAccount (Bank_ID, M_Consumerid, Account_No, IFSC_Code, Bank_Name, Account_HolderNm, Entry_Date)
+                VALUES (@Bank_ID, @M_Consumerid, @AccountNumber, @IfscCode, @Mode, @AccountHolderName, GETDATE());
             END
             ELSE
             BEGIN
@@ -189,8 +252,12 @@ BEGIN
             SELECT @UseCount = TRY_CAST(ISNULL(Use_Count, 0) AS INT) FROM M_Code WHERE Row_ID = @M_Codeid;
 
         -- Log Inquiry
+        DECLARE @Is_Success VARCHAR(5) = '1';
+        IF @UseCount > 0
+            SET @Is_Success = '2';
+
         INSERT INTO Pro_Enq (Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, Is_Success, Comp_ID)
-        VALUES (@Mode, GETDATE(), 'InstantCashAPI', @MobileNo, @Code1, @Code2, '1', @ActualComp_ID);
+        VALUES (@Mode, GETDATE(), 'InstantCashAPI', @MobileNo, @Code1, @Code2, @Is_Success, @ActualComp_ID);
 
         IF @UseCount > 0
         BEGIN
@@ -223,11 +290,11 @@ BEGIN
             Service_ID VARCHAR(50),
             Points DECIMAL(18,2),
             Frequency INT,
-            IsCash INT
+            IsCash DECIMAL(18,2)
         );
 
         INSERT INTO @Services (SST_Id, Service_ID, Points, Frequency, IsCash)
-        SELECT sst.SST_Id, ss.Service_ID, ISNULL(sst.Points, 0), ISNULL(sst.Frequency, 1), TRY_CAST(ISNULL(sst.IsCash, 0) AS INT)
+        SELECT sst.SST_Id, ss.Service_ID, ISNULL(sst.Points, 0), ISNULL(sst.Frequency, 1), ISNULL(sst.IsCash, 0)
         FROM M_ServiceSubscription ss WITH (NOLOCK)
         INNER JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON ss.Subscribe_Id = sst.Subscribe_Id
         WHERE ss.Pro_ID = @Pro_ID
@@ -243,9 +310,8 @@ BEGIN
           );
 
         -- C. Process services
-        DECLARE @CurrSST BIGINT, @CurrServiceID VARCHAR(50), @CurrPoints DECIMAL(18,2), @CurrFreq INT, @CurrIsCash INT;
+        DECLARE @CurrSST BIGINT, @CurrServiceID VARCHAR(50), @CurrPoints DECIMAL(18,2), @CurrFreq INT, @CurrIsCash DECIMAL(18,2);
         DECLARE @EarningAmount DECIMAL(18,2) = 0;
-        DECLARE @PrimaryServiceID VARCHAR(50) = '';
         
         DECLARE ServiceCursor CURSOR LOCAL FAST_FORWARD FOR SELECT SST_Id, Service_ID, Points, Frequency, IsCash FROM @Services;
         OPEN ServiceCursor;
@@ -261,13 +327,70 @@ BEGIN
 
             IF (@countFrequncy % ISNULL(@CurrFreq, 1) = 0)
             BEGIN
-                INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, compid, code1, code2, Cash, Points, Service_ID)
-                VALUES (@Pkid, @CurrSST, @M_Consumerid, GETDATE(), @ActualComp_ID, @dCode1, @dCode2, @CurrIsCash, @CurrPoints, @CurrServiceID);
+                DECLARE @AwardedAmount DECIMAL(18,2) = CASE WHEN @CurrIsCash > 0 THEN @CurrIsCash ELSE @CurrPoints END;
 
-                UPDATE BuiltLoyaltyMCodeCheck SET IsPointsAssigned = 1 WHERE sst_id = @CurrSST AND M_Cunsumerid = @M_Consumerid;
+                -- Limit Check for SRV1029
+                IF @CurrServiceID = 'SRV1029' AND @TodaySum + @AwardedAmount > @DailyLimit AND @DailyLimit > 0
+                BEGIN
+                    -- Optionally cap it or return limit message
+                    -- For now, let's proceed but mark as limit reached if user wants a message
+                    SET @AwardedAmount = CASE WHEN @DailyLimit > @TodaySum THEN @DailyLimit - @TodaySum ELSE 0 END;
+                    
+                    IF @AwardedAmount <= 0
+                    BEGIN
+                        SET @AwardMessage = ' Daily transfer limit reached.';
+                        -- We still keep loyalty record if user wants, or skip?
+                        -- User said "cap the amount or return a limit exceeded message"
+                    END
+                END
+
+                IF @AwardedAmount > 0 OR (@IsClaimReq = 0 AND @IsApprovalReq = 0)
+                BEGIN
+                    INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, compid, code1, code2, Cash, Points, Service_ID)
+                    VALUES (@Pkid, @CurrSST, @M_Consumerid, GETDATE(), @ActualComp_ID, @dCode1, @dCode2, @CurrIsCash, @CurrPoints, @CurrServiceID);
+
+                    UPDATE BuiltLoyaltyMCodeCheck SET IsPointsAssigned = 1 WHERE sst_id = @CurrSST AND M_Cunsumerid = @M_Consumerid;
+                    
+                    SET @EarningAmount = @AwardedAmount;
+
+                    -- Table Updates if NO Claim/Approval Req
+                    IF @CurrServiceID = 'SRV1029'
+                    BEGIN
+                        -- Capture return data for SRV1029 specifically to avoid being overwritten by other services
+                        SET @ReturnAmount = @EarningAmount;
+                        SET @ReturnServiceID = @CurrServiceID;
+
+                        IF (@IsClaimReq = 1 OR @IsApprovalReq = 1)
+                        BEGIN
+                            SET @ReturnIsPayoutAllowed = 0;
+                        END
+                        ELSE IF @EarningAmount > 0
+                        BEGIN
+                            SET @ReferenceId = REPLACE(@ActualComp_ID, '-', '') + FORMAT(GETDATE(), 'yyMMddHHmmss');
+                            SET @ReturnReferenceId = @ReferenceId;
+
+                            -- 1. Insert into tblUPITransactionDetails
+                            INSERT INTO tblUPITransactionDetails 
+                            (M_Consumerid, MobileNo, Code1, Code2, Amount, Comp_Id, Status, ReqDate, ConsumerName, UPI_Id, Remarks, FinalStatus, FinalRemarks, RefenceId)
+                            VALUES 
+                            (@M_Consumerid, @MobileNo, @dCode1, @dCode2, @EarningAmount, @ActualComp_ID, 'Pending', GETDATE(), @ConsumerName, COALESCE(@UPI, @AccountNumber), 'Instant Cash Payout', 'Pending', 'Initial Record', @ReferenceId);
+
+                            SET @TransactionID = SCOPE_IDENTITY();
+                            SET @ReturnTransactionID = @TransactionID;
+
+                            -- 2. Update tblCashWalletBalance (Ledger Transaction)
+                            DECLARE @OldWalletBal DECIMAL(18,2) = 0;
+                            SELECT TOP 1 @OldWalletBal = ISNULL(NewBal, 0) 
+                            FROM tblCashWalletBalance 
+                            WHERE M_Consumerid = @M_Consumerid AND Comp_Id = @ActualComp_ID 
+                            ORDER BY ReqDate DESC;
+                            
+                            INSERT INTO tblCashWalletBalance (Comp_Id, Service_ID, M_Consumerid, OldBal, NewBal, Amount, Cr_Dr_Type, PayrefId, ReqDate)
+                            VALUES (@ActualComp_ID, @CurrServiceID, @M_Consumerid, @OldWalletBal, @OldWalletBal + @EarningAmount, @EarningAmount, 'Credit', @TransactionID, GETDATE());
+                        END
+                    END
+                END
                 
-                SET @EarningAmount = CASE WHEN @CurrIsCash > 0 THEN @CurrIsCash ELSE @CurrPoints END;
-                SET @PrimaryServiceID = @CurrServiceID;
                 SET @AwardMessage = @AwardMessage + ' Amount ' + CAST(@EarningAmount AS NVARCHAR(20)) + ' awarded. ';
             END
             FETCH NEXT FROM ServiceCursor INTO @CurrSST, @CurrServiceID, @CurrPoints, @CurrFreq, @CurrIsCash;
@@ -276,9 +399,25 @@ BEGIN
         CLOSE ServiceCursor;
         DEALLOCATE ServiceCursor;
 
+        -------------------------------------------------------------------
+        -- 7. FETCH MESSAGE
+        -------------------------------------------------------------------
+        SELECT TOP 1 @Message = Message_Text 
+        FROM LandingPage_CodeCheckMessages 
+        WHERE Comp_ID = @ActualComp_ID AND Service_ID = 'SRV1029' AND Message_Type = 'Success' AND IsActive = 1;
+
+        IF @Message = '' OR @Message IS NULL
+        BEGIN
+            SELECT TOP 1 @Message = Message_Text 
+            FROM LandingPage_CodeCheckMessages 
+            WHERE Service_ID = 'SRV1029' AND Message_Type = 'Success' AND IsActive = 1;
+        END
+
+        IF @Message = '' OR @Message IS NULL SET @Message = 'Success! Code Verified.';
+
         COMMIT TRANSACTION;
-        -- Return extra metadata needed for payout triggering in API
-        SELECT 1 AS ResultCode, 'Success! Code Verified.' + @AwardMessage AS Message, @EarningAmount AS Amount, @PrimaryServiceID AS ServiceID, @ActualComp_ID AS Comp_ID;
+         -- Return extra metadata needed for payout triggering in API
+         SELECT 1 AS ResultCode, @Message + @AwardMessage AS Message, @ReturnAmount AS Amount, @ReturnServiceID AS ServiceID, @ActualComp_ID AS Comp_ID, @ReturnIsPayoutAllowed AS IsPayoutAllowed, @ReturnTransactionID AS TransactionID, @ReturnReferenceId AS ReferenceId, @ReturnMConsumerid AS M_Consumerid;
 
     END TRY
     BEGIN CATCH

@@ -129,7 +129,7 @@ BEGIN
         END
 
         -- 5. Code Check & Loyalty Logic
-        IF @Code1 IS NOT NULL AND @Code1 <> '' AND @Code2 IS NOT NULL AND @Code2 <> ''
+        IF @Code1 IS NOT NULL AND @Code2 IS NOT NULL
         BEGIN
             -- Identify Code and Product
             SELECT @M_Codeid = Row_ID, @Pro_ID = Pro_ID FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2;
@@ -144,14 +144,18 @@ BEGIN
             BEGIN
                 -- Check if already scanned
                 DECLARE @ExistingEnqCount INT;
-                SELECT @ExistingEnqCount = COUNT(*) FROM Pro_Enq WHERE Received_Code1 = @Code1 AND Received_Code2 = @Code2 AND Is_Success = 1;
+                SELECT @ExistingEnqCount = COUNT(*) FROM Pro_Enq WHERE Received_Code1 = CAST(@Code1 AS VARCHAR(5)) AND Received_Code2 = CAST(@Code2 AS VARCHAR(8)) AND Is_Success = '1';
 
-                IF @ExistingEnqCount = 0 OR @Comp_ID = 'Comp-1693' -- Allow Patanjali re-scans if configured
+                -- A. Insert Scan History
+                DECLARE @Is_Success_Val VARCHAR(5) = '1';
+                IF @ExistingEnqCount > 0 AND @Comp_ID <> 'Comp-1693'
+                    SET @Is_Success_Val = '2';
+
+                INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, City, State, PinCode)
+                VALUES (@Code1, @Code2, @CleanMobile, 'WEB', @Mode, @Is_Success_Val, GETDATE(), @Comp_ID, @Latitude, @Longitude, @City, @State, @PinCode);
+
+                IF @Is_Success_Val = '1'
                 BEGIN
-                    -- A. Insert Scan History
-                    INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, City, State, PinCode)
-                    VALUES (@Code1, @Code2, @CleanMobile, 'WEB', @Mode, 1, GETDATE(), @Comp_ID, @Latitude, @Longitude, @City, @State, @PinCode);
-
                     -- B. Increment Use Count
                     UPDATE M_Code SET Use_Count = ISNULL(Use_Count, 0) + 1 WHERE Row_ID = @M_Codeid;
 
@@ -192,11 +196,11 @@ BEGIN
                             
                             SELECT @CurrentScanCount = COUNT(1)
                             FROM Pro_Enq pe
-                            INNER JOIN M_Code mc ON pe.Received_Code1 = mc.Code1 AND pe.Received_Code2 = mc.Code2
-                            INNER JOIN M_ServiceSubscriptionTrans mst ON mc.Pro_ID = (SELECT Pro_ID FROM M_ServiceSubscriptionTrans WHERE SST_Id = @SST_ID)
+                            INNER JOIN M_Code mc ON pe.Received_Code1 = CAST(mc.Code1 AS VARCHAR(5)) AND pe.Received_Code2 = CAST(mc.Code2 AS VARCHAR(8))
                             WHERE RIGHT(pe.MobileNo, 10) = @CleanMobile
                             AND pe.Is_Success = 1
-                            AND pe.Enq_Date >= @FrequencyStartDate;
+                            AND pe.Enq_Date >= @FrequencyStartDate
+                            AND mc.Pro_ID = @Pro_ID;
 
                             -- If frequency limit exceeded, block and return error
                             IF @CurrentScanCount >= @FrequencyLimit
