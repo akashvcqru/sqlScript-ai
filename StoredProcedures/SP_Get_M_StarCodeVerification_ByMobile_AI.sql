@@ -8,7 +8,7 @@ CREATE PROCEDURE [dbo].[SP_Get_M_StarCodeVerification_ByMobile_AI]
 (
     @CompId NVARCHAR(15),
     @MobileNumber NVARCHAR(20),
-    @TimeWindow NVARCHAR(20) = NULL,
+    @datePreset NVARCHAR(20) = NULL,
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
     @PaymentStatus NVARCHAR(10) = NULL,   -- 'Paid' or 'Unpaid'
@@ -29,10 +29,10 @@ BEGIN
       IF (@Search IS NULL OR LTRIM(RTRIM(@Search)) = '' OR @Search = 'NULL')
         SET @Search = NULL;
 
-    IF (@TimeWindow IS NULL OR LTRIM(RTRIM(@TimeWindow)) = '' OR UPPER(@TimeWindow) = 'NULL')
-        SET @TimeWindow = NULL;
+    IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR UPPER(@datePreset) = 'NULL')
+        SET @datePreset = NULL;
     ELSE
-        SET @TimeWindow = UPPER(@TimeWindow);
+        SET @datePreset = UPPER(@datePreset);
 
     IF @CompId IS NULL OR LTRIM(RTRIM(@CompId)) = ''
     BEGIN
@@ -52,15 +52,17 @@ BEGIN
     DECLARE @StartDate DATE = NULL;
     DECLARE @EndDate   DATE = NULL;
 
-    -- Normalize TimeWindow
+    -- Normalize datePreset
     IF (
-           @TimeWindow IS NULL
-        OR LTRIM(RTRIM(@TimeWindow)) = ''
-        OR LOWER(LTRIM(RTRIM(@TimeWindow))) = 'null'
+           @datePreset IS NULL
+        OR LTRIM(RTRIM(@datePreset)) = ''
+        OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null'
     )
-        SET @TimeWindow = NULL;
+        SET @datePreset = NULL;
     ELSE
-        SET @TimeWindow = UPPER(LTRIM(RTRIM(@TimeWindow)));
+        SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
+
+    DECLARE @Win NVARCHAR(50) = @datePreset;
 
     -- Explicit date range overrides TimeWindow
     IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
@@ -73,37 +75,48 @@ BEGIN
         SET @EndDate = CAST(GETDATE() AS DATE);
         SET DATEFIRST 1; -- Monday start
 
-        IF (@TimeWindow = 'TODAY')
+        IF (@Win = 'TODAY')
             SET @StartDate = @EndDate;
 
-        ELSE IF (@TimeWindow = 'YESTERDAY')
+        ELSE IF (@Win = 'YESTERDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, @EndDate);
             SET @EndDate   = DATEADD(DAY, -1, @EndDate);
         END
 
-        ELSE IF (@TimeWindow = 'WEEK')
+        ELSE IF (@Win = 'WEEK')
             SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @EndDate), @EndDate);
 
-        ELSE IF (@TimeWindow = 'LASTWEEK')
+        ELSE IF (@Win = 'LASTWEEK')
         BEGIN
             SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
                                DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
         END
 
-        ELSE IF (@TimeWindow = 'MONTH')
+        ELSE IF (@Win = 'MONTH')
             SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), MONTH(@EndDate), 1);
 
-        ELSE IF (@TimeWindow = 'LASTMONTH')
+        ELSE IF (@Win = 'LASTMONTH')
         BEGIN
             SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
                                DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0));
         END
 
-        ELSE IF (@TimeWindow = 'QUARTER')
+        ELSE IF (@Win = 'QUARTER')
             SET @StartDate = DATEADD(DAY, -90, @EndDate);
+            
+        ELSE IF (@Win = 'YEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            SET @EndDate = GETDATE();
+        END
+        ELSE IF (@Win = 'LASTYEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+            SET @EndDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31);
+        END
 
         ELSE -- ALL / NULL
         BEGIN

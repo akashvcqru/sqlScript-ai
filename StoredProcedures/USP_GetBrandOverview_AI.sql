@@ -6,7 +6,7 @@ GO
 
 CREATE Procedure [dbo].[USP_GetBrandOverview_AI]     
     @CompanyKey         NVARCHAR(100),          -- Comp_ID OR Comp_Email OR Comp_Name    
-    @Window             VARCHAR(20) = NULL,    
+    @datePreset             VARCHAR(20) = NULL,    
     @CompanyKeyType     VARCHAR(10) = 'ID',     -- 'ID' | 'EMAIL' | 'NAME'    
     @FromDate           DATE        = NULL,     -- inclusive start (defaults to current month)    
     @ToDate             DATE        = NULL,     -- inclusive end    
@@ -33,26 +33,27 @@ begin
     ---------------------------------------------------------
     DECLARE @StartDate DATE, @EndDate DATE;
     DECLARE @Today DATE = CAST(GETDATE() AS DATE);
+    DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
 
-    IF UPPER(@Window) = 'TODAY'
+    IF @Win = 'TODAY'
     BEGIN
         SET @StartDate = @Today;
         SET @EndDate   = DATEADD(DAY, 1, @Today);
     END
-    ELSE IF UPPER(@Window) = 'YESTERDAY'
+    ELSE IF @Win = 'YESTERDAY'
     BEGIN
         SET @StartDate = DATEADD(DAY, -1, @Today);
         SET @EndDate   = @Today;
     END
     -- Current calendar week (Monday–Sunday)
-    ELSE IF UPPER(@Window) = 'WEEK'
+    ELSE IF @Win = 'WEEK'
     BEGIN
         SET DATEFIRST 1; -- Monday = 1
         SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
-        SET @EndDate   = DATEADD(DAY, 7, @StartDate);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
     END
     -- Previous calendar week
-    ELSE IF UPPER(@Window) = 'LASTWEEK'
+    ELSE IF @Win = 'LASTWEEK'
     BEGIN
         SET DATEFIRST 1;
         DECLARE @ThisWeekStart DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
@@ -60,28 +61,38 @@ begin
         SET @EndDate   = @ThisWeekStart;
     END
     -- Current calendar month
-    ELSE IF UPPER(@Window) = 'MONTH'
+    ELSE IF @Win = 'MONTH'
     BEGIN
         SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
-        SET @EndDate   = DATEADD(MONTH, 1, @StartDate);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
     END
     -- Previous calendar month
-    ELSE IF UPPER(@Window) = 'LASTMONTH'
+    ELSE IF @Win = 'LASTMONTH'
     BEGIN
         DECLARE @ThisMonthStart DATE = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
         SET @StartDate = DATEADD(MONTH, -1, @ThisMonthStart);
         SET @EndDate   = @ThisMonthStart;
     END
-    ELSE IF UPPER(@Window) = 'QUARTER'
+    ELSE IF @Win = 'QUARTER'
     BEGIN
         SET @StartDate = DATEADD(DAY, -90, @Today);
         SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'YEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), 1, 1);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTYEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today) - 1, 1, 1);
+        SET @EndDate   = DATEFROMPARTS(YEAR(@Today), 1, 1);
     END
     -- Default fallback
     ELSE
     BEGIN
         SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
-        SET @EndDate   = DATEADD(MONTH, 1, @StartDate);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
     END
 
     -----------------------END__________________--

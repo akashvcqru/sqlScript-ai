@@ -4,10 +4,10 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 -- Exec [dbo].[SP_GetGeoLocationDataForMap_AI] 'Comp-1152','SRV1005','Today',null,null
-CREATE PROCEDURE [dbo].[SP_GetGeoLocationDataForMap_AI]
+ALTER PROCEDURE [dbo].[SP_GetGeoLocationDataForMap_AI]
     @Comp_Id NVARCHAR(15),	
 	@ServiceID nvarchar(20)=NULL,
-     @TimeWindow NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, QUARTER
+     @datePreset NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTERMONTH, QUARTER
     @FromDate DATE = NULL,
     @ToDate DATE = NULL
 	
@@ -19,20 +19,23 @@ BEGIN
     SET @ServiceID = 'SRV1018'
 
     ---------------------------------------------------------
-    -- Normalize TimeWindow (NULL = ALL DATA)
+    -- Normalize datePreset (NULL = ALL DATA)
     ---------------------------------------------------------
     IF (
-           @TimeWindow IS NULL
-        OR LTRIM(RTRIM(@TimeWindow)) = ''
-        OR LOWER(LTRIM(RTRIM(@TimeWindow))) = 'null'
+           @datePreset IS NULL
+        OR LTRIM(RTRIM(@datePreset)) = ''
+        OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null'
     )
-        SET @TimeWindow = NULL;
+        SET @datePreset = NULL;
     ELSE
-        SET @TimeWindow = UPPER(@TimeWindow);
+        SET @datePreset = UPPER(@datePreset);
 
     ---------------------------------------------------------
     -- Date Range Calculation
     ---------------------------------------------------------
+    DECLARE @CompanyStartDate DATETIME;
+    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+
     DECLARE @StartDate DATETIME = NULL;
     DECLARE @EndDate   DATETIME = NULL;
 
@@ -42,48 +45,64 @@ BEGIN
         SET @StartDate = @FromDate;
         SET @EndDate   = DATEADD(SECOND, -1, DATEADD(DAY, 1, @ToDate));
     END
-    ELSE IF (@TimeWindow IS NOT NULL)
+    ELSE IF (@datePreset IS NOT NULL)
     BEGIN
         SET DATEFIRST 1; -- Monday
 
-        IF (@TimeWindow = 'TODAY')
+        IF (@datePreset = 'TODAY')
         BEGIN
             SET @StartDate = CAST(GETDATE() AS DATE);
             SET @EndDate   = GETDATE();
         END
-        ELSE IF (@TimeWindow = 'YESTERDAY')
+        ELSE IF (@datePreset = 'LASTDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
             SET @EndDate   = DATEADD(SECOND, -1, CAST(GETDATE() AS DATE));
         END
-        ELSE IF (@TimeWindow = 'WEEK') -- Current week (Mon → Today)
+        ELSE IF (@datePreset = 'WEEK') -- Current week (Mon → Today)
         BEGIN
             SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
             SET @EndDate   = GETDATE();
         END
-        ELSE IF (@TimeWindow = 'LASTWEEK') -- Previous full week
+        ELSE IF (@datePreset = 'LASTWEEK') -- Previous full week
         BEGIN
             SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
             SET @EndDate   = DATEADD(SECOND, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0));
         END
-        ELSE IF (@TimeWindow = 'MONTH') -- Current month
+        ELSE IF (@datePreset = 'MONTH') -- Current month
         BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
             SET @EndDate   = GETDATE();
         END
-        ELSE IF (@TimeWindow = 'LASTMONTH') -- Previous month
+        ELSE IF (@datePreset = 'LASTMONTH') -- Previous month
         BEGIN
             SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
             SET @EndDate   = DATEADD(SECOND, -1,
                                 DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0));
         END
-        ELSE IF (@TimeWindow = 'QUARTER') -- Rolling 90 days
+        ELSE IF (@datePreset = 'QUARTER') -- Previous quarter
         BEGIN
-            SET @StartDate = DATEADD(DAY, -90, GETDATE());
+            SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(SECOND, -1, DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0));
+        END
+        ELSE IF (@datePreset = 'YEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
             SET @EndDate   = GETDATE();
         END
+        ELSE IF (@datePreset = 'LASTYEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+            SET @EndDate   = DATEADD(SECOND, -1, DATEFROMPARTS(YEAR(GETDATE()), 1, 1));
+        END
     END
-    -- ELSE → ALL DATA (StartDate & EndDate remain NULL)
+    
+    IF (@StartDate IS NULL AND @EndDate IS NULL)
+    BEGIN
+        -- ALL DATA fallback
+        SET @StartDate = CAST(@CompanyStartDate AS DATE);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
 
     ---------------------------------------------------------
     -- FINAL RESULT

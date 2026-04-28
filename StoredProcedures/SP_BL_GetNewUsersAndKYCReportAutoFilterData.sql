@@ -4,9 +4,9 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]
+ALTER PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]
     @Comp_Id VARCHAR(15),
-    @TimeWindow NVARCHAR(20) = NULL ,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
+    @datePreset NVARCHAR(20) = NULL ,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
     @FromDate DATE = NULL,              
     @ToDate DATE = NULL,                
     @KYCStatusFilter NVARCHAR(20) = NULL,
@@ -32,20 +32,23 @@ BEGIN
     ------------------------------------------------------
     -- Date Range
     ------------------------------------------------------
+    DECLARE @CompanyStartDate DATETIME;
+    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+
     DECLARE @StartDate DATE = NULL;
     DECLARE @EndDate   DATE = NULL;
 
-    -- Normalize TimeWindow
+    -- Normalize datePreset
     IF (
-           @TimeWindow IS NULL
-        OR LTRIM(RTRIM(@TimeWindow)) = ''
-        OR LOWER(LTRIM(RTRIM(@TimeWindow))) = 'null'
+           @datePreset IS NULL
+        OR LTRIM(RTRIM(@datePreset)) = ''
+        OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null'
     )
-        SET @TimeWindow = NULL;
+        SET @datePreset = NULL;
     ELSE
-        SET @TimeWindow = UPPER(LTRIM(RTRIM(@TimeWindow)));
+        SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
 
-    -- Explicit date range overrides TimeWindow
+    -- Explicit date range overrides datePreset
     IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
     BEGIN
         SET @StartDate = @FromDate;
@@ -56,42 +59,57 @@ BEGIN
         SET @EndDate = CAST(GETDATE() AS DATE);
         SET DATEFIRST 1; -- Monday start
 
-        IF (@TimeWindow = 'TODAY')
+        IF (@datePreset = 'TODAY')
             SET @StartDate = @EndDate;
 
-        ELSE IF (@TimeWindow = 'YESTERDAY')
+        ELSE IF (@datePreset = 'LASTDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, @EndDate);
             SET @EndDate   = DATEADD(DAY, -1, @EndDate);
         END
 
-        ELSE IF (@TimeWindow = 'WEEK')
+        ELSE IF (@datePreset = 'WEEK')
             SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @EndDate), @EndDate);
 
-        ELSE IF (@TimeWindow = 'LASTWEEK')
+        ELSE IF (@datePreset = 'LASTWEEK')
         BEGIN
             SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
                                 DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
         END
 
-        ELSE IF (@TimeWindow = 'MONTH')
+        ELSE IF (@datePreset = 'MONTH')
             SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), MONTH(@EndDate), 1);
 
-        ELSE IF (@TimeWindow = 'LASTMONTH')
+        ELSE IF (@datePreset = 'LASTMONTH')
         BEGIN
             SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
                                 DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0));
         END
 
-        ELSE IF (@TimeWindow = 'QUARTER')
-            SET @StartDate = DATEADD(DAY, -90, @EndDate);
+        ELSE IF (@datePreset = 'QUARTER')
+        BEGIN
+            SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @EndDate) - 1, 0);
+            SET @EndDate   = DATEADD(DAY, -1,
+                                DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @EndDate), 0));
+        END
+
+        ELSE IF (@datePreset = 'YEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), 1, 1);
+        END
+
+        ELSE IF (@datePreset = 'LASTYEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(@EndDate) - 1, 1, 1);
+            SET @EndDate   = DATEFROMPARTS(YEAR(@EndDate) - 1, 12, 31);
+        END
 
         ELSE -- ALL / NULL
         BEGIN
-            SET @StartDate = NULL;
-            SET @EndDate   = NULL;
+            SET @StartDate = CAST(@CompanyStartDate AS DATE);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
     END
 

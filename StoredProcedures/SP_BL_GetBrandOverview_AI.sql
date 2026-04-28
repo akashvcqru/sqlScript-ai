@@ -5,10 +5,11 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBrandOverview_AI]  
 (
    @CompId NVARCHAR(50),  
-   @TimeWindow NVARCHAR(20) = NULL   
+   @datePreset NVARCHAR(20) = NULL   
 )  
 AS  
 BEGIN  
@@ -17,29 +18,46 @@ BEGIN
     DECLARE @StartDate DATE, @EndDate DATE;
     DECLARE @PrevStartDate DATE, @PrevEndDate DATE;
     DECLARE @Days INT;
+    DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
 
-    IF UPPER(@TimeWindow) = 'TODAY'          SET @Days = 1;
-    ELSE IF UPPER(@TimeWindow) = 'YESTERDAY' SET @Days = 1;
-    ELSE IF UPPER(@TimeWindow) = 'LASTWEEK'  SET @Days = 14;
-    ELSE IF UPPER(@TimeWindow) = 'WEEK'      SET @Days = 7;
-    ELSE IF UPPER(@TimeWindow) = 'QUARTER'   SET @Days = 90;
-    ELSE                                     SET @Days = 30; -- Default to Month/30 days
+    IF @Win = 'TODAY'          SET @Days = 1;
+    ELSE IF @Win = 'YESTERDAY' SET @Days = 1;
+    ELSE IF @Win = 'LASTWEEK'  SET @Days = 14;
+    ELSE IF @Win = 'WEEK'      SET @Days = 7;
+    ELSE IF @Win = 'QUARTER'   SET @Days = 90;
+    ELSE IF @Win = 'YEAR'      SET @Days = 365;
+    ELSE IF @Win = 'LASTYEAR'  SET @Days = 365;
+    ELSE                       SET @Days = 30; -- Default to Month/30 days
 
-    IF UPPER(@TimeWindow) = 'MONTH'
+    IF @Win = 'MONTH'
     BEGIN
         SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
         SET @EndDate   = DATEADD(DAY, 1, EOMONTH(GETDATE()));
         SET @PrevStartDate = DATEADD(MONTH, -1, @StartDate);
         SET @PrevEndDate   = @StartDate;
     END
-    ELSE IF UPPER(@TimeWindow) = 'LASTMONTH'
+    ELSE IF @Win = 'LASTMONTH'
     BEGIN
         SET @StartDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1));
         SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
         SET @PrevStartDate = DATEADD(MONTH, -1, @StartDate);
         SET @PrevEndDate   = @StartDate;
     END
-    ELSE IF UPPER(@TimeWindow) = 'YESTERDAY'
+    ELSE IF @Win = 'YEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        SET @PrevStartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+        SET @PrevEndDate   = @StartDate;
+    END
+    ELSE IF @Win = 'LASTYEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+        SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        SET @PrevStartDate = DATEFROMPARTS(YEAR(GETDATE()) - 2, 1, 1);
+        SET @PrevEndDate   = @StartDate;
+    END
+    ELSE IF @Win = 'YESTERDAY'
     BEGIN
         SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
         SET @EndDate   = CAST(GETDATE() AS DATE);

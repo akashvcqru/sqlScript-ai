@@ -9,7 +9,7 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_FailedTransactions_AI]
 (
     @CompId NVARCHAR(50),
-    @TimeWindow NVARCHAR(20) = NULL
+    @datePreset NVARCHAR(20) = NULL
 )
 AS
 BEGIN
@@ -19,16 +19,43 @@ BEGIN
     SET @EndDate = CAST(GETDATE() AS DATE);
     SET DATEFIRST 1;
 
-    -- Determine StartDate based on TimeWindow
-    SET @StartDate = CASE 
-                        WHEN UPPER(@TimeWindow) = 'TODAY' THEN CAST(GETDATE() AS DATE)
-                        WHEN UPPER(@TimeWindow) = 'YESTERDAY' THEN DATEADD(DAY, -1, CAST(GETDATE() AS DATE))
-                        WHEN UPPER(@TimeWindow) = 'WEEK' THEN DATEADD(DAY, 1 - DATEPART(WEEKDAY, @EndDate), @EndDate)
-                        WHEN UPPER(@TimeWindow) = 'LASTWEEK' THEN DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate) - 1, 0)
-                        WHEN UPPER(@TimeWindow) = 'MONTH' THEN DATEFROMPARTS(YEAR(@EndDate), MONTH(@EndDate), 1)
-                        WHEN UPPER(@TimeWindow) = 'QUARTER' THEN DATEADD(DAY, -90, @EndDate)
-                        ELSE DATEADD(DAY, -7, @EndDate)
-                     END;
+    DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, 'WEEK'))));
+
+    IF @Win = 'TODAY'
+        SET @StartDate = @EndDate;
+    ELSE IF @Win = 'YESTERDAY'
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -1, @EndDate);
+        SET @EndDate = DATEADD(DAY, -1, @EndDate);
+    END
+    ELSE IF @Win = 'WEEK'
+        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @EndDate), @EndDate);
+    ELSE IF @Win = 'LASTWEEK'
+    BEGIN
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate) - 1, 0);
+        SET @EndDate = DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
+    END
+    ELSE IF @Win = 'MONTH'
+        SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), MONTH(@EndDate), 1);
+    ELSE IF @Win = 'LASTMONTH'
+    BEGIN
+        SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate) - 1, 0);
+        SET @EndDate = EOMONTH(@EndDate, -1);
+    END
+    ELSE IF @Win = 'QUARTER'
+        SET @StartDate = DATEADD(DAY, -90, @EndDate);
+    ELSE IF @Win = 'YEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        SET @EndDate = GETDATE();
+    END
+    ELSE IF @Win = 'LASTYEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+        SET @EndDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31);
+    END
+    ELSE
+        SET @StartDate = DATEADD(DAY, -7, @EndDate);
 
     ---------------------------------------------------------
     -- 2️⃣ Create Temp Table

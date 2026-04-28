@@ -1,9 +1,12 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 4/28/2026 11:05:47 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- exec [dbo].[SP_BL_GetCodesActivityReport_AI] 'Comp-1869',NULL,'2026-01-02','2026-01-07',NULL,NULL,NULL,1,10,1
+-- exec [dbo].[SP_BL_GetCodesActivityReport_AI] 'Comp-1727',NULL,'2026-01-02','2026-01-07',NULL,NULL,NULL,1,10,1
 ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
@@ -32,6 +35,9 @@ BEGIN
     ----------------------------------------------------
     -- Date Range (SAFE FOR DATE TYPE)
     ----------------------------------------------------
+    DECLARE @CompanyStartDate DATETIME;
+    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+
     DECLARE @StartDate DATETIME;
     DECLARE @EndDate   DATETIME;
 
@@ -50,25 +56,27 @@ BEGIN
             SET @StartDate = CAST(GETDATE() AS DATE);
             SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
-        ELSE IF (@datePreset = 'YESTERDAY')
+        ELSE IF (@datePreset = 'LASTDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
             SET @EndDate   = CAST(GETDATE() AS DATE);
         END
         ELSE IF (@datePreset = 'WEEK')
         BEGIN
-            SET @StartDate = DATEADD(DAY, -7, GETDATE());
-            SET @EndDate   = GETDATE();
+            SET DATEFIRST 1;
+            SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
         ELSE IF (@datePreset = 'LASTWEEK')
         BEGIN
-            SET @StartDate = DATEADD(DAY, -14, CAST(GETDATE() AS DATE));
-            SET @EndDate   = DATEADD(DAY, -7, CAST(GETDATE() AS DATE));
+            SET DATEFIRST 1;
+            SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
         END
         ELSE IF (@datePreset = 'MONTH')
         BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
-            SET @EndDate   = GETDATE();
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
         ELSE IF (@datePreset = 'LASTMONTH')
         BEGIN
@@ -77,14 +85,29 @@ BEGIN
         END
         ELSE IF (@datePreset = 'QUARTER')
         BEGIN
-            SET @StartDate = DATEADD(DAY, -90, GETDATE());
-            SET @EndDate   = GETDATE();
+            SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
+        END
+        ELSE IF (@datePreset = 'YEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF (@datePreset = 'LASTYEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+            SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        END
+        ELSE IF (@datePreset = 'ALL' OR @datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR @datePreset = 'NULL')
+        BEGIN
+            SET @StartDate = CAST(@CompanyStartDate AS DATE);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
         ELSE
         BEGIN
-            -- Default fallback (last 7 days)
-            SET @StartDate = DATEADD(DAY, -7, GETDATE());
-            SET @EndDate   = GETDATE();
+            -- Default fallback (ALL)
+            SET @StartDate = CAST(@CompanyStartDate AS DATE);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
     END
 
@@ -104,7 +127,14 @@ BEGIN
         Longitude
     INTO #Enq
     FROM Pro_Enq
-    WHERE Comp_ID = @Comp_Id
+	INNER JOIN M_code M 
+	    ON Received_Code1 = CAST(code1 AS VARCHAR(50))
+	 AND Received_Code2 = CAST(Code2 AS VARCHAR(50))
+   -- ON Received_Code1 = M.code1 
+   --AND Received_Code2 = M.Code2
+   INNER JOIN Pro_Reg PR
+   ON PR.Pro_ID=M.Pro_ID
+    WHERE PR.Comp_ID = @Comp_Id
       AND Enq_Date >= @StartDate
       AND Enq_Date <  @EndDate
       AND (@DialModeFilter IS NULL OR Dial_Mode = @DialModeFilter);
@@ -239,8 +269,8 @@ BEGIN
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
             END AS Result,
-            ISNULL(NULLIF(E.Latitude, ''), G.Latitude) AS Latitude,
-            ISNULL(NULLIF(E.Longitude, ''), G.Longitude) AS Longitude
+            ISNULL(G.Latitude, E.Latitude) AS Latitude,
+            ISNULL(G.Longitude, E.Longitude) AS Longitude
         --FROM #Enq E
 		FROM
 		(
@@ -298,8 +328,8 @@ BEGIN
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
             END AS Result,
-            ISNULL(NULLIF(E.Latitude, ''), G.Latitude) AS Latitude,
-            ISNULL(NULLIF(E.Longitude, ''), G.Longitude) AS Longitude
+            ISNULL(G.Latitude, E.Latitude) AS Latitude,
+            ISNULL(G.Longitude, E.Longitude) AS Longitude
         FROM #Enq E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
@@ -331,7 +361,7 @@ BEGIN
             COUNT(1) AS TotalRecords,
             @Page AS CurrentPage,
             @Limit AS [Limit],
-            CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
+            CAST(CEILING(COUNT(1) * 1.0 / @Limit) AS INT) AS TotalPages
         FROM #Enq E
         LEFT JOIN #Geo G
             ON G.Code1 = E.Received_Code1
@@ -353,4 +383,3 @@ BEGIN
             );
     END
 END
-GO
