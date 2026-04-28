@@ -33,68 +33,82 @@ BEGIN
     ---------------------------------------------------------
     -- DATE RANGE
     ---------------------------------------------------------
-    DECLARE @StartDate DATE = NULL;
-DECLARE @EndDate   DATE = NULL;
+    DECLARE @StartDate DATETIME = NULL;
+    DECLARE @EndDate   DATETIME = NULL;
 
--- Normalize TimeWindow
-IF (
-       @datePreset IS NULL
-    OR LTRIM(RTRIM(@datePreset)) = ''
-    OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null'
-)
-    SET @datePreset = NULL;
-ELSE
-    SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
+    -- Normalize TimeWindow
+    IF (
+           @datePreset IS NULL
+        OR LTRIM(RTRIM(@datePreset)) = ''
+        OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null'
+    )
+        SET @datePreset = NULL;
+    ELSE
+        SET @datePreset = LOWER(LTRIM(RTRIM(@datePreset)));
 
--- Explicit date range overrides TimeWindow
-IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
-BEGIN
-    SET @StartDate = @FromDate;
-    SET @EndDate   = @ToDate;
-END
-ELSE
-BEGIN
-    SET @EndDate = CAST(GETDATE() AS DATE);
-    SET DATEFIRST 1; -- Monday start
-
-    IF (@datePreset = 'TODAY')
-        SET @StartDate = @EndDate;
-
-    ELSE IF (@datePreset = 'YESTERDAY')
+    -- Explicit date range overrides TimeWindow
+    IF (@datePreset = 'custom' AND @FromDate IS NOT NULL AND @ToDate IS NOT NULL)
     BEGIN
-        SET @StartDate = DATEADD(DAY, -1, @EndDate);
-        SET @EndDate   = DATEADD(DAY, -1, @EndDate);
+        SET @StartDate = CAST(@FromDate AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME)); -- Exclusive end date
     END
-
-    ELSE IF (@datePreset = 'WEEK')
-        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @EndDate), @EndDate);
-
-    ELSE IF (@datePreset = 'LASTWEEK')
+    ELSE IF (@datePreset = 'today')
     BEGIN
-        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate) - 1, 0);
-        SET @EndDate   = DATEADD(DAY, -1,
-                           DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
+        SET @StartDate = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
+        SET @EndDate = DATEADD(DAY, 1, @StartDate);
     END
-
-    ELSE IF (@datePreset = 'MONTH')
-        SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), MONTH(@EndDate), 1);
-
-    ELSE IF (@datePreset = 'LASTMONTH')
+    ELSE IF (@datePreset = 'lastday')
     BEGIN
-        SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate) - 1, 0);
-        SET @EndDate   = DATEADD(DAY, -1,
-                           DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0));
+        SET @StartDate = DATEADD(DAY, -1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+        SET @EndDate = DATEADD(DAY, 1, @StartDate);
     END
-
-    ELSE IF (@datePreset = 'QUARTER')
-        SET @StartDate = DATEADD(DAY, -90, @EndDate);
-
+    ELSE IF (@datePreset = 'week')
+    BEGIN
+        SET DATEFIRST 1;
+        SET @StartDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE)) AS DATETIME);
+        SET @EndDate = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+    END
+    ELSE IF (@datePreset = 'lastweek')
+    BEGIN
+        SET DATEFIRST 1;
+        SET @StartDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()) - 7, CAST(GETDATE() AS DATE)) AS DATETIME);
+        SET @EndDate = DATEADD(DAY, 7, @StartDate);
+    END
+    ELSE IF (@datePreset = 'month')
+    BEGIN
+        SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME);
+        SET @EndDate = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+    END
+    ELSE IF (@datePreset = 'lastmonth')
+    BEGIN
+        SET @StartDate = DATEADD(MONTH, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME));
+        SET @EndDate = DATEADD(MONTH, 1, @StartDate);
+    END
+    ELSE IF (@datePreset = 'quarter')
+    BEGIN
+        SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+        SET @EndDate = DATEADD(QUARTER, 1, @StartDate);
+    END
+    ELSE IF (@datePreset = 'year')
+    BEGIN
+        SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME);
+        SET @EndDate = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+    END
+    ELSE IF (@datePreset = 'lastyear')
+    BEGIN
+        SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1) AS DATETIME);
+        SET @EndDate = DATEADD(YEAR, 1, @StartDate);
+    END
+    ELSE IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
+    BEGIN
+        SET @StartDate = CAST(@FromDate AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
+    END
     ELSE -- ALL / NULL
     BEGIN
         SET @StartDate = NULL;
         SET @EndDate   = NULL;
     END
-END
 
     ---------------------------------------------------------
     -- CLEAN TEMP TABLES
