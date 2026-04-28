@@ -1,13 +1,11 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetUserReport_AI]    Script Date: 4/28/2026 4:40:44 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
--- =============================================
--- Author:      AI
--- Create date: 2026-04-02
--- Description: Get user-wise scanning report for a specific company
--- =============================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetUserReport_AI]
+ALTER   PROCEDURE [dbo].[USP_GetUserReport_AI]
     @Comp_ID NVARCHAR(50),
     @datePreset NVARCHAR(20) = 'week',
     @FromDate DATETIME = NULL,
@@ -45,6 +43,11 @@ BEGIN
             SET @finalFromDate = @today
             SET @finalToDate = GETDATE()
         END
+        ELSE IF @datePreset = 'lastday'
+        BEGIN
+            SET @finalFromDate = DATEADD(DAY, -1, @today)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(@today AS DATETIME))
+        END
         ELSE IF @datePreset = 'week'
         BEGIN
             -- Start of current week (Monday)
@@ -65,13 +68,24 @@ BEGIN
         END
         ELSE IF @datePreset = 'lastmonth'
         BEGIN
-            SET @finalFromDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1))
-            SET @finalToDate = DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME))
+            DECLARE @firstOfThisMonth DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
+            SET @finalFromDate = DATEADD(MONTH, -1, @firstOfThisMonth)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(@firstOfThisMonth AS DATETIME))
         END
         ELSE IF @datePreset = 'quarter'
         BEGIN
-            SET @finalFromDate =  DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
+            SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
             SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'year'
+        BEGIN
+            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1)
+            SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'lastyear'
+        BEGIN
+            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME))
         END
         ELSE
         BEGIN
@@ -98,7 +112,7 @@ BEGIN
 
     SELECT 
         ROW_NUMBER() OVER (ORDER BY mc.MobileNo) AS SNo,
-        mc.MobileNo,
+        mc.MobileNo,mc.ConsumerName as Name,
         mc.State,
         mc.City,
         mc.Email,
@@ -125,6 +139,6 @@ BEGIN
     OFFSET (@PageNumber - 1) * @PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
     OPTION (RECOMPILE);
-END
 
-GO
+	
+END

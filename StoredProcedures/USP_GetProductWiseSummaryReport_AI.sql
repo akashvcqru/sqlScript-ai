@@ -1,6 +1,6 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetProductWiseSummaryReport_AI]    Script Date: 4/24/2026 10:49:15 AM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetProductWiseSummaryReport_AI]    Script Date: 4/28/2026 4:32:16 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -48,6 +48,11 @@ BEGIN
             SET @finalFromDate = @today
             SET @finalToDate = GETDATE()
         END
+        ELSE IF @datePreset = 'lastday'
+        BEGIN
+            SET @finalFromDate = DATEADD(DAY, -1, @today)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(@today AS DATETIME))
+        END
         ELSE IF @datePreset = 'week'
         BEGIN
             -- Start of current week (Monday)
@@ -68,13 +73,24 @@ BEGIN
         END
         ELSE IF @datePreset = 'lastmonth'
         BEGIN
-            SET @finalFromDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1))
-            SET @finalToDate = DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME))
+            DECLARE @firstOfThisMonth DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
+            SET @finalFromDate = DATEADD(MONTH, -1, @firstOfThisMonth)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(@firstOfThisMonth AS DATETIME))
         END
         ELSE IF @datePreset = 'quarter'
         BEGIN
             SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
             SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'year'
+        BEGIN
+            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1)
+            SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'lastyear'
+        BEGIN
+            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME))
         END
         ELSE
         BEGIN

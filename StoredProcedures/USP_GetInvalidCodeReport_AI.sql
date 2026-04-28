@@ -1,13 +1,11 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetInvalidCodeReport_AI]    Script Date: 4/28/2026 4:48:56 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
--- =============================================
--- Author:      AI
--- Create date: 2026-04-02
--- Description: Get invalid code report for a specific company
--- =============================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetInvalidCodeReport_AI]
+ALTER   PROCEDURE [dbo].[USP_GetInvalidCodeReport_AI]
     @Comp_ID NVARCHAR(50),
     @datePreset NVARCHAR(20) = 'week',
     @FromDate DATETIME = NULL,
@@ -45,20 +43,54 @@ BEGIN
             SET @finalFromDate = @today
             SET @finalToDate = GETDATE()
         END
+        ELSE IF @datePreset = 'lastday'
+        BEGIN
+            SET @finalFromDate = DATEADD(DAY, -1, @today)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(@today AS DATETIME))
+        END
         ELSE IF @datePreset = 'week'
         BEGIN
-            SET @finalFromDate = DATEADD(DAY, -7, @today)
+            -- Start of current week (Monday)
+            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
             SET @finalToDate = GETDATE()
         END
-        ELSE IF @datePreset = 'month' OR @datePreset = 'last30days'
+        ELSE IF @datePreset = 'lastweek'
         BEGIN
-            SET @finalFromDate = DATEADD(DAY, -30, @today)
+            -- Start of last week (Monday)
+            DECLARE @thisMonday DATE = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
+            SET @finalFromDate = DATEADD(DAY, -7, @thisMonday)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(@thisMonday AS DATETIME))
+        END
+        ELSE IF @datePreset = 'month'
+        BEGIN
+            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
             SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'lastmonth'
+        BEGIN
+            DECLARE @firstOfThisMonth DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
+            SET @finalFromDate = DATEADD(MONTH, -1, @firstOfThisMonth)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(@firstOfThisMonth AS DATETIME))
+        END
+        ELSE IF @datePreset = 'quarter'
+        BEGIN
+            SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
+            SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'year'
+        BEGIN
+            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1)
+            SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'lastyear'
+        BEGIN
+            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME))
         END
         ELSE
         BEGIN
-            -- Default to last 7 days
-            SET @finalFromDate = DATEADD(DAY, -7, @today)
+            -- Default to week
+            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
             SET @finalToDate = GETDATE()
         END
     END
@@ -102,4 +134,3 @@ BEGIN
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
     OPTION (RECOMPILE);
 END
-GO
