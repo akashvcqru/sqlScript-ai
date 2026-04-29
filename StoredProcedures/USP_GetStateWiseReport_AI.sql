@@ -36,22 +36,22 @@ BEGIN
     IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null')
         SET @datePreset = 'week'
     ELSE
-        SET @datePreset = LOWER(LTRIM(RTRIM(@datePreset)));
+        SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
 
-    IF @datePreset = 'all' BEGIN SET @finalFromDate = @CompanyStartDate; SET @finalToDate = DATEADD(DAY, 1, CAST(GETDATE() AS DATE)) END
-    ELSE IF @datePreset = 'custom' BEGIN SET @finalFromDate = @FromDate; SET @finalToDate = @ToDate END
+    DECLARE @today DATE = CAST(GETDATE() AS DATE); SET DATEFIRST 1;
+    IF @datePreset = 'ALL' BEGIN SET @finalFromDate = @CompanyStartDate; SET @finalToDate = @today END
+    ELSE IF @datePreset = 'CUSTOM' BEGIN SET @finalFromDate = @FromDate; SET @finalToDate = @ToDate END
     ELSE BEGIN
-        DECLARE @today DATE = CAST(GETDATE() AS DATE); SET DATEFIRST 1;
-        IF @datePreset = 'today' BEGIN SET @finalFromDate = @today; SET @finalToDate = GETDATE() END
-        ELSE IF @datePreset = 'lastday' BEGIN SET @finalFromDate = DATEADD(DAY,-1,@today); SET @finalToDate = DATEADD(SECOND,-1,CAST(@today AS DATETIME)) END
-        ELSE IF @datePreset = 'week' BEGIN SET @finalFromDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalToDate = GETDATE() END
-        ELSE IF @datePreset = 'lastweek' BEGIN DECLARE @thisMonday DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalFromDate = DATEADD(DAY,-7,@thisMonday); SET @finalToDate = DATEADD(SECOND,-1,CAST(@thisMonday AS DATETIME)) END
-        ELSE IF @datePreset = 'month' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1); SET @finalToDate = GETDATE() END
-        ELSE IF @datePreset = 'lastmonth' BEGIN SET @finalFromDate = DATEADD(MONTH,-1,DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)); SET @finalToDate = DATEADD(SECOND,-1,CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME)) END
-        ELSE IF @datePreset = 'quarter' BEGIN SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0); SET @finalToDate = GETDATE() END
-        ELSE IF @datePreset = 'year' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1); SET @finalToDate = GETDATE() END
-        ELSE IF @datePreset = 'lastyear' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1); SET @finalToDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31) END
-        ELSE BEGIN SET @finalFromDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalToDate = GETDATE() END
+        IF @datePreset = 'TODAY' BEGIN SET @finalFromDate = @today; SET @finalToDate = @today END
+        ELSE IF @datePreset = 'YESTERDAY' OR @datePreset = 'LASTDAY' BEGIN SET @finalFromDate = DATEADD(DAY,-1,@today); SET @finalToDate = DATEADD(DAY,-1,@today) END
+        ELSE IF @datePreset = 'WEEK' BEGIN SET @finalFromDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalToDate = @today END
+        ELSE IF @datePreset = 'LASTWEEK' BEGIN DECLARE @thisMonday DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalFromDate = DATEADD(DAY,-7,@thisMonday); SET @finalToDate = DATEADD(DAY, -1, @thisMonday) END
+        ELSE IF @datePreset = 'MONTH' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1); SET @finalToDate = @today END
+        ELSE IF @datePreset = 'LASTMONTH' BEGIN SET @finalFromDate = DATEADD(MONTH,-1,DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)); SET @finalToDate = DATEADD(DAY, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)) END
+        ELSE IF @datePreset = 'QUARTER' BEGIN SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0); SET @finalToDate = @today END
+        ELSE IF @datePreset = 'YEAR' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1); SET @finalToDate = @today END
+        ELSE IF @datePreset = 'LASTYEAR' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1); SET @finalToDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31) END
+        ELSE BEGIN SET @finalFromDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalToDate = @today END
     END
 
     ------------------------------------------------------

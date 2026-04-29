@@ -19,7 +19,9 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetLiveScanTracking_AI]
     @IsExport BIT = 0,
     @Search NVARCHAR(100) = NULL,
     @StateFilter NVARCHAR(100) = NULL,
-    @KYCStatusFilter NVARCHAR(50) = NULL
+    @KYCStatusFilter NVARCHAR(50) = NULL,
+    @CodeStatusFilter NVARCHAR(20) = NULL,
+    @DialModeFilter NVARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -30,7 +32,7 @@ BEGIN
     IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' SET @StateFilter = NULL;
 
     -- 1. Construct Dynamic Table Name
-    DECLARE @CleanCompID NVARCHAR(100) = REPLACE(@Comp_ID, ' ', '_');
+    DECLARE @CleanCompID NVARCHAR(100) = REPLACE(REPLACE(@Comp_ID, ' ', '_'), '-', '_');
     DECLARE @TableName NVARCHAR(256) = N'[GetLiveScanTracking_optimizedata_' + @CleanCompID + N']';
     DECLARE @Sql NVARCHAR(MAX);
 
@@ -44,7 +46,8 @@ BEGIN
     ('State', 'NVARCHAR(100)'), ('PinCode', 'NVARCHAR(20)'), ('Channel', 'NVARCHAR(50)'),
     ('DistributorRetailer', 'NVARCHAR(250)'), ('ManufacturingDate', 'DATETIME'), ('ExpiryDate', 'DATETIME'),
     ('RiskAbuseFlag', 'NVARCHAR(20)'), ('ClaimID', 'NVARCHAR(50)'), ('ConsumerMobile', 'NVARCHAR(20)'),
-    ('Latitude', 'NVARCHAR(50)'), ('Longitude', 'NVARCHAR(50)');
+    ('Latitude', 'NVARCHAR(50)'), ('Longitude', 'NVARCHAR(50)'),
+    ('Is_Success', 'INT'), ('Dial_Mode', 'NVARCHAR(50)');
 
     -- 3. Check for Schema Changes or Missing Table
     DECLARE @TableExists INT = 0;
@@ -93,9 +96,8 @@ BEGIN
     END
 
     -- Prepare Insert Statement
-    -- We use a temp table logic inside dynamic SQL to pull latest data efficiently
     SET @Sql = N'
-    INSERT INTO ' + @TableName + N' (ScanTimestamp, Product, VariantSKU, BatchNo, UniqueCode, ScanResult, FirstOrRepeat, TotalScansForUID, City, State, PinCode, Channel, DistributorRetailer, RiskAbuseFlag, ConsumerMobile, Latitude, Longitude)
+    INSERT INTO ' + @TableName + N' (ScanTimestamp, Product, VariantSKU, BatchNo, UniqueCode, ScanResult, FirstOrRepeat, TotalScansForUID, City, State, PinCode, Channel, DistributorRetailer, RiskAbuseFlag, ConsumerMobile, Latitude, Longitude, Is_Success, Dial_Mode)
     SELECT 
         pe.Enq_Date,
         pr.Pro_Name,
@@ -113,7 +115,9 @@ BEGIN
         CASE WHEN mc.Use_Count > 10 THEN ''High Risk'' WHEN mc.Use_Count > 5 THEN ''Medium Risk'' ELSE ''Low Risk'' END,
         pe.MobileNo,
         pe.Latitude,
-        pe.Longitude
+        pe.Longitude,
+        pe.Is_Success,
+        pe.Dial_Mode
     FROM Pro_Enq pe
     LEFT JOIN M_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
     LEFT JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
@@ -122,27 +126,29 @@ BEGIN
 
     EXEC sp_executesql @Sql, N'@CompID NVARCHAR(50), @LastSync DATETIME', @Comp_ID, @LastSync;
 
-    -- 6. Date Range Handling (Same logic as before but applied to the optimized table)
+    -- 6. Date Range Handling
     DECLARE @finalFromDate DATETIME, @finalToDate DATETIME
     IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null')
         SET @datePreset = 'month'
     ELSE
-        SET @datePreset = LOWER(LTRIM(RTRIM(@datePreset)));
+        SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
 
-    IF @datePreset = 'all' BEGIN SET @finalFromDate = '2000-01-01'; SET @finalToDate = DATEADD(DAY, 1, CAST(GETDATE() AS DATE)) END
-    ELSE IF @datePreset = 'custom' BEGIN SET @finalFromDate = @FromDate; SET @finalToDate = @ToDate END
+    DECLARE @today DATE = CAST(GETDATE() AS DATE); SET DATEFIRST 1;
+    DECLARE @tomorrow DATE = DATEADD(DAY, 1, @today);
+
+    IF @datePreset = 'ALL' BEGIN SET @finalFromDate = '2015-01-01'; SET @finalToDate = @tomorrow END
+    ELSE IF @datePreset = 'CUSTOM' BEGIN SET @finalFromDate = @FromDate; SET @finalToDate = DATEADD(DAY, 1, @ToDate) END
     ELSE BEGIN
-        DECLARE @today DATE = CAST(GETDATE() AS DATE); SET DATEFIRST 1;
-        IF @datePreset = 'today' BEGIN SET @finalFromDate = @today; SET @finalToDate = GETDATE() END
-        ELSE IF @datePreset = 'lastday' BEGIN SET @finalFromDate = DATEADD(DAY,-1,@today); SET @finalToDate = DATEADD(SECOND,-1,CAST(@today AS DATETIME)) END
-        ELSE IF @datePreset = 'week' BEGIN SET @finalFromDate = DATEADD(DAY,1-DATEPART(WEEKDAY,@today),@today); SET @finalToDate = GETDATE() END
-        ELSE IF @datePreset = 'lastweek' BEGIN DECLARE @thisMonday DATE = DATEADD(DAY,1-DATEPART(WEEKDAY,@today),@today); SET @finalFromDate = DATEADD(DAY,-7,@thisMonday); SET @finalToDate = DATEADD(SECOND,-1,CAST(@thisMonday AS DATETIME)) END
-        ELSE IF @datePreset = 'month' OR @datePreset = 'last30days' BEGIN SET @finalFromDate = DATEADD(DAY,-30,@today); SET @finalToDate = GETDATE() END
-        ELSE IF @datePreset = 'lastmonth' BEGIN SET @finalFromDate = DATEADD(MONTH,-1,DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1)); SET @finalToDate = DATEADD(SECOND,-1,CAST(DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1) AS DATETIME)) END
-        ELSE IF @datePreset = 'quarter' BEGIN SET @finalFromDate = DATEADD(QUARTER,DATEDIFF(QUARTER,0,GETDATE()),0); SET @finalToDate = GETDATE() END
-        ELSE IF @datePreset = 'year' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()),1,1); SET @finalToDate = GETDATE() END
-        ELSE IF @datePreset = 'lastyear' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE())-1,1,1); SET @finalToDate = DATEFROMPARTS(YEAR(GETDATE())-1,12,31) END
-        ELSE BEGIN SET @finalFromDate = DATEADD(DAY,-30,@today); SET @finalToDate = GETDATE() END
+        IF @datePreset = 'TODAY' BEGIN SET @finalFromDate = @today; SET @finalToDate = @tomorrow END
+        ELSE IF @datePreset = 'YESTERDAY' OR @datePreset = 'LASTDAY' BEGIN SET @finalFromDate = DATEADD(DAY,-1,@today); SET @finalToDate = @today END
+        ELSE IF @datePreset = 'WEEK' BEGIN SET @finalFromDate = DATEADD(DAY,1-DATEPART(WEEKDAY,@today),@today); SET @finalToDate = @tomorrow END
+        ELSE IF @datePreset = 'LASTWEEK' BEGIN DECLARE @thisMonday DATE = DATEADD(DAY,1-DATEPART(WEEKDAY,@today),@today); SET @finalFromDate = DATEADD(DAY,-7,@thisMonday); SET @finalToDate = @thisMonday END
+        ELSE IF @datePreset = 'MONTH' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1); SET @finalToDate = @tomorrow END
+        ELSE IF @datePreset = 'LASTMONTH' BEGIN SET @finalFromDate = DATEADD(MONTH,-1,DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1)); SET @finalToDate = DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1) END
+        ELSE IF @datePreset = 'QUARTER' BEGIN SET @finalFromDate = DATEADD(QUARTER,DATEDIFF(QUARTER,0,GETDATE()),0); SET @finalToDate = @tomorrow END
+        ELSE IF @datePreset = 'YEAR' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1); SET @finalToDate = @tomorrow END
+        ELSE IF @datePreset = 'LASTYEAR' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE())-1, 1, 1); SET @finalToDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1) END
+        ELSE BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1); SET @finalToDate = @tomorrow END
     END
 
     -- 7. Final Optimized Select
@@ -152,8 +158,15 @@ BEGIN
         *,
         COUNT(*) OVER() AS TotalRecords
     FROM ' + @TableName + N'
-    WHERE (ScanTimestamp >= @fFrom AND ScanTimestamp < DATEADD(DAY, 1, @fTo))
+    WHERE (ScanTimestamp >= @fFrom AND ScanTimestamp < @fTo)
       AND (@StateFilter IS NULL OR [State] = @StateFilter)
+      AND (@DialModeFilter IS NULL OR [Dial_Mode] = @DialModeFilter)
+      AND (
+          @CodeStatusFilter IS NULL OR
+          (@CodeStatusFilter = ''Verified'' AND Is_Success = 1) OR
+          (@CodeStatusFilter = ''Already Scanned'' AND Is_Success = 2) OR
+          (@CodeStatusFilter = ''Invalid'' AND Is_Success NOT IN (1, 2))
+      )
       AND (@Search IS NULL 
            OR ConsumerMobile LIKE ''%''+@Search+''%'' 
            OR UniqueCode LIKE ''%''+@Search+''%'' 
@@ -163,7 +176,7 @@ BEGIN
     FETCH NEXT (CASE WHEN @IsExport=1 THEN 1000000 ELSE @PageSize END) ROWS ONLY;';
 
     EXEC sp_executesql @Sql, 
-        N'@fFrom DATETIME, @fTo DATETIME, @StateFilter NVARCHAR(100), @Search NVARCHAR(100), @PageNumber INT, @PageSize INT, @IsExport BIT',
-        @finalFromDate, @finalToDate, @StateFilter, @Search, @PageNumber, @PageSize, @IsExport;
+        N'@fFrom DATETIME, @fTo DATETIME, @StateFilter NVARCHAR(100), @Search NVARCHAR(100), @PageNumber INT, @PageSize INT, @IsExport BIT, @DialModeFilter NVARCHAR(50), @CodeStatusFilter NVARCHAR(20)',
+        @finalFromDate, @finalToDate, @StateFilter, @Search, @PageNumber, @PageSize, @IsExport, @DialModeFilter, @CodeStatusFilter;
 END
 GO
