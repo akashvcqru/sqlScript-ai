@@ -56,67 +56,76 @@ BEGIN
     SET @Sql = N'IF OBJECT_ID(''' + @TableName + N''') IS NOT NULL SET @exists = 1 ELSE SET @exists = 0;';
     EXEC sp_executesql @Sql, N'@exists INT OUTPUT', @TableExists OUTPUT;
 
-    IF @TableExists = 1
-    BEGIN
-        IF @datePreset IS NULL OR @datePreset = '' SET @datePreset = 'week'
-        
-        DECLARE @today DATE = CAST(GETDATE() AS DATE)
+    DECLARE @finalFromDate DATETIME, @finalToDate DATETIME
+    IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null' OR @datePreset = 'All')
+        SET @datePreset = 'ALL'
+    ELSE
+        SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
 
-        IF @MissingCols > 0
-        BEGIN
-            SET @finalFromDate = @today
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'lastday'
-        BEGIN
-            SET @finalFromDate = DATEADD(DAY, -1, @today)
-            SET @finalToDate = DATEADD(SECOND, -1, CAST(@today AS DATETIME))
-        END
-        ELSE IF @datePreset = 'week'
-        BEGIN
-            -- Start of current week (Monday)
-            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'lastweek'
-        BEGIN
-            -- Start of last week (Monday)
-            DECLARE @thisMonday DATE = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
-            SET @finalFromDate = DATEADD(DAY, -7, @thisMonday)
-            SET @finalToDate = DATEADD(SECOND, -1, CAST(@thisMonday AS DATETIME))
-        END
-        ELSE IF @datePreset = 'month'
-        BEGIN
-            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'lastmonth'
-        BEGIN
-            DECLARE @firstOfThisMonth DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
-            SET @finalFromDate = DATEADD(MONTH, -1, @firstOfThisMonth)
-            SET @finalToDate = DATEADD(SECOND, -1, CAST(@firstOfThisMonth AS DATETIME))
-        END
-        ELSE IF @datePreset = 'quarter'
-        BEGIN
-            SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'year'
-        BEGIN
-            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1)
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'lastyear'
-        BEGIN
-            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
-            SET @finalToDate = DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME))
-        END
-        ELSE
-        BEGIN
-            -- Default to week
-            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
-            SET @finalToDate = GETDATE()
-        END
+    DECLARE @today DATE = CAST(GETDATE() AS DATE); 
+    SET DATEFIRST 1; -- Monday as first day of week
+
+    IF @datePreset = 'ALL' 
+    BEGIN 
+        SET @finalFromDate = NULL; 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'CUSTOM' 
+    BEGIN 
+        SET @finalFromDate = @FromDate; 
+        SET @finalToDate = @ToDate; 
+    END
+    ELSE IF @datePreset = 'TODAY' 
+    BEGIN 
+        SET @finalFromDate = CAST(@today AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'YESTERDAY' OR @datePreset = 'LASTDAY' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(DAY, -1, @today) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@today AS DATETIME)) AS DATETIME); 
+    END
+    ELSE IF @datePreset = 'WEEK' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'LASTWEEK' 
+    BEGIN 
+        DECLARE @lastMonday DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); 
+        SET @finalFromDate = CAST(DATEADD(DAY, -7, @lastMonday) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@lastMonday AS DATETIME)) AS DATETIME); 
+    END
+    ELSE IF @datePreset = 'MONTH' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'LASTMONTH' 
+    BEGIN 
+        DECLARE @firstOfThisMonth DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+        SET @finalFromDate = CAST(DATEADD(MONTH, -1, @firstOfThisMonth) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@firstOfThisMonth AS DATETIME)) AS DATETIME); 
+    END
+    ELSE IF @datePreset = 'QUARTER' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'YEAR' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'LASTYEAR' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME)) AS DATETIME); 
+    END
+    ELSE 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
     END
 
     -- 4. Create Table if it doesn't exist
@@ -142,6 +151,21 @@ BEGIN
     BEGIN
         SELECT @LastSync = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_ID;
     END
+
+    -- 6. Pre-filter M_Code
+    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+    SELECT 
+        a.Code1, 
+        a.Code2, 
+        a.Pro_ID,
+        a.Batch_No,
+        a.Use_Count
+    INTO #tempM_Code 
+    FROM M_Code a 
+    INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+    WHERE b.Comp_ID = @Comp_ID;
+
+    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
 
     ;WITH ResultCTE AS (
         SELECT 

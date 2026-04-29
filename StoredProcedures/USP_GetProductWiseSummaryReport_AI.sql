@@ -40,51 +40,76 @@ BEGIN
     FROM Comp_Reg WHERE Comp_ID = @Comp_ID AND Status = 1;
 
     DECLARE @finalFromDate DATETIME, @finalToDate DATETIME
-    IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null')
-        SET @datePreset = 'week'
+    IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null' OR @datePreset = 'All')
+        SET @datePreset = 'ALL'
     ELSE
         SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
 
-        IF @datePreset = 'today'
-        BEGIN
-            SET @finalFromDate = @today
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'week'
-        BEGIN
-            -- Start of current week (Monday)
-            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'lastweek'
-        BEGIN
-            -- Start of last week (Monday)
-            DECLARE @thisMonday DATE = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
-            SET @finalFromDate = DATEADD(DAY, -7, @thisMonday)
-            SET @finalToDate = DATEADD(SECOND, -1, CAST(@thisMonday AS DATETIME))
-        END
-        ELSE IF @datePreset = 'month'
-        BEGIN
-            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'lastmonth'
-        BEGIN
-            SET @finalFromDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1))
-            SET @finalToDate = DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME))
-        END
-        ELSE IF @datePreset = 'quarter'
-        BEGIN
-            SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
-            SET @finalToDate = GETDATE()
-        END
-        ELSE
-        BEGIN
-            -- Default to week
-            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
-            SET @finalToDate = GETDATE()
-        END
-    END;
+    DECLARE @today DATE = CAST(GETDATE() AS DATE); 
+    SET DATEFIRST 1; -- Monday as first day of week
+
+    IF @datePreset = 'ALL' 
+    BEGIN 
+        SET @finalFromDate = NULL; 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'CUSTOM' 
+    BEGIN 
+        SET @finalFromDate = @FromDate; 
+        SET @finalToDate = @ToDate; 
+    END
+    ELSE IF @datePreset = 'TODAY' 
+    BEGIN 
+        SET @finalFromDate = CAST(@today AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'YESTERDAY' OR @datePreset = 'LASTDAY' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(DAY, -1, @today) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@today AS DATETIME)) AS DATETIME); 
+    END
+    ELSE IF @datePreset = 'WEEK' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'LASTWEEK' 
+    BEGIN 
+        DECLARE @lastMonday DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); 
+        SET @finalFromDate = CAST(DATEADD(DAY, -7, @lastMonday) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@lastMonday AS DATETIME)) AS DATETIME); 
+    END
+    ELSE IF @datePreset = 'MONTH' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'LASTMONTH' 
+    BEGIN 
+        DECLARE @firstOfThisMonth DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+        SET @finalFromDate = CAST(DATEADD(MONTH, -1, @firstOfThisMonth) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@firstOfThisMonth AS DATETIME)) AS DATETIME); 
+    END
+    ELSE IF @datePreset = 'QUARTER' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'YEAR' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'LASTYEAR' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME)) AS DATETIME); 
+    END
+    ELSE 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
 
     ------------------------------------------------------
     -- Step 1: Pre-filter M_Code (Optimized columns)
