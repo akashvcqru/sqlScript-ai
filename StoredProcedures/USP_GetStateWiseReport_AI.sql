@@ -18,7 +18,6 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetStateWiseReport_AI]
     @IsExport BIT = 0,
     @Search NVARCHAR(100) = NULL,
     @StateFilter NVARCHAR(100) = NULL,
-    @KYCStatusFilter NVARCHAR(50) = NULL,
     @CodeStatusFilter NVARCHAR(20) = NULL,
     @DialModeFilter NVARCHAR(50) = NULL
 AS
