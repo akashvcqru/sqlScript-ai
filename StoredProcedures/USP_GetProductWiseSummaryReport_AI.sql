@@ -19,7 +19,9 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetProductWiseSummaryReport_AI]
     @IsExport BIT = 0,
     @Search NVARCHAR(100) = NULL,
     @StateFilter NVARCHAR(100) = NULL,
-    @KYCStatusFilter NVARCHAR(50) = NULL
+    @KYCStatusFilter NVARCHAR(50) = NULL,
+    @CodeStatusFilter NVARCHAR(20) = NULL,
+    @DialModeFilter NVARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -28,6 +30,8 @@ BEGIN
     IF @PageSize IS NULL OR @PageSize <= 0 SET @PageSize = 10;
     IF LTRIM(RTRIM(ISNULL(@Search, ''))) = '' SET @Search = NULL;
     IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' SET @StateFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@CodeStatusFilter, ''))) = '' SET @CodeStatusFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@DialModeFilter, ''))) = '' SET @DialModeFilter = NULL;
 
     DECLARE @CompanyStartDate DATETIME;
     SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01')
@@ -49,7 +53,7 @@ BEGIN
         ELSE IF @datePreset = 'LASTWEEK' BEGIN DECLARE @thisMonday DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalFromDate = DATEADD(DAY, -7, @thisMonday); SET @finalToDate = DATEADD(DAY, -1, @thisMonday) END
         ELSE IF @datePreset = 'MONTH' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1); SET @finalToDate = @today END
         ELSE IF @datePreset = 'LASTMONTH' BEGIN SET @finalFromDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)); SET @finalToDate = DATEADD(DAY, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)) END
-        ELSE IF @datePreset = 'QUARTER' BEGIN SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0); SET @finalToDate = @today END
+        ELSE IF @datePreset = 'QUARTER' BEGIN SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0); SET @finalToDate = DATEADD(DAY, -1, DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0)) END
         ELSE IF @datePreset = 'YEAR' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1); SET @finalToDate = @today END
         ELSE IF @datePreset = 'LASTYEAR' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1); SET @finalToDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31) END
         ELSE BEGIN SET @finalFromDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalToDate = @today END
@@ -90,7 +94,14 @@ BEGIN
       AND pe.Enq_Date >= @CompanyStartDate
       AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
       AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
-      AND (@StateFilter IS NULL OR pe.State = @StateFilter);
+      AND (@StateFilter IS NULL OR pe.State = @StateFilter)
+      AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
+      AND (
+          @CodeStatusFilter IS NULL OR
+          (@CodeStatusFilter = 'Verified' AND pe.Is_Success = 1) OR
+          (@CodeStatusFilter = 'Already Scanned' AND pe.Is_Success = 2) OR
+          (@CodeStatusFilter = 'Invalid' AND pe.Is_Success NOT IN (1, 2))
+      );
 
     CREATE INDEX IX_tempPro_Enq_ProID ON #tempPro_Enq(Pro_ID);
 

@@ -145,7 +145,7 @@ BEGIN
         ELSE IF @datePreset = 'LASTWEEK' BEGIN DECLARE @thisMonday DATE = DATEADD(DAY,1-DATEPART(WEEKDAY,@today),@today); SET @finalFromDate = DATEADD(DAY,-7,@thisMonday); SET @finalToDate = @thisMonday END
         ELSE IF @datePreset = 'MONTH' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1); SET @finalToDate = @tomorrow END
         ELSE IF @datePreset = 'LASTMONTH' BEGIN SET @finalFromDate = DATEADD(MONTH,-1,DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1)); SET @finalToDate = DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1) END
-        ELSE IF @datePreset = 'QUARTER' BEGIN SET @finalFromDate = DATEADD(QUARTER,DATEDIFF(QUARTER,0,GETDATE()),0); SET @finalToDate = @tomorrow END
+        ELSE IF @datePreset = 'QUARTER' BEGIN SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0); SET @finalToDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0) END
         ELSE IF @datePreset = 'YEAR' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1); SET @finalToDate = @tomorrow END
         ELSE IF @datePreset = 'LASTYEAR' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE())-1, 1, 1); SET @finalToDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1) END
         ELSE BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1); SET @finalToDate = @tomorrow END
