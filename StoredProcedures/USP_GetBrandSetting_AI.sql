@@ -7,11 +7,11 @@ BEGIN
 
     IF @Type = 'Brand'
     BEGIN
-        SELECT [CompData] AS Data FROM [dbo].[BrandSettings] WHERE [Comp_ID] = @Comp_ID;
+        SELECT [CompData] AS Data FROM [dbo].[BrandSettings_AI] WHERE [Comp_ID] = @Comp_ID;
     END
     ELSE IF @Type = 'Contact'
     BEGIN
-        SELECT [ContactUsContains] AS Data FROM [dbo].[BrandSettings] WHERE [Comp_ID] = @Comp_ID;
+        SELECT [ContactUsContains] AS Data FROM [dbo].[BrandSettings_AI] WHERE [Comp_ID] = @Comp_ID;
     END
 END
 GO
