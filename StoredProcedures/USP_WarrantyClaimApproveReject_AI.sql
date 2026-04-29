@@ -38,18 +38,18 @@ BEGIN
             [VendorComments] = @Comment
         WHERE id = @Id;
 
-        -- Insert new record for retry/re-entry
+        -- Insert new record for retry/re-entry (IsWarrantyClaimed, VendorClaimStatus, VendorComments = NULL)
         INSERT INTO [dbo].[WarrentyDetails] (
             BillNo, PurchaseDate, Email, Mobile, WarrantyPeriod, ExpirationDate, 
             ImagePathBill, Code, claimdate, [State], City, DealerName, 
             VendorClaimStatus, Serialno, PurchaseFrom, Battary_volt, Brand, 
-            Ratting, Pincode, [Address], Model, batryType
+            Ratting, Pincode, [Address], Model, batryType, IsWarrantyClaimed, VendorComments
         )
         SELECT 
             BillNo, PurchaseDate, Email, Mobile, WarrantyPeriod, ExpirationDate, 
             ImagePathBill, Code, claimdate, [State], City, DealerName, 
-            '', Serialno, PurchaseFrom, Battary_volt, Brand, 
-            Ratting, Pincode, [Address], Model, batryType
+            NULL, Serialno, PurchaseFrom, Battary_volt, Brand, 
+            Ratting, Pincode, [Address], Model, batryType, NULL, NULL
         FROM [dbo].[WarrentyDetails]
         WHERE id = @Id;
 
