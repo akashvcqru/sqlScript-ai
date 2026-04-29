@@ -1,9 +1,11 @@
-/****** Object:  StoredProcedure [dbo].[USP_CodeCheckHistory_BLAPP_AI]    Script Date: 3/2/2026 12:27:18 PM ******/
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_CodeCheckHistory_BLAPP_AI]    Script Date: 4/29/2026 10:15:14 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]  
+ALTER PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]  
     @MobileNo VARCHAR(15),  
     @Comp_ID VARCHAR(100),  
     @M_Consumer_id INT  
@@ -16,7 +18,7 @@ BEGIN
                 WHEN pe.Is_Success = 2 THEN 'Unsuccess'   
                 WHEN pe.Is_Success = 0 THEN 'Invalid'
                 ELSE 'Invalid'   
-            END AS Status,  
+            END AS Status,  '' as Service_ID,
             FORMAT(pe.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
             ISNULL(cr.Comp_Name, 'N/A') AS Comp_Name,  
             ISNULL(pr.Pro_Name, 'N/A') AS Pro_Name,  
@@ -49,14 +51,17 @@ BEGIN
         t2.*,  
         CONCAT('+', bl.Points) AS Points,  
         bl.ServiceName,  
-        bl.ServiceName AS ServiceNameNew,
+        c.ServiceName AS ServiceNameNew,
         CASE  
             WHEN t2.Status = 'Success' THEN 'Green'  
             WHEN t2.Status = 'Pending' THEN 'Yellow'  
             ELSE 'Red'  
         END AS ColourCode  
     FROM ConsumerData t2  
-    INNER JOIN BLoyaltyPointsEarned bl   
+    INNER JOIN BLoyaltyPointsEarned bl  
+	inner join M_ServiceSubscriptionTrans a on bl.SST_id = a.SST_Id 
+	inner join M_ServiceSubscription b on a.Subscribe_Id = b.Subscribe_Id 
+	inner join M_Service c on b.Service_ID = c.Service_ID
         ON t2.M_Consumerid = bl.M_Consumerid  
     WHERE t2.Status = 'Success'  
       AND t2.Code1 = bl.Code1   
@@ -80,7 +85,7 @@ BEGIN
     UNION  
   
     SELECT   
-        'Success' AS Status,  
+        'Success' AS Status,  '' as Service_ID,
         FORMAT(bll.UpdateDate, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
         cr.Comp_Name,  
         '' AS Pro_Name,  
@@ -102,4 +107,3 @@ BEGIN
   
     ORDER BY Enq_Date DESC;  
 END
-GO
