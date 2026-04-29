@@ -6,7 +6,6 @@ CREATE TABLE [dbo].[tblInvoiceData_AI](
     [M_Consumerid] [int] NOT NULL,
     [Comp_id] [nvarchar](50) NOT NULL,
     [InvoiceFile] [nvarchar](max) NOT NULL,
-    [InvoicePoints] [int] NOT NULL,
     [Amount] [decimal](18, 2) NOT NULL,
     [Created_Date] [datetime] NOT NULL DEFAULT (GETDATE()),
     [Status] [int] NOT NULL DEFAULT ((0)),
