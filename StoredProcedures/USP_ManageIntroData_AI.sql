@@ -42,13 +42,13 @@ BEGIN
             SET @CurrentIntroData = JSON_MODIFY(@CurrentIntroData, 'append $', JSON_QUERY(@NewItem));
         END
 
-        IF EXISTS (SELECT 1 FROM [dbo].[BrandSettings] WHERE [Comp_ID] = @Comp_ID)
+        IF EXISTS (SELECT 1 FROM [dbo].[BrandSettings_AI] WHERE [Comp_ID] = @Comp_ID)
         BEGIN
-            UPDATE [dbo].[BrandSettings] SET [Introdata] = @CurrentIntroData, [Updated_Date] = GETDATE(), [Updated_by] = 'API' WHERE [Comp_ID] = @Comp_ID;
+            UPDATE [dbo].[BrandSettings_AI] SET [Introdata] = @CurrentIntroData, [Updated_Date] = GETDATE(), [Updated_by] = 'API' WHERE [Comp_ID] = @Comp_ID;
         END
         ELSE
         BEGIN
-            INSERT INTO [dbo].[BrandSettings] ([Comp_ID], [Introdata], [Created_Date], [Created_by], [IsActive], [IsDelete])
+            INSERT INTO [dbo].[BrandSettings_AI] ([Comp_ID], [Introdata], [Created_Date], [Created_by], [IsActive], [IsDelete])
             VALUES (@Comp_ID, @CurrentIntroData, GETDATE(), 'API', 1, 0);
         END
         

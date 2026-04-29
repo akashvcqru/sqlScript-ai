@@ -12,7 +12,7 @@ BEGIN
     DECLARE @CurrentCompData NVARCHAR(MAX);
     
     -- Fetch existing data
-    SELECT @CurrentCompData = [CompData] FROM [dbo].[BrandSettings] WHERE [Comp_ID] = @Comp_ID;
+    SELECT @CurrentCompData = [CompData] FROM [dbo].[BrandSettings_AI] WHERE [Comp_ID] = @Comp_ID;
 
     IF @CurrentCompData IS NOT NULL
     BEGIN
@@ -26,7 +26,7 @@ BEGIN
         SET @CurrentCompData = JSON_MODIFY(@CurrentCompData, '$.CompName', ISNULL(@CompanyName, JSON_VALUE(@CurrentCompData, '$.CompName')));
         SET @CurrentCompData = JSON_MODIFY(@CurrentCompData, '$.IsSplashApply', ISNULL(@IsSplashApply, JSON_VALUE(@CurrentCompData, '$.IsSplashApply')));
 
-        UPDATE [dbo].[BrandSettings]
+        UPDATE [dbo].[BrandSettings_AI]
         SET [CompData] = @CurrentCompData,
             [Updated_Date] = GETDATE(),
             [Updated_by] = 'API'
@@ -37,8 +37,8 @@ BEGIN
     ELSE
     BEGIN
         -- Insert new record
-        DECLARE @NewCompData NVARCHAR(MAX);
-        SET @NewCompData = (
+        DECLARE @CompData NVARCHAR(MAX);
+        SET @CompData = (
             SELECT 
                 ISNULL(@Logo, '') AS Logo,
                 ISNULL(@SplashImage, '') AS ProductImage,
@@ -48,8 +48,8 @@ BEGIN
             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
         );
 
-        INSERT INTO [dbo].[BrandSettings] ([Comp_ID], [CompData], [Created_Date], [Created_by], [IsActive], [IsDelete])
-        VALUES (@Comp_ID, @NewCompData, GETDATE(), 'API', 1, 0);
+        INSERT INTO [dbo].[BrandSettings_AI] ([Comp_ID], [CompData], [Created_Date], [Created_by], [IsActive], [IsDelete])
+        VALUES (@Comp_ID, @CompData, GETDATE(), 'API', 1, 0);
         
         SELECT 1 AS Success, 'Brand settings added successfully.' AS Message;
     END

@@ -92,10 +92,42 @@ BEGIN
 
     CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
 
-    ------------------------------------------------------
-    -- Main Query
-    ------------------------------------------------------
-    ;WITH RawData AS (
+        -- Get unique locations from scans and consumers
+        ;WITH RawData AS (
+            SELECT 
+                pe.State,
+                pe.City,
+                mc.PinCode AS PostCode,
+                pe.MobileNo,
+                mc.IsActive,
+                mc.Entry_Date AS ConsumerEntryDate,
+                pe.Is_Success,
+                pe.Enq_Date,
+                m.Code1 AS CodeExists
+            FROM Pro_Enq pe
+            LEFT JOIN M_Consumer mc ON pe.MobileNo = mc.MobileNo
+            LEFT JOIN #tempM_Code m ON pe.Received_Code1 = m.Code1 AND pe.Received_Code2 = m.Code2
+            WHERE pe.Comp_ID = @Comp_ID
+            AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
+            AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
+            AND (ISNULL(pe.State, '') <> '' OR ISNULL(pe.City, '') <> '' OR ISNULL(mc.PinCode, '') <> '')
+        ),
+        LocationGroups AS (
+            SELECT 
+                State,
+                City,
+                PostCode,
+                COUNT(DISTINCT CASE WHEN IsActive = 1 THEN MobileNo END) AS ActiveConsumers,
+                COUNT(DISTINCT CASE WHEN ConsumerEntryDate >= @finalFromDate AND ConsumerEntryDate < DATEADD(DAY, 1, @finalToDate) THEN MobileNo END) AS NewConsumers,
+                COUNT(DISTINCT CASE WHEN ConsumerEntryDate < @finalFromDate THEN MobileNo END) AS ReturningConsumers,
+                COUNT(*) AS TotalScans,
+                SUM(CASE WHEN Is_Success = 1 THEN 1 ELSE 0 END) AS GenuineScans,
+                SUM(CASE WHEN Is_Success = 0 AND CodeExists IS NOT NULL THEN 1 ELSE 0 END) AS DuplicateScans,
+                SUM(CASE WHEN Is_Success = 0 AND CodeExists IS NULL THEN 1 ELSE 0 END) AS CounterfeitScans,
+                CAST(CAST(COUNT(*) AS DECIMAL(18,2)) / NULLIF(COUNT(DISTINCT MobileNo), 0) AS DECIMAL(18,2)) AS AvgScansPerConsumer
+            FROM RawData
+            GROUP BY State, City, PostCode
+        )
         SELECT 
             pe.State, pe.City, mc.PinCode AS PostCode, pe.MobileNo, mc.IsActive, mc.Entry_Date AS ConsumerEntryDate, pe.Is_Success, pe.Enq_Date,
             CASE WHEN m.Code1 IS NOT NULL THEN 1 ELSE 0 END AS CodeExists

@@ -45,20 +45,45 @@ BEGIN
     ELSE
         SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
 
-    DECLARE @today DATE = CAST(GETDATE() AS DATE); SET DATEFIRST 1;
-    IF @datePreset = 'ALL' BEGIN SET @finalFromDate = @CompanyStartDate; SET @finalToDate = @today END
-    ELSE IF @datePreset = 'CUSTOM' BEGIN SET @finalFromDate = @FromDate; SET @finalToDate = @ToDate END
-    ELSE BEGIN
-        IF @datePreset = 'TODAY' BEGIN SET @finalFromDate = @today; SET @finalToDate = @today END
-        ELSE IF @datePreset = 'YESTERDAY' OR @datePreset = 'LASTDAY' BEGIN SET @finalFromDate = DATEADD(DAY, -1, @today); SET @finalToDate = DATEADD(DAY, -1, @today) END
-        ELSE IF @datePreset = 'WEEK' BEGIN SET @finalFromDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalToDate = @today END
-        ELSE IF @datePreset = 'LASTWEEK' BEGIN DECLARE @thisMonday DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalFromDate = DATEADD(DAY, -7, @thisMonday); SET @finalToDate = DATEADD(DAY, -1, @thisMonday) END
-        ELSE IF @datePreset = 'MONTH' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1); SET @finalToDate = @today END
-        ELSE IF @datePreset = 'LASTMONTH' BEGIN SET @finalFromDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)); SET @finalToDate = DATEADD(DAY, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)) END
-        ELSE IF @datePreset = 'QUARTER' BEGIN SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0); SET @finalToDate = DATEADD(DAY, -1, DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0)) END
-        ELSE IF @datePreset = 'YEAR' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1); SET @finalToDate = @today END
-        ELSE IF @datePreset = 'LASTYEAR' BEGIN SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1); SET @finalToDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31) END
-        ELSE BEGIN SET @finalFromDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); SET @finalToDate = @today END
+        IF @datePreset = 'today'
+        BEGIN
+            SET @finalFromDate = @today
+            SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'week'
+        BEGIN
+            -- Start of current week (Monday)
+            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
+            SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'lastweek'
+        BEGIN
+            -- Start of last week (Monday)
+            DECLARE @thisMonday DATE = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
+            SET @finalFromDate = DATEADD(DAY, -7, @thisMonday)
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(@thisMonday AS DATETIME))
+        END
+        ELSE IF @datePreset = 'month'
+        BEGIN
+            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
+            SET @finalToDate = GETDATE()
+        END
+        ELSE IF @datePreset = 'lastmonth'
+        BEGIN
+            SET @finalFromDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1))
+            SET @finalToDate = DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME))
+        END
+        ELSE IF @datePreset = 'quarter'
+        BEGIN
+            SET @finalFromDate =  DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
+            SET @finalToDate = GETDATE()
+        END
+        ELSE
+        BEGIN
+            -- Default to week
+            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
+            SET @finalToDate = GETDATE()
+        END
     END
 
     ------------------------------------------------------
@@ -136,12 +161,15 @@ BEGIN
     FROM #tempPro_Enq pe
     INNER JOIN M_Consumer mc ON pe.MobileNo = mc.MobileNo
     INNER JOIN #tempM_Code mc_tbl ON mc_tbl.Code1 = pe.Received_Code1 AND mc_tbl.Code2 = pe.Received_Code2
-    INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc_tbl.Pro_ID 
-    WHERE (@StateFilter IS NULL OR mc.State = @StateFilter)
-      AND (@Search IS NULL OR mc.MobileNo LIKE '%' + @Search + '%' 
-           OR mc.Email LIKE '%' + @Search + '%'
-           OR mc.ConsumerName LIKE '%' + @Search + '%')
-    GROUP BY mc.MobileNo, mc.State, mc.City, mc.Email, mc.ConsumerName, mc.PinCode
+   -- INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc_tbl.Pro_ID 
+        --AND CONCAT(FORMAT(mc_tbl.Series_Order, '000#'), FORMAT(mc_tbl.Series_Serial, '000#')) 
+        --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
+        --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+    WHERE pe.Comp_ID = @Comp_ID
+   --   AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
+      AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
+      AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
+    GROUP BY mc.MobileNo, mc.State, mc.City, mc.Email, mc.PinCode
     ORDER BY mc.MobileNo
     OFFSET (@PageNumber - 1) * @PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY

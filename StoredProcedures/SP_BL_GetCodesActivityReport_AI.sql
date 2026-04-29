@@ -122,7 +122,9 @@ BEGIN
         Enq_Date,
         Dial_Mode,
         Is_Success,
-        MobileNo
+        MobileNo,
+        Latitude,
+        Longitude
     INTO #Enq
     FROM Pro_Enq
 	INNER JOIN M_code M 
@@ -194,7 +196,9 @@ BEGIN
         Code2,
         MobileNo,
         State,
-        City
+        City,
+        Latitude,
+        Longitude
     INTO #Geo
     FROM (
         SELECT 
@@ -264,7 +268,9 @@ BEGIN
                 WHEN E.Is_Success = 1 THEN 'Verified'
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
-            END AS Result
+            END AS Result,
+            ISNULL(G.Latitude, E.Latitude) AS Latitude,
+            ISNULL(G.Longitude, E.Longitude) AS Longitude
         --FROM #Enq E
 		FROM
 		(
@@ -321,7 +327,9 @@ BEGIN
                 WHEN E.Is_Success = 1 THEN 'Verified'
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
-            END AS Result
+            END AS Result,
+            ISNULL(G.Latitude, E.Latitude) AS Latitude,
+            ISNULL(G.Longitude, E.Longitude) AS Longitude
         FROM #Enq E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
@@ -353,7 +361,7 @@ BEGIN
             COUNT(1) AS TotalRecords,
             @Page AS CurrentPage,
             @Limit AS [Limit],
-            CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
+            CAST(CEILING(COUNT(1) * 1.0 / @Limit) AS INT) AS TotalPages
         FROM #Enq E
         LEFT JOIN #Geo G
             ON G.Code1 = E.Received_Code1

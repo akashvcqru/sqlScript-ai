@@ -14,7 +14,8 @@ CREATE PROCEDURE USP_GetProductList_AI
     @SearchQuery   NVARCHAR(200) = '',
     @datePreset    NVARCHAR(50) = '',
     @FromDate      DATETIME = NULL,
-    @ToDate        DATETIME = NULL
+    @ToDate        DATETIME = NULL,
+    @Status        NVARCHAR(50) = ''
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -23,47 +24,57 @@ BEGIN
     DECLARE @CalculatedFromDate DATETIME = NULL;
     DECLARE @CalculatedToDate DATETIME = NULL;
 
-    DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(@datePreset)));
+    DECLARE @Win NVARCHAR(50) = LOWER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
     
-    IF @Win = 'THIS WEEK' OR @Win = 'WEEK'
+    IF @Win = 'today'
+    BEGIN
+        SET @CalculatedFromDate = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
+        SET @CalculatedToDate = GETDATE();
+    END
+    ELSE IF @Win = 'lastday'
+    BEGIN
+        SET @CalculatedFromDate = DATEADD(DAY, -1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+        SET @CalculatedToDate = DATEADD(SECOND, -1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+    END
+    ELSE IF @Win = 'week' OR @Win = 'this week'
     BEGIN
         SET @CalculatedFromDate = DATEADD(week, DATEDIFF(week, 0, GETDATE()), 0);
         SET @CalculatedToDate = GETDATE();
     END
-    ELSE IF @Win = 'LAST WEEK' OR @Win = 'LASTWEEK'
+    ELSE IF @Win = 'lastweek'
     BEGIN
         SET @CalculatedFromDate = DATEADD(week, DATEDIFF(week, 7, GETDATE()), 0);
         SET @CalculatedToDate = DATEADD(second, -1, DATEADD(week, DATEDIFF(week, 0, GETDATE()), 0));
     END
-    ELSE IF @Win = 'THIS MONTH' OR @Win = 'MONTH'
+    ELSE IF @Win = 'month' OR @Win = 'this month'
     BEGIN
         SET @CalculatedFromDate = DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0);
         SET @CalculatedToDate = GETDATE();
     END
-    ELSE IF @Win = 'LAST MONTH' OR @Win = 'LASTMONTH'
+    ELSE IF @Win = 'lastmonth'
     BEGIN
         SET @CalculatedFromDate = DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0);
         SET @CalculatedToDate = DATEADD(second, -1, DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0));
     END
-    ELSE IF @Win = 'QUARTER'
+    ELSE IF @Win = 'quarter'
     BEGIN
         SET @CalculatedFromDate = DATEADD(quarter, DATEDIFF(quarter, 0, GETDATE()), 0);
         SET @CalculatedToDate = GETDATE();
     END
-    ELSE IF @Win = 'YEAR'
+    ELSE IF @Win = 'year'
     BEGIN
         SET @CalculatedFromDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
         SET @CalculatedToDate = GETDATE();
     END
-    ELSE IF @Win = 'LASTYEAR'
+    ELSE IF @Win = 'lastyear'
     BEGIN
         SET @CalculatedFromDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
         SET @CalculatedToDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31);
     END
-    ELSE IF @FromDate IS NOT NULL OR @ToDate IS NOT NULL OR @Win = 'FROM TO DATE'
+    ELSE IF @Win = 'custom' OR @FromDate IS NOT NULL OR @ToDate IS NOT NULL
     BEGIN
         SET @CalculatedFromDate = @FromDate;
-        SET @CalculatedToDate = ISNULL(DATEADD(day, 1, @ToDate), GETDATE()); 
+        SET @CalculatedToDate = ISNULL(DATEADD(second, -1, DATEADD(day, 1, @ToDate)), GETDATE()); 
     END
 
     -- ── Main Query ──────────────────────────────────────────────────────────
@@ -108,6 +119,11 @@ BEGIN
         AND (
             @CalculatedToDate IS NULL 
             OR pr.Pro_Entry_Date <= @CalculatedToDate
+        )
+        AND (
+            ISNULL(@Status, '') = ''
+            OR (@Status = 'Verified' AND pr.Doc_Flag = 1 AND pr.Sound_Flag = 1)
+            OR (@Status = 'Pending' AND (ISNULL(pr.Doc_Flag, 0) != 1 OR ISNULL(pr.Sound_Flag, 0) != 1))
         )
     ORDER BY pr.Pro_Entry_Date DESC
     OFFSET (@PageNumber - 1) * @PageSize ROWS 
