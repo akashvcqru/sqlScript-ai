@@ -7,7 +7,7 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 -- Exec [dbo].[USP_GetStateWiseCodeCheck_AI] 'Comp-1599','quarter'
-CREATE PROCEDURE [dbo].[USP_GetStateWiseCodeCheck_AI] --'Comp-1436'    
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetStateWiseCodeCheck_AI] --'Comp-1436'    
 (    
     @Comp_id varchar(20),  
     @Window NVARCHAR(10) = NULL  
@@ -78,75 +78,67 @@ BEGIN
         SET @EndDate   = DATEADD(DAY,1,@Today);
     END
 
-    ;WITH ValidScans AS (  
-        SELECT   
-            PE.Received_Code1,  
-            PE.Received_Code2,  
-            MC.P_MobileNo,  
-            ISNULL(NULLIF(MC.[State], ''), 'Not Available') AS State  
-        FROM (SELECT * FROM Pro_Enq WITH (NOLOCK) WHERE enq_date >= @StartDate) PE     
-        INNER JOIN ( 
-            SELECT
-                G.Comp_Id AS G_Comp_Id,
-                P.Comp_Id AS P_Comp_Id,
-                G.MobileNo AS G_MobileNo,
-                P.MobileNo AS P_MobileNo,
-                LEFT(G.Latitude,6) AS G_Latitude,
-                LEFT(G.Longitude,6) AS G_Longitude,
-                LEFT(P.Latitude,6) AS P_Latitude,
-                LEFT(P.Longitude,6) AS P_Longitude,
-                P.Is_Success,
-                G.Code1 AS G_Code1,
-                P.Received_Code1 AS P_Code1,
-                G.Code2 AS G_Code2,
-                P.Received_Code2 AS P_Code2,
-                G.Postcode,
-                G.State,
-                G.City,
-                G.StateDistrict,
-                G.Town,
-                G.Suburb,
-                G.Enq_Date,
-                ROW_NUMBER() OVER
-                (
-                    PARTITION BY RIGHT(G.MobileNo,10),code1,code2,G.Enq_Date
-                    ORDER BY G.Enq_Date DESC
-                ) AS rn
-            FROM GeoLocationData G WITH (NOLOCK)
-            OUTER APPLY
-            (
-                SELECT TOP 1 *
-                FROM Pro_Enq P WITH (NOLOCK)
-                WHERE P.Comp_Id = G.Comp_Id
-                  AND P.Received_Code1 = G.Code1
-                  AND P.Received_Code2 = G.Code2
-                  AND P.MobileNo = G.MobileNo
-                  AND P.Enq_Date >= @StartDate
-            ) P
-            WHERE 
-                G.Comp_Id = @Comp_id
-                AND G.Enq_Date >= @StartDate
-                AND ISNULL(G.State,'') <> ''
-                AND LEN(LTRIM(RTRIM(G.State))) >= 2
-        ) MC ON MC.P_MobileNo = PE.MobileNo  
-        INNER JOIN (
-            SELECT * FROM M_Code WITH (NOLOCK) 
-            WHERE pro_id IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_id) 
-              AND Gen_Date >= @CompanyStartDate
-        ) MCO ON (CAST(PE.Received_Code1 AS NVARCHAR(20)) + CAST(PE.Received_Code2 AS NVARCHAR(20))) =  
-               (CAST(MCO.Code1 AS NVARCHAR(20)) + CAST(MCO.Code2 AS NVARCHAR(20)))  
-        INNER JOIN Pro_Reg PR WITH (NOLOCK)  
-            ON PR.Pro_ID = MCO.Pro_ID  
-           AND PR.Comp_ID = @Comp_id  
-        WHERE PE.Enq_Date >= @StartDate  
-          AND MC.State NOT IN ('NA','undefined','null')  
-    )  
+    ------------------------------------------------------
+    -- Step 1: Pre-filter M_Code (Deduplicated per code pair)
+    ------------------------------------------------------
+    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+    
+    ;WITH DistinctCodes AS (
+        SELECT 
+            a.Code1, 
+            a.Code2, 
+            a.Pro_ID,
+            a.Use_Count,
+            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+        FROM M_Code a 
+        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+        WHERE b.Comp_ID = @Comp_id 
+          AND a.Use_Count > 0
+    )
+    SELECT Code1, Code2, Pro_ID
+    INTO #tempM_Code 
+    FROM DistinctCodes
+    WHERE rn = 1;
+
+    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+
+    ------------------------------------------------------
+    -- Step 2: Main Scan Data with Geolocation Fallback
+    ------------------------------------------------------
+    ;WITH ScansWithGeo AS (
+        SELECT 
+            pe.Received_Code1,
+            pe.Received_Code2,
+            RIGHT(pe.MobileNo, 10) AS MobileLast10,
+            -- Fallback chain: GeoLocation -> Scan Table -> Consumer Table -> Default
+            COALESCE(
+                NULLIF(g.State, ''), 
+                NULLIF(pe.State, ''), 
+                NULLIF(mc_usr.State, ''), 
+                'Not Available'
+            ) AS State
+        FROM Pro_Enq pe WITH (NOLOCK)
+        LEFT JOIN GeoLocationData g WITH (NOLOCK) 
+            ON g.Comp_Id = pe.Comp_Id 
+            AND g.Code1 = pe.Received_Code1 
+            AND g.Code2 = pe.Received_Code2 
+            AND g.MobileNo = pe.MobileNo
+        LEFT JOIN M_Consumer mc_usr ON RIGHT(pe.MobileNo, 10) = mc_usr.MobileLast10
+        LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+              AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+        WHERE pe.Comp_Id = @Comp_id
+          AND pe.Enq_Date >= @StartDate
+          AND pe.Enq_Date < @EndDate
+          AND (@CompanyStartDate IS NULL OR pe.Enq_Date >= @CompanyStartDate)
+          -- Removed filter to include ALL scans (Genuine, Duplicate, Invalid) per user requirement
+    )
     SELECT TOP 10  
         [State],  
-        COUNT(DISTINCT CAST(Received_Code1 AS NVARCHAR(20)) + CAST(Received_Code2 AS NVARCHAR(20))) AS Total_Checked_Code,  
-        COUNT(DISTINCT P_MobileNo) AS Total_Users  
-    FROM ValidScans  
+        COUNT(DISTINCT CAST(Received_Code1 AS VARCHAR(50)) + '-' + CAST(Received_Code2 AS VARCHAR(50))) AS Total_Checked_Code,  
+        COUNT(DISTINCT MobileLast10) AS Total_Users  
+    FROM ScansWithGeo  
+    WHERE State NOT IN ('NA','undefined','null')  
     GROUP BY State  
     ORDER BY Total_Checked_Code DESC;      
-END      
+END
 GO

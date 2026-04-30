@@ -4,29 +4,17 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE Procedure [dbo].[USP_GetBrandOverview_AI]     
-    @CompanyKey         NVARCHAR(100),          -- Comp_ID OR Comp_Email OR Comp_Name    
+CREATE OR ALTER Procedure [dbo].[USP_GetBrandOverview_AI]     
+    @CompanyKey         NVARCHAR(100),          -- Comp_ID
     @datePreset             VARCHAR(20) = NULL,    
     @CompanyKeyType     VARCHAR(10) = 'ID',     -- 'ID' | 'EMAIL' | 'NAME'    
-    @FromDate           DATE        = NULL,     -- inclusive start (defaults to current month)    
+    @FromDate           DATE        = NULL,     -- inclusive start
     @ToDate             DATE        = NULL,     -- inclusive end    
     @ServiceID          INT         = NULL,     -- optional filter    
     @OveruseThreshold   INT         = 10        -- distinct (code1, code2) count > threshold => suspicious    
-as                
-begin                  
-              
- SET NOCOUNT ON;    
-    
-    drop table if exists #TPro_id;
-    drop table if exists #TM_Code;
-    drop table if exists #tPro_Enq;
-
-    declare @LifetimeCodeGeneration int;
-    declare @AntiCounterfeitMeasures int;
-    declare @CounterfeitAttemptsDetected int;
-    declare @NumberofScans int;
-    declare @RepeatedCodes int;
-    declare @NumberofActiveUsers int;
+AS                
+BEGIN                  
+    SET NOCOUNT ON;    
 
     ---------------------------------------------------------
     -- DATE RANGE LOGIC
@@ -38,91 +26,110 @@ begin
     IF @Win = 'TODAY'
     BEGIN
         SET @StartDate = @Today;
-        SET @EndDate   = DATEADD(DAY, 1, @Today);
+        SET @EndDate   = @Today;
     END
     ELSE IF @Win = 'YESTERDAY'
     BEGIN
         SET @StartDate = DATEADD(DAY, -1, @Today);
-        SET @EndDate   = @Today;
+        SET @EndDate   = DATEADD(DAY, -1, @Today);
     END
-    -- Current calendar week (Monday–Sunday)
     ELSE IF @Win = 'WEEK'
     BEGIN
-        SET DATEFIRST 1; -- Monday = 1
+        SET DATEFIRST 1;
         SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
-        SET @EndDate   = DATEADD(DAY, 1, @Today);
+        SET @EndDate   = @Today;
     END
-    -- Previous calendar week
     ELSE IF @Win = 'LASTWEEK'
     BEGIN
         SET DATEFIRST 1;
         DECLARE @ThisWeekStart DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
         SET @StartDate = DATEADD(DAY, -7, @ThisWeekStart);
-        SET @EndDate   = @ThisWeekStart;
+        SET @EndDate   = DATEADD(DAY, -1, @ThisWeekStart);
     END
-    -- Current calendar month
     ELSE IF @Win = 'MONTH'
     BEGIN
         SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
-        SET @EndDate   = DATEADD(DAY, 1, @Today);
+        SET @EndDate   = @Today;
     END
-    -- Previous calendar month
     ELSE IF @Win = 'LASTMONTH'
     BEGIN
         DECLARE @ThisMonthStart DATE = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
         SET @StartDate = DATEADD(MONTH, -1, @ThisMonthStart);
-        SET @EndDate   = @ThisMonthStart;
+        SET @EndDate   = DATEADD(DAY, -1, @ThisMonthStart);
     END
     ELSE IF @Win = 'QUARTER'
     BEGIN
         SET @StartDate = DATEADD(DAY, -90, @Today);
-        SET @EndDate   = DATEADD(DAY, 1, @Today);
+        SET @EndDate   = @Today;
     END
     ELSE IF @Win = 'YEAR'
     BEGIN
         SET @StartDate = DATEFROMPARTS(YEAR(@Today), 1, 1);
-        SET @EndDate   = DATEADD(DAY, 1, @Today);
+        SET @EndDate   = @Today;
     END
     ELSE IF @Win = 'LASTYEAR'
     BEGIN
         SET @StartDate = DATEFROMPARTS(YEAR(@Today) - 1, 1, 1);
-        SET @EndDate   = DATEFROMPARTS(YEAR(@Today), 1, 1);
+        SET @EndDate   = DATEFROMPARTS(YEAR(@Today) - 1, 12, 31);
     END
-    -- Default fallback
     ELSE
     BEGIN
-        SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
-        SET @EndDate   = DATEADD(DAY, 1, @Today);
+        -- Default = ALL
+        SET @StartDate = '2015-01-01';
+        SET @EndDate   = @Today;
     END
 
-    -----------------------END__________________--
- 
-    select Pro_ID into #TPro_id from Pro_reg WITH (NOLOCK) where Comp_id = @CompanyKey
-    select * into #TM_Code from M_Code WITH (NOLOCK) where Pro_id in (select * from #TPro_id WITH (NOLOCK)) and Use_Count is not null
+    ---------------------------------------------------------
+    -- Step 1: Pre-filter M_Code (Deduplicated)
+    ---------------------------------------------------------
+    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
     
+    ;WITH DistinctCodes AS (
+        SELECT 
+            a.Code1, 
+            a.Code2, 
+            a.Pro_ID,
+            a.Use_Count,
+            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+        FROM M_Code a 
+        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+        WHERE b.Comp_ID = @CompanyKey 
+          AND a.Use_Count > 0
+    )
+    SELECT Code1, Code2, Pro_ID
+    INTO #tempM_Code 
+    FROM DistinctCodes
+    WHERE rn = 1;
 
-    SELECT received_code1,received_code2, MobileNo,Is_Success
-    into #tPro_Enq FROM Pro_enq pe WITH (NOLOCK)
-    INNER JOIN #TM_Code mc WITH (NOLOCK)
-       ON pe.received_code1 = CAST(mc.code1 AS NVARCHAR(50))
-       AND pe.received_code2 = CAST(mc.code2 AS NVARCHAR(50))
-     WHERE pe.Enq_Date >= @StartDate
-     AND pe.Enq_Date <  @EndDate
-     AND pe.Comp_ID = @CompanyKey; -- Add filter fix if missing
+    ---------------------------------------------------------
+    -- Step 2: Pre-filter Pro_Enq
+    ---------------------------------------------------------
+    IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
+    SELECT 
+        pe.MobileNo, 
+        pe.Is_Success, 
+        pe.Received_Code1, 
+        pe.Received_Code2,
+        RIGHT(pe.MobileNo, 10) AS MobileLast10,
+        CASE WHEN mc.Pro_ID IS NOT NULL THEN 1 ELSE 0 END AS CodeExists
+    INTO #tempPro_Enq
+    FROM Pro_Enq pe
+    LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+          AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+    WHERE pe.Comp_ID = @CompanyKey
+      AND pe.Enq_Date >= CAST(@StartDate AS DATETIME)
+      AND pe.Enq_Date < DATEADD(DAY, 1, CAST(@EndDate AS DATETIME));
 
-    select @LifetimeCodeGeneration =  count(Row_ID)  from M_Code WITH (NOLOCK) where Pro_id in (select * from #TPro_id WITH (NOLOCK))
-    select @AntiCounterfeitMeasures = count(received_code2) from #tPro_Enq WITH (NOLOCK) where Is_Success = 1
-    select @NumberofScans = count(received_code2) from #tPro_Enq WITH (NOLOCK) 
-    select @NumberofActiveUsers = COUNT(DISTINCT MobileNo) FROM #tPro_Enq where Is_Success = 1;
-    select @RepeatedCodes = count(received_code2) from #tPro_Enq where Is_Success > 1
-    select @CounterfeitAttemptsDetected = count(pe.received_code2) from Pro_enq pe WITH (NOLOCK) 
-                                                                      left join #TM_Code mc WITH (NOLOCK) 
-                                                                      ON pe.received_code1 = CAST(mc.code1 AS NVARCHAR(50))
-                                                                         AND pe.received_code2 = CAST(mc.code2 AS NVARCHAR(50))    
-                                                                      where mc.Code2 is null and pe.Comp_ID = @CompanyKey
-                                                                       and  pe.Enq_Date >= @StartDate
-                                                                       AND pe.Enq_Date <  @EndDate;
-    
+    ---------------------------------------------------------
+    -- Step 3: Aggregates
+    ---------------------------------------------------------
+    DECLARE @LifetimeCodeGeneration INT = (SELECT COUNT(*) FROM M_Code a INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID WHERE b.Comp_ID = @CompanyKey);
+    DECLARE @AntiCounterfeitMeasures INT = (SELECT COUNT(*) FROM #tempPro_Enq WHERE CodeExists = 1 AND Is_Success = 1);
+    DECLARE @CounterfeitAttemptsDetected INT = (SELECT COUNT(*) FROM #tempPro_Enq WHERE CodeExists = 0 OR Is_Success NOT IN (1, 2));
+    DECLARE @NumberofScans INT = (SELECT COUNT(*) FROM #tempPro_Enq);
+    DECLARE @RepeatedCodes INT = (SELECT COUNT(*) FROM #tempPro_Enq WHERE CodeExists = 1 AND Is_Success = 2);
+    DECLARE @NumberofActiveUsers INT = (SELECT COUNT(DISTINCT MobileLast10) FROM #tempPro_Enq WHERE Is_Success = 1);
+
     SELECT 'Anti-Counterfeit Measures'      AS title, @AntiCounterfeitMeasures      AS TotalCount,
            0.00 AS per, '#FFC107' AS ColorCode, '/anti-counterfeit' AS link
     UNION ALL
@@ -140,6 +147,5 @@ begin
     UNION ALL
     SELECT 'Lifetime Code Generation',      @LifetimeCodeGeneration,
            100.00, '#FC5185', '/anti-counterfeit';
-    
-END;
+END
 GO
