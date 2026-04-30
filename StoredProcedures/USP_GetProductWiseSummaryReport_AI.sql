@@ -113,18 +113,26 @@ BEGIN
     END
 
     ------------------------------------------------------
-    -- Step 1: Pre-filter M_Code (Optimized columns)
+    -- Step 1: Pre-filter M_Code (Deduplicated per code pair)
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
-    SELECT DISTINCT
-        a.Code1, 
-        a.Code2, 
-        a.Pro_ID
+    
+    ;WITH DistinctCodes AS (
+        SELECT 
+            a.Code1, 
+            a.Code2, 
+            a.Pro_ID,
+            a.Use_Count,
+            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+        FROM M_Code a 
+        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+        WHERE b.Comp_ID = @Comp_ID 
+          AND a.Use_Count > 0
+    )
+    SELECT Code1, Code2, Pro_ID
     INTO #tempM_Code 
-    FROM M_Code a 
-    INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
-    WHERE b.Comp_ID = @Comp_ID 
-      AND a.Use_Count > 0;
+    FROM DistinctCodes
+    WHERE rn = 1;
 
     CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
     CREATE INDEX IX_tempM_Code_ProID ON #tempM_Code(Pro_ID);
