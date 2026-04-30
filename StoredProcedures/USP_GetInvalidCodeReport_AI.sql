@@ -118,13 +118,14 @@ BEGIN
     FROM Pro_Enq pe
     LEFT JOIN M_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
     LEFT JOIN M_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
+        AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
         AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
             BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
                 AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     WHERE pe.Comp_ID = @Comp_ID
       AND pe.Enq_Date >= @CompanyStartDate
       AND pe.Is_Success = 0
-      AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
+      AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID OR mc.Code1 IS NULL)
       AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
       AND (@finalToDate IS NULL OR pe.Enq_Date <= @finalToDate)
       AND (@StateFilter IS NULL OR pe.State = @StateFilter)

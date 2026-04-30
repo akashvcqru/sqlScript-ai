@@ -36,29 +36,7 @@ BEGIN
     IF LTRIM(RTRIM(ISNULL(@CodeStatusFilter, ''))) = '' OR @CodeStatusFilter = 'All' SET @CodeStatusFilter = NULL;
     IF LTRIM(RTRIM(ISNULL(@DialModeFilter, ''))) = '' OR @DialModeFilter = 'All' SET @DialModeFilter = NULL;
 
-    -- 1. Construct Dynamic Table Name
-    DECLARE @CleanCompID NVARCHAR(100) = REPLACE(REPLACE(@Comp_ID, ' ', '_'), '-', '_');
-    DECLARE @TableName NVARCHAR(256) = N'[GetLiveScanTracking_optimizedata_' + @CleanCompID + N']';
-    DECLARE @Sql NVARCHAR(MAX);
-
-    -- 2. Schema Definition (Internal versioning to handle auto-migration)
-    -- If you add columns here, the SP will automatically drop and recreate the table.
-    DECLARE @RequiredColumns TABLE (ColName NVARCHAR(128), ColDef NVARCHAR(MAX));
-    INSERT INTO @RequiredColumns (ColName, ColDef) VALUES 
-    ('ScanTimestamp', 'DATETIME'), ('Product', 'NVARCHAR(250)'), ('VariantSKU', 'NVARCHAR(50)'),
-    ('BatchNo', 'NVARCHAR(100)'), ('UniqueCode', 'NVARCHAR(100)'), ('ScanResult', 'NVARCHAR(50)'),
-    ('FirstOrRepeat', 'NVARCHAR(20)'), ('TotalScansForUID', 'INT'), ('City', 'NVARCHAR(100)'),
-    ('State', 'NVARCHAR(100)'), ('PinCode', 'NVARCHAR(20)'), ('Channel', 'NVARCHAR(50)'),
-    ('DistributorRetailer', 'NVARCHAR(250)'), ('ManufacturingDate', 'DATETIME'), ('ExpiryDate', 'DATETIME'),
-    ('RiskAbuseFlag', 'NVARCHAR(20)'), ('ClaimID', 'NVARCHAR(50)'), ('ConsumerMobile', 'NVARCHAR(20)'),
-    ('Latitude', 'NVARCHAR(50)'), ('Longitude', 'NVARCHAR(50)'),
-    ('Is_Success', 'INT'), ('Dial_Mode', 'NVARCHAR(50)');
-
-    -- 3. Check for Schema Changes or Missing Table
-    DECLARE @TableExists INT = 0;
-    SET @Sql = N'IF OBJECT_ID(''' + @TableName + N''') IS NOT NULL SET @exists = 1 ELSE SET @exists = 0;';
-    EXEC sp_executesql @Sql, N'@exists INT OUTPUT', @TableExists OUTPUT;
-
+    -- 1. Construct Date Range
     DECLARE @finalFromDate DATETIME, @finalToDate DATETIME
     IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null' OR @datePreset = 'All')
         SET @datePreset = 'ALL'
@@ -131,31 +109,7 @@ BEGIN
         SET @finalToDate = GETDATE(); 
     END
 
-    -- 4. Create Table if it doesn't exist
-    IF @TableExists = 0
-    BEGIN
-        DECLARE @ColList NVARCHAR(MAX) = '';
-        SELECT @ColList = @ColList + '[' + ColName + '] ' + ColDef + ', ' FROM @RequiredColumns;
-        SET @ColList = LEFT(@ColList, LEN(@ColList) - 1);
-
-        SET @Sql = N'CREATE TABLE ' + @TableName + N' (' + @ColList + N'); ' +
-                   N'CREATE INDEX IX_ScanTime ON ' + @TableName + N'(ScanTimestamp DESC); ' +
-                   N'CREATE INDEX IX_UniqueCode ON ' + @TableName + N'(UniqueCode);';
-        EXEC(@Sql);
-    END
-
-    -- 5. Incremental Sync
-    DECLARE @LastSync DATETIME;
-    SET @Sql = N'SELECT @LastSync = MAX(ScanTimestamp) FROM ' + @TableName;
-    EXEC sp_executesql @Sql, N'@LastSync DATETIME OUTPUT', @LastSync OUTPUT;
-    
-    -- If table was empty or dropped, sync from company start date
-    IF @LastSync IS NULL
-    BEGIN
-        SELECT @LastSync = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_ID;
-    END
-
-    -- 6. Pre-filter M_Code
+    -- 2. Pre-filter M_Code
     IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
     SELECT 
         a.Code1, 
@@ -192,29 +146,28 @@ BEGIN
             ISNULL(pe.PinCode, '') AS PinCode,
             ISNULL(pe.Dial_Mode, 'Web') AS Channel,
             ISNULL(mcn.FirmName, mcn.SellerName) AS DistributorRetailer,
-            NULL AS ManufacturingDate, -- To be updated if table found
-            NULL AS ExpiryDate,        -- To be updated if table found
+            NULL AS ManufacturingDate,
+            NULL AS ExpiryDate,
             CASE 
                 WHEN mc.Use_Count > 10 THEN 'High Risk' 
                 WHEN mc.Use_Count > 5 THEN 'Medium Risk' 
                 ELSE 'Low Risk' 
             END AS RiskAbuseFlag,
-            NULL AS ClaimID,           -- To be joined with Claim table if needed
+            NULL AS ClaimID,
             pe.MobileNo AS ConsumerMobile,
             pe.Latitude,
-            pe.Longitude,
-            ROW_NUMBER() OVER (PARTITION BY pe.Row_ID ORDER BY (SELECT NULL)) AS DupRank
+            pe.Longitude
         FROM Pro_Enq pe
         LEFT JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
         LEFT JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
         LEFT JOIN M_Consumer mcn ON mcn.MobileNo = pe.MobileNo
         LEFT JOIN M_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
+            AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
             AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
                 BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
                     AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
         WHERE pe.Comp_ID = @Comp_ID 
           AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
-          AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
           AND (@finalToDate IS NULL OR pe.Enq_Date <= @finalToDate)
           AND (@StateFilter IS NULL OR pe.state = @StateFilter)
@@ -225,6 +178,8 @@ BEGIN
                 mc.Batch_No LIKE '%' + @Search + '%' OR
                 pr.Pro_Name LIKE '%' + @Search + '%'
           ))
+          -- Ensure that if @ServiceID is provided, we only show records that are either invalid or match the service
+          AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID OR mc.Code1 IS NULL)
     )
     SELECT 
         ROW_NUMBER() OVER (ORDER BY ScanTimestamp DESC) AS SNo,
@@ -250,8 +205,7 @@ BEGIN
         Longitude,
         COUNT(*) OVER() AS TotalRecords
     FROM ResultCTE
-    WHERE DupRank = 1
-      AND (@CodeStatusFilter IS NULL OR ScanResult = @CodeStatusFilter)
+    WHERE (@CodeStatusFilter IS NULL OR ScanResult = @CodeStatusFilter)
     ORDER BY ScanTimestamp DESC
     OFFSET (@PageNumber - 1) * @PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY

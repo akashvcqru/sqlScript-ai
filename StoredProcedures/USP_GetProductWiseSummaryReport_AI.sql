@@ -210,6 +210,7 @@ BEGIN
     FROM Pro_Reg pr
     LEFT JOIN #tempM_Code mc ON mc.Pro_ID = pr.Pro_ID
     LEFT JOIN M_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
+        AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
         AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
             BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
                 AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
