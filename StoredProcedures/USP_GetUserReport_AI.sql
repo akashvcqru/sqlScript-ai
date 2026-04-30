@@ -116,7 +116,8 @@ BEGIN
     SELECT 
         Received_Code1, 
         Received_Code2, 
-        MobileNo, 
+        MobileNo,
+        RIGHT(MobileNo, 10) AS MobileLast10,
         Enq_Date, 
         Is_Success
     INTO #tempPro_Enq
@@ -134,63 +135,57 @@ BEGIN
       );
 
     CREATE INDEX IX_tempPro_Enq_Codes ON #tempPro_Enq(Received_Code1, Received_Code2);
-    CREATE INDEX IX_tempPro_Enq_Mobile ON #tempPro_Enq(MobileNo);
+    CREATE INDEX IX_tempPro_Enq_Mobile ON #tempPro_Enq(MobileLast10);
 
     ------------------------------------------------------
-    -- Step 2: Pre-filter M_Code
+    -- Step 2: Pre-filter M_Code (Deduplicated per code pair)
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
-    SELECT 
-        a.Code1, 
-        a.Code2, 
-        a.Pro_ID
+    
+    ;WITH DistinctCodes AS (
+        SELECT 
+            a.Code1, 
+            a.Code2, 
+            a.Pro_ID,
+            a.Use_Count,
+            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+        FROM M_Code a 
+        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+        WHERE b.Comp_ID = @Comp_ID
+          AND a.Use_Count > 0
+    )
+    SELECT Code1, Code2, Pro_ID
     INTO #tempM_Code 
-    FROM M_Code a 
-    INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
-    WHERE b.Comp_ID = @Comp_ID
-      AND a.Print_Date >= @CompanyStartDate;
+    FROM DistinctCodes
+    WHERE rn = 1;
 
     CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
-
-    ------------------------------------------------------
-    -- Step 3: Service Subscriptions
-    ------------------------------------------------------
-    IF OBJECT_ID('tempdb..#tempM_ServiceSubscription') IS NOT NULL DROP TABLE #tempM_ServiceSubscription;
-    SELECT Pro_ID, Service_ID 
-    INTO #tempM_ServiceSubscription 
-    FROM M_ServiceSubscription 
-    WHERE Comp_ID = @Comp_ID
-
-    CREATE INDEX IX_tempM_ServiceSub_Pro ON #tempM_ServiceSubscription(Pro_ID);
 
     ------------------------------------------------------
     -- Main Query (Using optimized temp tables)
     ------------------------------------------------------
     SELECT 
-        ROW_NUMBER() OVER (ORDER BY mc.MobileNo) AS SNo,
-        mc.MobileNo,
+        ROW_NUMBER() OVER (ORDER BY pe.MobileLast10) AS SNo,
+        MAX(pe.MobileNo) AS MobileNo, -- Show one example mobile no
         mc.State,
         mc.City,
         mc.Email,
         ISNULL(mc.ConsumerName, '') AS ConsumerName,
         COUNT(pe.Received_Code1) AS TotalCodeScanned,
         SUM(CASE WHEN pe.Is_Success = 1 THEN 1 ELSE 0 END) AS SuccessfulCodeScanned,
-        SUM(CASE WHEN pe.Is_Success = 0 THEN 1 ELSE 0 END) AS UnsuccessfulCodeScanned,
+        SUM(CASE WHEN pe.Is_Success <> 1 THEN 1 ELSE 0 END) AS UnsuccessfulCodeScanned,
         MIN(pe.Enq_Date) AS FirstScannedDate,
         MAX(pe.Enq_Date) AS LastScannedDate,
         mc.PinCode AS PostCode,
         COUNT(*) OVER() AS TotalRecords
     FROM #tempPro_Enq pe
-    INNER JOIN M_Consumer mc ON pe.MobileNo = mc.MobileNo
-    INNER JOIN #tempM_Code mc_tbl ON mc_tbl.Code1 = pe.Received_Code1 AND mc_tbl.Code2 = pe.Received_Code2
-   -- INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc_tbl.Pro_ID 
-        --AND CONCAT(FORMAT(mc_tbl.Series_Order, '000#'), FORMAT(mc_tbl.Series_Serial, '000#')) 
-        --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
-        --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+    INNER JOIN M_Consumer mc ON pe.MobileLast10 = mc.MobileLast10
+    LEFT JOIN #tempM_Code mc_tbl ON LTRIM(RTRIM(CAST(mc_tbl.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+          AND LTRIM(RTRIM(CAST(mc_tbl.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
     WHERE (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
       AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
-    GROUP BY mc.MobileNo, mc.State, mc.City, mc.Email, mc.PinCode, mc.ConsumerName
-    ORDER BY mc.MobileNo
+    GROUP BY pe.MobileLast10, mc.State, mc.City, mc.Email, mc.PinCode, mc.ConsumerName
+    ORDER BY pe.MobileLast10
     OFFSET (@PageNumber - 1) * @PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
     OPTION (RECOMPILE);
