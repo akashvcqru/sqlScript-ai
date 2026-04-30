@@ -1,3 +1,6 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetUserReport_AI]    Script Date: 4/28/2026 6:53:52 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -10,7 +13,7 @@ GO
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetUserReport_AI]
     @Comp_ID NVARCHAR(50),
-    @datePreset NVARCHAR(20) = 'week',
+    @datePreset NVARCHAR(20) = 'month',
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
@@ -183,7 +186,7 @@ BEGIN
     FROM #tempPro_Enq pe
     INNER JOIN M_Consumer mc ON pe.MobileNo = mc.MobileNo
     INNER JOIN #tempM_Code mc_tbl ON mc_tbl.Code1 = pe.Received_Code1 AND mc_tbl.Code2 = pe.Received_Code2
-   -- INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc_tbl.Pro_ID 
+    --INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc_tbl.Pro_ID 
         --AND CONCAT(FORMAT(mc_tbl.Series_Order, '000#'), FORMAT(mc_tbl.Series_Serial, '000#')) 
         --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
         --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
@@ -194,5 +197,6 @@ BEGIN
     OFFSET (@PageNumber - 1) * @PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
     OPTION (RECOMPILE);
+END
 END
 GO
