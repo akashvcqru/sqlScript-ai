@@ -13,7 +13,7 @@ GO
 -- =============================================
 ALTER   PROCEDURE [dbo].[USP_GetProductWiseSummaryReport_AI]
     @Comp_ID NVARCHAR(50),
-    @datePreset NVARCHAR(20) = 'week',
+    @datePreset NVARCHAR(20) = 'ALL',
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
@@ -23,7 +23,8 @@ ALTER   PROCEDURE [dbo].[USP_GetProductWiseSummaryReport_AI]
     @Search NVARCHAR(100) = NULL,
     @StateFilter NVARCHAR(100) = NULL,
     @CodeStatusFilter NVARCHAR(20) = NULL,
-    @DialModeFilter NVARCHAR(50) = NULL
+    @DialModeFilter NVARCHAR(50) = NULL,
+    @ProductID NVARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -34,6 +35,7 @@ BEGIN
     IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' SET @StateFilter = NULL;
     IF LTRIM(RTRIM(ISNULL(@CodeStatusFilter, ''))) = '' SET @CodeStatusFilter = NULL;
     IF LTRIM(RTRIM(ISNULL(@DialModeFilter, ''))) = '' SET @DialModeFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@ProductID, ''))) = '' SET @ProductID = NULL;
 
     DECLARE @CompanyStartDate DATETIME;
     SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01')
@@ -215,6 +217,7 @@ BEGIN
           AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
     LEFT JOIN #TopStates ts ON ts.Pro_ID = pr.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
+      AND (@ProductID IS NULL OR pr.Pro_ID = @ProductID)
      -- AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
     GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, ts.State, ts.ScanCount
     ORDER BY pr.Pro_Name
