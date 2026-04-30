@@ -15,66 +15,61 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @CompanyStartDate DATETIME;
-    SELECT @CompanyStartDate = Reg_Date FROM Comp_Reg WHERE Comp_ID = @CompId AND Status = 1;
+    DECLARE @StartDate DATE, @EndDate DATE;
 
-    DECLARE @Today DATE = CAST(GETDATE() AS DATE);
-    DECLARE @StartDate DATE;
-    DECLARE @EndDate   DATE;
+    DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
+    
+    -- Normalize the filter string
+    SET @Win = REPLACE(@Win, ' ', '');
+    IF @Win = 'THISMONTH' SET @Win = 'MONTH';
+    IF @Win = 'THISWEEK' SET @Win = 'WEEK';
+    IF @Win = 'QUARTER(90DAYS)' SET @Win = 'QUARTER';
 
-    SET DATEFIRST 1;
+    -- Fetch Company Registration Date for optimization
+    DECLARE @CompRegDate DATE;
+    SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
+    FROM Comp_Reg WITH (NOLOCK) 
+    WHERE Comp_ID = @CompId AND Status = 1;
 
-    DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, 'MONTH'))));
+    IF @CompRegDate IS NULL 
+        SET @CompRegDate = '2000-01-01';
 
-    IF @Win = 'TODAY'
+    DECLARE @Days INT;
+    IF @Win = 'LASTWEEK'  SET @Days = 14;
+    ELSE IF @Win = 'WEEK' OR @Win = 'THISWEEK' SET @Days = 7;
+    ELSE IF @Win = 'QUARTER' SET @Days = 90;
+    ELSE SET @Days = 30; -- Default to Month/30 days
+
+    IF @Win = 'WEEK' OR @Win = 'THISWEEK'
     BEGIN
-        SET @StartDate = @Today;
-        SET @EndDate = @Today;
-    END
-    ELSE IF @Win = 'YESTERDAY'
-    BEGIN
-        SET @StartDate = DATEADD(DAY, -1, @Today);
-        SET @EndDate = DATEADD(DAY, -1, @Today);
-    END
-    ELSE IF @Win = 'WEEK'
-    BEGIN
-        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
-        SET @EndDate = @Today;
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0); -- Monday
+        SET @EndDate = CAST(GETDATE() AS DATE);
     END
     ELSE IF @Win = 'LASTWEEK'
     BEGIN
-        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today) - 1, 0);
-        SET @EndDate = DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today), 0));
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0); -- Prev Monday
+        SET @EndDate = DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0)); -- Prev Sunday
     END
-    ELSE IF @Win = 'MONTH'
+    ELSE IF @Win = 'MONTH' OR @Win = 'THISMONTH'
     BEGIN
-        SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
-        SET @EndDate = @Today;
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+        SET @EndDate = CAST(GETDATE() AS DATE);
     END
     ELSE IF @Win = 'LASTMONTH'
     BEGIN
-        SET @StartDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1));
-        SET @EndDate = EOMONTH(@Today, -1);
+        SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+        SET @EndDate = EOMONTH(DATEADD(MONTH, -1, GETDATE()));
     END
     ELSE IF @Win = 'QUARTER'
     BEGIN
-        SET @StartDate = DATEADD(DAY, -90, @Today);
-        SET @EndDate = @Today;
-    END
-    ELSE IF @Win = 'YEAR'
-    BEGIN
-        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
-        SET @EndDate = GETDATE();
-    END
-    ELSE IF @Win = 'LASTYEAR'
-    BEGIN
-        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
-        SET @EndDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31);
+        SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+        SET @EndDate = DATEADD(DAY, -1, DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0));
     END
     ELSE
     BEGIN
-        SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
-        SET @EndDate = @Today;
+        -- Default to THIS WEEK
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+        SET @EndDate = CAST(GETDATE() AS DATE);
     END
 
     IF OBJECT_ID('tempdb..#Scans') IS NOT NULL DROP TABLE #Scans;
@@ -89,6 +84,7 @@ BEGIN
     FROM Pro_Enq PE WITH (NOLOCK)
     WHERE PE.Comp_ID = @CompId
       AND PE.Is_Success IN (1,2,0)
+      AND PE.Enq_Date >= @CompRegDate
       AND PE.Enq_Date >= @StartDate 
       AND PE.Enq_Date < DATEADD(DAY,1,@EndDate);
 
@@ -100,7 +96,7 @@ BEGIN
         SUM(ISNULL(Points,0)) AS TotalPoints
     INTO #Points
     FROM BLoyaltyPointsEarned WITH (NOLOCK)
-    WHERE CompId = @CompId
+    WHERE CompId = @CompId AND UpdateDate >= @CompRegDate
     GROUP BY Code1, Code2;
 
     -- RESULT 1: Latest Scan Records
@@ -129,8 +125,8 @@ BEGIN
             ON PR.Pro_ID = MCd.Pro_ID
            AND PR.Comp_ID = @CompId
     LEFT JOIN #Points P ON P.Code1 = S.Code1 AND P.Code2 = S.Code2
-    LEFT JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = S.MobileNo AND MC.IsDelete = 0
-    LEFT JOIN GeoLocationData G WITH (NOLOCK) ON G.Code1 = S.Code1 AND G.Code2 = S.Code2 AND G.Comp_Id = @CompId
+    LEFT JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = S.MobileNo AND MC.IsDelete = 0 AND MC.Entry_Date >= @CompRegDate
+    LEFT JOIN GeoLocationData G WITH (NOLOCK) ON G.Code1 = S.Code1 AND G.Code2 = S.Code2 AND G.Comp_Id = @CompId AND G.Enq_Date >= @CompRegDate
     ORDER BY S.Enq_Date DESC;
 
     -- RESULT 2: Summary Counts

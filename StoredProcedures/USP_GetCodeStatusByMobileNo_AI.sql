@@ -4,18 +4,16 @@ SET QUOTED_IDENTIFIER ON
 GO
 -- =============================================
 -- Author:      AI
--- Create date: 2026-04-02
--- Description: Get code status details and summary for a specific company
+-- Create date: 2026-04-28
+-- Description: Get code status details and summary for a specific mobile number
 -- =============================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetCodeStatus_AI]
-    @RecievedCode1 NVARCHAR(10),
-    @RecievedCode2 NVARCHAR(10),
-    @Comp_ID NVARCHAR(50), 
-    @Type NVARCHAR(20) = NULL ,  -- DETAILS | SUMMARY | NULL
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetCodeStatusByMobileNo_AI]
+    @MobileNo NVARCHAR(15),
+    @Comp_ID NVARCHAR(50),
+    @Type NVARCHAR(20) = NULL,
     @Page INT = NULL,
     @Limit INT = NULL,
-    @IsExport BIT = NULL,
-    @ServiceID NVARCHAR(50) = NULL
+    @IsExport BIT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -30,6 +28,11 @@ BEGIN
 
     IF @Type IS NOT NULL
         SET @Type = UPPER(LTRIM(RTRIM(@Type)));
+
+    ---------------------------------------------------------
+    -- Normalize Mobile Number
+    ---------------------------------------------------------
+    DECLARE @NormalizedMobile NVARCHAR(10) = RIGHT(LTRIM(RTRIM(@MobileNo)), 10);
 
     ---------------------------------------------------------
     -- Subscription Temp Table
@@ -52,14 +55,13 @@ BEGIN
     INNER JOIN Pro_Reg pr 
         ON pr.Pro_id = ss.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
-      AND (@ServiceID IS NULL OR ss.Service_ID = @ServiceID)
       AND sst.IsActive = 1 AND sst.IsDelete = 0
       AND ss.IsActive = 1 AND ss.IsDelete = 0;
 
     ---------------------------------------------------------
-    -- Code Status Temp
+    -- Final Data Temp Table
     ---------------------------------------------------------
-    IF OBJECT_ID('tempdb..#CodeStatus') IS NOT NULL DROP TABLE #CodeStatus;
+    IF OBJECT_ID('tempdb..#FinalData') IS NOT NULL DROP TABLE #FinalData;
 
     SELECT
         CASE WHEN PE.Is_Success = 1 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
@@ -68,8 +70,9 @@ BEGIN
         PE.Enq_Date,
         ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS UniqueCode,
         PE.MobileNo,
-        ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode
-    INTO #CodeStatus
+        ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
+        pr.Pro_Name
+    INTO #FinalData
     FROM Pro_Enq PE
     INNER JOIN M_Code mc 
         ON mc.Code1 = PE.Received_Code1
@@ -86,8 +89,7 @@ BEGIN
            CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#'))
            AND 
            CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
-    WHERE PE.Received_Code1 = @RecievedCode1
-      AND PE.Received_Code2 = @RecievedCode2
+    WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
       AND pr.Comp_ID = @Comp_ID;
 
     ---------------------------------------------------------
@@ -98,7 +100,7 @@ BEGIN
         IF (@IsExport = 1)
         BEGIN
             SELECT *
-            FROM #CodeStatus
+            FROM #FinalData
             ORDER BY Enq_Date DESC;
         END
         ELSE
@@ -106,23 +108,23 @@ BEGIN
             DECLARE @Offset INT = (@Page - 1) * @Limit;
 
             SELECT *
-            FROM #CodeStatus
+            FROM #FinalData
             ORDER BY Enq_Date DESC
             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
         END
     END
 
     ---------------------------------------------------------
-    -- PAGINATION META
+    -- META RESULT
     ---------------------------------------------------------
     IF (@IsExport = 0 AND (@Type IS NULL OR @Type = '' OR @Type = 'DETAILS'))
     BEGIN
         SELECT
-            COUNT(1) AS TotalRecords,
-            @Page  AS CurrentPage,
+            COUNT(*) AS TotalRecords,
+            @Page AS CurrentPage,
             @Limit AS [Limit],
-            CAST(CEILING(COUNT(1) * 1.0 / @Limit) AS INT) AS TotalPages
-        FROM #CodeStatus;
+            CEILING(COUNT(*) * 1.0 / @Limit) AS TotalPages
+        FROM #FinalData;
     END
 
     ---------------------------------------------------------
@@ -130,42 +132,28 @@ BEGIN
     ---------------------------------------------------------
     IF (@Type IS NULL OR @Type = '' OR @Type = 'SUMMARY')
     BEGIN
-        SELECT TOP 1
-            ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS ThirteenDigitCode,
-            MS.ServiceName,
-            ss.DateFrom AS ServiceAssignDate,
-            ss.DateTo AS CodeExpiryDate,
-            pr.Pro_Name,
-            CASE WHEN MC.Use_Count >= 1 THEN 'Used' ELSE 'Un Used' END AS CodeCheckStatus,
-            PE.Enq_Date,
-            (SELECT COUNT(1) FROM Pro_Enq WHERE Received_Code1 = @RecievedCode1 AND Received_Code2 = @RecievedCode2) AS CodeCheckCount,
-            CASE WHEN sst.IsActive = 1 AND ss.IsActive = 1 AND ss.IsDelete = 0 AND sst.IsDelete = 0 THEN 'Active' ELSE 'In Active' END AS CodeActiveStatus,
-            CASE WHEN sst.Points IS NULL THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points
+        SELECT
+            M.ConsumerName,
+            M.MobileNo,
+            M.Email,
+            COUNT(*) AS CodeCheckCount,
+            SUM(CASE WHEN PE.Is_Success = 1 THEN 1 ELSE 0 END) AS TotalSuccessCodeCheck,
+            SUM(CASE WHEN PE.Is_Success <> 1 THEN 1 ELSE 0 END) AS TotalUNSuccessCodeCheck
         FROM Pro_Enq PE
+        LEFT JOIN M_Consumer M 
+            ON RIGHT(M.MobileNo, 10) = RIGHT(PE.MobileNo, 10)
+           AND M.IsDelete = 0
         INNER JOIN M_Code mc 
             ON mc.Code1 = PE.Received_Code1
            AND mc.Code2 = PE.Received_Code2
         INNER JOIN Pro_Reg pr 
-            ON pr.Pro_ID = mc.Pro_ID      
-        INNER JOIN M_ServiceSubscription ss 
-            ON ss.Pro_ID = pr.Pro_ID
-            AND CONCAT(
-                FORMAT(mc.Series_Order, '000#'),
-                FORMAT(mc.Series_Serial, '000#')
-            )
-            BETWEEN 
-            CONCAT(FORMAT(ss.start_order, '000#'), FORMAT(ss.start_series, '000#'))
-            AND 
-            CONCAT(FORMAT(ss.end_order, '000#'), FORMAT(ss.end_series, '000#'))
-        LEFT JOIN M_ServiceSubscriptionTrans sst
-            ON sst.Subscribe_Id = ss.Subscribe_Id
-        INNER JOIN M_Service MS 
-            ON MS.Service_ID = ss.Service_ID
-        WHERE PE.Received_Code1 = @RecievedCode1
-          AND PE.Received_Code2 = @RecievedCode2
+            ON pr.Pro_ID = mc.Pro_ID
+        WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
           AND pr.Comp_ID = @Comp_ID
-          AND (@ServiceID IS NULL OR ss.Service_ID = @ServiceID)        
-        ORDER BY PE.Enq_Date DESC;
+        GROUP BY 
+            M.ConsumerName,
+            M.MobileNo,
+            M.Email;
     END
 END
 GO

@@ -19,76 +19,63 @@ BEGIN
 DECLARE @EndDate   DATE;
 
 DECLARE @Today DATE = CAST(GETDATE() AS DATE);
-DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
+DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
 
--- Monday as first day of week
-SET DATEFIRST 1;
+-- Normalize the filter string
+SET @Win = REPLACE(@Win, ' ', '');
+IF @Win = 'THISMONTH' SET @Win = 'MONTH';
+IF @Win = 'THISWEEK' SET @Win = 'WEEK';
+IF @Win = 'QUARTER(90DAYS)' SET @Win = 'QUARTER';
 
-------------------------------------------------
--- START DATE (CALENDAR-BASED)
-------------------------------------------------
-SET @StartDate =
-    CASE
-        -- TODAY
-        WHEN @Win = 'TODAY'
-            THEN @Today
+-- Fetch Company Registration Date for optimization
+DECLARE @CompRegDate DATE;
+SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
+FROM Comp_Reg WITH (NOLOCK) 
+WHERE Comp_ID = @CompId AND Status = 1;
 
-        -- CURRENT WEEK (Monday → Today)
-        WHEN @Win = 'WEEK'
-            THEN DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today)
+IF @CompRegDate IS NULL 
+    SET @CompRegDate = '2000-01-01';
 
-        -- LAST WEEK (Previous Monday)
-        WHEN @Win = 'LASTWEEK'
-            THEN DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today) - 1, 0)
-
-        -- CURRENT MONTH (1st → Today)
-        WHEN @Win = 'MONTH'
-            THEN DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)
-
-        -- LAST MONTH (1st of previous month)
-        WHEN @Win = 'LASTMONTH'
-            THEN DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1))
-
-        -- QUARTER (Rolling last 90 days)
-        WHEN @Win = 'QUARTER'
-            THEN DATEADD(DAY, -90, @Today)
-
-        -- YEAR
-        WHEN @Win = 'YEAR'
-            THEN DATEFROMPARTS(YEAR(@Today), 1, 1)
-
-        -- LAST YEAR
-        WHEN @Win = 'LASTYEAR'
-            THEN DATEFROMPARTS(YEAR(@Today) - 1, 1, 1)
-
-        -- DEFAULT → CURRENT MONTH
-        ELSE DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1)
-    END;
+DECLARE @Days INT;
+IF @Win = 'LASTWEEK'  SET @Days = 14;
+ELSE IF @Win = 'WEEK' OR @Win = 'THISWEEK' SET @Days = 7;
+ELSE IF @Win = 'QUARTER' SET @Days = 90;
+ELSE SET @Days = 30; -- Default to Month/30 days
 
 ------------------------------------------------
--- END DATE (CALENDAR-BASED)
+-- DATE RANGE LOGIC
 ------------------------------------------------
-SET @EndDate =
-    CASE
-        -- LAST WEEK → Previous Sunday
-        WHEN @Win = 'LASTWEEK'
-            THEN DATEADD(
-                    DAY,
-                    -1,
-                    DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today), 0)
-                 )
-
-        -- LAST MONTH → Last day of previous month
-        WHEN @Win = 'LASTMONTH'
-            THEN EOMONTH(@Today, -1)
-
-        -- LAST YEAR → Last day of previous year
-        WHEN @Win = 'LASTYEAR'
-            THEN DATEADD(DAY, -1, DATEFROMPARTS(YEAR(@Today), 1, 1))
-
-        -- ALL OTHERS → Today
-        ELSE @Today
-    END;
+IF @Win = 'WEEK' OR @Win = 'THISWEEK'
+BEGIN
+    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0); -- Monday
+    SET @EndDate = CAST(GETDATE() AS DATE);
+END
+ELSE IF @Win = 'LASTWEEK'
+BEGIN
+    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0); -- Prev Monday
+    SET @EndDate = DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0)); -- Prev Sunday
+END
+ELSE IF @Win = 'MONTH' OR @Win = 'THISMONTH'
+BEGIN
+    SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+    SET @EndDate = CAST(GETDATE() AS DATE);
+END
+ELSE IF @Win = 'LASTMONTH'
+BEGIN
+    SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+    SET @EndDate = EOMONTH(DATEADD(MONTH, -1, GETDATE()));
+END
+ELSE IF @Win = 'QUARTER'
+BEGIN
+    SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+    SET @EndDate = DATEADD(DAY, -1, DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0));
+END
+ELSE
+BEGIN
+    -- Default to THIS WEEK
+    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+    SET @EndDate = CAST(GETDATE() AS DATE);
+END
 
 
    ;WITH CTE_AllUsers AS (
@@ -98,7 +85,7 @@ SET @EndDate =
         MC.MobileNo
     FROM tbl_VendorViseKYCStatus V
     LEFT JOIN M_Consumer MC ON MC.M_ConsumerId = V.M_ConsumerId
-    WHERE V.Comp_Id = @CompId
+    WHERE V.Comp_Id = @CompId AND (MC.Entry_Date IS NULL OR MC.Entry_Date >= @CompRegDate)
 ),
 CTE_State AS (
     -- Get latest scanned state for each user
@@ -111,6 +98,7 @@ CTE_State AS (
     LEFT JOIN GeoLocationData G
         ON G.MobileNo = AU.MobileNo
        AND G.Comp_Id = @CompId
+       AND G.Enq_Date >= @CompRegDate
        AND CAST(G.Enq_Date AS DATE) BETWEEN @StartDate AND @EndDate
 ),
 CTE_UserState AS (
@@ -126,6 +114,7 @@ CTE_BLE AS (
     LEFT JOIN BLoyaltyPointsEarned BLE
         ON BLE.M_ConsumerId = AU.M_ConsumerId
        AND BLE.Compid = @CompId
+       AND BLE.UpdateDate >= @CompRegDate
        AND CAST(BLE.UpdateDate AS DATE) BETWEEN @StartDate AND @EndDate
     LEFT JOIN CTE_UserState US
         ON US.M_ConsumerId = AU.M_ConsumerId
@@ -142,12 +131,14 @@ CTE_Redeem AS (
         ON CD.MobileNo = AU.MobileNo
        AND CD.Comp_id = @CompId
        AND CD.Isapproved = 1
+       AND CD.action_date >= @CompRegDate
        AND CAST(CD.action_date AS DATE) BETWEEN @StartDate AND @EndDate
     LEFT JOIN tblUPITransactionDetails UPI
         ON UPI.M_Consumerid = AU.M_ConsumerId
        AND UPI.Comp_Id = @CompId
        AND UPI.Status = 'Success'
 	   AND LEN(UPI.Code1)>2
+       AND UPI.ReqDate >= @CompRegDate
        AND CAST(UPI.ReqDate AS DATE) BETWEEN @StartDate AND @EndDate
     LEFT JOIN CTE_UserState US
         ON US.M_ConsumerId = AU.M_ConsumerId

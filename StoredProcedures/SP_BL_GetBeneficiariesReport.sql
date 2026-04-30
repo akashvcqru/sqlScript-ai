@@ -39,73 +39,67 @@ BEGIN
     DECLARE @StartDate DATETIME = NULL;
     DECLARE @EndDate   DATETIME = NULL;
 
-    -- Normalize TimeWindow
-    IF (
-           @datePreset IS NULL
-        OR LTRIM(RTRIM(@datePreset)) = ''
-        OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null'
-    )
-        SET @datePreset = NULL;
-    ELSE
-        SET @datePreset = LOWER(LTRIM(RTRIM(@datePreset)));
+    -- Normalize datePreset
+    DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
+    IF (@Win = '' OR @Win = 'NULL') SET @Win = 'ALL';
 
-    -- Explicit date range overrides TimeWindow
-    IF (@datePreset = 'custom' AND @FromDate IS NOT NULL AND @ToDate IS NOT NULL)
+    -- Explicit date range overrides datePreset
+    IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
     BEGIN
         SET @StartDate = CAST(@FromDate AS DATETIME);
         SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME)); -- Exclusive end date
     END
-    ELSE IF (@datePreset = 'today')
+    ELSE IF (@Win = 'TODAY')
     BEGIN
         SET @StartDate = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
         SET @EndDate = DATEADD(DAY, 1, @StartDate);
     END
-    ELSE IF (@datePreset = 'lastday')
+    ELSE IF (@Win = 'YESTERDAY' OR @Win = 'LASTDAY')
     BEGIN
         SET @StartDate = DATEADD(DAY, -1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
         SET @EndDate = DATEADD(DAY, 1, @StartDate);
     END
-    ELSE IF (@datePreset = 'week')
+    ELSE IF (@Win = 'WEEK' OR @Win = 'THIS WEEK')
     BEGIN
         SET DATEFIRST 1;
         SET @StartDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE)) AS DATETIME);
         SET @EndDate = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
     END
-    ELSE IF (@datePreset = 'lastweek')
+    ELSE IF (@Win = 'LASTWEEK')
     BEGIN
         SET DATEFIRST 1;
         SET @StartDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()) - 7, CAST(GETDATE() AS DATE)) AS DATETIME);
         SET @EndDate = DATEADD(DAY, 7, @StartDate);
     END
-    ELSE IF (@datePreset = 'month')
+    ELSE IF (@Win = 'MONTH' OR @Win = 'THIS MONTH')
     BEGIN
         SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME);
         SET @EndDate = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
     END
-    ELSE IF (@datePreset = 'lastmonth')
+    ELSE IF (@Win = 'LASTMONTH')
     BEGIN
         SET @StartDate = DATEADD(MONTH, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME));
         SET @EndDate = DATEADD(MONTH, 1, @StartDate);
     END
-    ELSE IF (@datePreset = 'quarter')
+    ELSE IF (@Win = 'QUARTER' OR @Win = 'THIS QUARTER')
+    BEGIN
+        SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
+        SET @EndDate = DATEADD(QUARTER, 1, @StartDate);
+    END
+    ELSE IF (@Win = 'LASTQUARTER')
     BEGIN
         SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
         SET @EndDate = DATEADD(QUARTER, 1, @StartDate);
     END
-    ELSE IF (@datePreset = 'year')
+    ELSE IF (@Win = 'YEAR' OR @Win = 'THIS YEAR')
     BEGIN
         SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME);
         SET @EndDate = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
     END
-    ELSE IF (@datePreset = 'lastyear')
+    ELSE IF (@Win = 'LASTYEAR')
     BEGIN
         SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1) AS DATETIME);
         SET @EndDate = DATEADD(YEAR, 1, @StartDate);
-    END
-    ELSE IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
-    BEGIN
-        SET @StartDate = CAST(@FromDate AS DATETIME);
-        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
     END
     ELSE -- ALL / NULL
     BEGIN
@@ -185,10 +179,11 @@ BEGIN
         bp.M_ConsumerId,
         SUM(ISNULL(bp.Points,0)) AS Benefit,
         MAX(bp.UpdateDate) AS LastScan
-    FROM BLoyaltyPointsEarned bp
-    INNER JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
-    INNER JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
-    WHERE ms.Comp_ID IN ('Comp-1567','Comp-1650')
+    FROM BLoyaltyPointsEarned bp WITH (NOLOCK)
+    -- LEFT JOIN to ensure we capture points even if subscription link is missing in some records
+    LEFT JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
+    LEFT JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
+    WHERE (bp.CompId IN ('Comp-1567','Comp-1650') OR ms.Comp_ID IN ('Comp-1567','Comp-1650'))
       AND (@StartDate IS NULL OR bp.UpdateDate >= @StartDate)
       AND (@EndDate   IS NULL OR bp.UpdateDate <  @EndDate)
     GROUP BY bp.M_ConsumerId;
@@ -208,21 +203,20 @@ BEGIN
     GROUP BY M_ConsumerId; */
 	SELECT
         bp.M_ConsumerId,
-		--CASE WHEN @Comp_Id='Comp-1274' THEN  SUM(ISNULL(bp.Cash,0)) ELSE  SUM(ISNULL(bp.Points,0)) END Benefit,
 		CAST(
-    CASE 
-        WHEN @Comp_Id = 'Comp-1274' 
-            THEN SUM(ISNULL(bp.Cash,0)) * 1.10   -- add 10% extra
-        ELSE 
-            SUM(ISNULL(bp.Points,0))
-    END
-AS DECIMAL(18,2)) AS Benefit,
-       -- SUM(ISNULL(bp.Points,0)) AS Benefit,
+            CASE 
+                WHEN @Comp_Id = 'Comp-1274' 
+                    THEN SUM(ISNULL(bp.Cash,0)) * 1.10   -- add 10% extra
+                ELSE 
+                    SUM(ISNULL(bp.Points,0))
+            END
+        AS DECIMAL(18,2)) AS Benefit,
         MAX(bp.UpdateDate) AS LastScan
-    FROM BLoyaltyPointsEarned bp
-    INNER JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
-    INNER JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
-    WHERE  CompId = @Comp_Id
+    FROM BLoyaltyPointsEarned bp WITH (NOLOCK)
+    -- Using LEFT JOIN to be safe, but primarily relying on bp.CompId
+    LEFT JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
+    LEFT JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
+    WHERE bp.CompId = @Comp_Id
       AND (@StartDate IS NULL OR bp.UpdateDate >= @StartDate)
       AND (@EndDate   IS NULL OR bp.UpdateDate <  @EndDate)
     GROUP BY bp.M_ConsumerId;
@@ -379,6 +373,13 @@ END
             U.MobileNo     LIKE '%' + @Search + '%' OR
             U.City         LIKE '%' + @Search + '%' OR
             U.State        LIKE '%' + @Search + '%'
+        )
+        -- Date Filter Correction: When a date range is selected, only show users with activity
+        AND (
+            @Win = 'ALL' 
+            OR B.M_ConsumerId IS NOT NULL 
+            OR C.Mobileno IS NOT NULL 
+            OR UU.M_Consumerid IS NOT NULL
         );
 
     ---------------------------------------------------------

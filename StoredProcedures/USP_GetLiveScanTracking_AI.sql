@@ -8,7 +8,8 @@ GO
 -- =============================================
 -- Author:      AI
 -- Create date: 2026-04-02
--- Description: Get live scan tracking report for the last 30 days
+-- Modified:    2026-04-29
+-- Description: Ultra-optimized Live scanning tracking report using per-company flat tables.
 -- =============================================
 ALTER   PROCEDURE [dbo].[USP_GetLiveScanTracking_AI]
     @Comp_ID NVARCHAR(50),
@@ -18,32 +19,51 @@ ALTER   PROCEDURE [dbo].[USP_GetLiveScanTracking_AI]
     @PageNumber INT = 1,
     @PageSize INT = 10,
     @ServiceID NVARCHAR(50) = NULL,
-    @IsExport BIT = 0
+    @IsExport BIT = 0,
+    @Search NVARCHAR(100) = NULL,
+    @StateFilter NVARCHAR(100) = NULL,
+    @KYCStatusFilter NVARCHAR(50) = NULL,
+    @CodeStatusFilter NVARCHAR(20) = NULL,
+    @DialModeFilter NVARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
     SET @IsExport = ISNULL(@IsExport, 0);
+    IF @PageNumber IS NULL OR @PageNumber <= 0 SET @PageNumber = 1;
+    IF @PageSize IS NULL OR @PageSize <= 0 SET @PageSize = 10;
+    IF LTRIM(RTRIM(ISNULL(@Search, ''))) = '' SET @Search = NULL;
+    IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' SET @StateFilter = NULL;
 
-    DECLARE @finalFromDate DATETIME, @finalToDate DATETIME
-    SET @finalToDate = GETDATE()
+    -- 1. Construct Dynamic Table Name
+    DECLARE @CleanCompID NVARCHAR(100) = REPLACE(REPLACE(@Comp_ID, ' ', '_'), '-', '_');
+    DECLARE @TableName NVARCHAR(256) = N'[GetLiveScanTracking_optimizedata_' + @CleanCompID + N']';
+    DECLARE @Sql NVARCHAR(MAX);
 
-    IF @datePreset = 'all'
-    BEGIN
-        SET @finalFromDate = NULL
-        SET @finalToDate = NULL
-    END
-    ELSE IF @datePreset = 'custom'
-    BEGIN
-        SET @finalFromDate = @FromDate
-        SET @finalToDate = @ToDate
-    END
-    ELSE
+    -- 2. Schema Definition (Internal versioning to handle auto-migration)
+    -- If you add columns here, the SP will automatically drop and recreate the table.
+    DECLARE @RequiredColumns TABLE (ColName NVARCHAR(128), ColDef NVARCHAR(MAX));
+    INSERT INTO @RequiredColumns (ColName, ColDef) VALUES 
+    ('ScanTimestamp', 'DATETIME'), ('Product', 'NVARCHAR(250)'), ('VariantSKU', 'NVARCHAR(50)'),
+    ('BatchNo', 'NVARCHAR(100)'), ('UniqueCode', 'NVARCHAR(100)'), ('ScanResult', 'NVARCHAR(50)'),
+    ('FirstOrRepeat', 'NVARCHAR(20)'), ('TotalScansForUID', 'INT'), ('City', 'NVARCHAR(100)'),
+    ('State', 'NVARCHAR(100)'), ('PinCode', 'NVARCHAR(20)'), ('Channel', 'NVARCHAR(50)'),
+    ('DistributorRetailer', 'NVARCHAR(250)'), ('ManufacturingDate', 'DATETIME'), ('ExpiryDate', 'DATETIME'),
+    ('RiskAbuseFlag', 'NVARCHAR(20)'), ('ClaimID', 'NVARCHAR(50)'), ('ConsumerMobile', 'NVARCHAR(20)'),
+    ('Latitude', 'NVARCHAR(50)'), ('Longitude', 'NVARCHAR(50)'),
+    ('Is_Success', 'INT'), ('Dial_Mode', 'NVARCHAR(50)');
+
+    -- 3. Check for Schema Changes or Missing Table
+    DECLARE @TableExists INT = 0;
+    SET @Sql = N'IF OBJECT_ID(''' + @TableName + N''') IS NOT NULL SET @exists = 1 ELSE SET @exists = 0;';
+    EXEC sp_executesql @Sql, N'@exists INT OUTPUT', @TableExists OUTPUT;
+
+    IF @TableExists = 1
     BEGIN
         IF @datePreset IS NULL OR @datePreset = '' SET @datePreset = 'week'
         
         DECLARE @today DATE = CAST(GETDATE() AS DATE)
 
-        IF @datePreset = 'today'
+        IF @MissingCols > 0
         BEGIN
             SET @finalFromDate = @today
             SET @finalToDate = GETDATE()
@@ -100,20 +120,29 @@ BEGIN
         END
     END
 
-    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+    -- 4. Create Table if it doesn't exist
+    IF @TableExists = 0
+    BEGIN
+        DECLARE @ColList NVARCHAR(MAX) = '';
+        SELECT @ColList = @ColList + '[' + ColName + '] ' + ColDef + ', ' FROM @RequiredColumns;
+        SET @ColList = LEFT(@ColList, LEN(@ColList) - 1);
 
-    SELECT a.* 
-    INTO #tempM_Code 
-    FROM M_Code a 
-    INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
-    WHERE b.Comp_ID = @Comp_ID;
+        SET @Sql = N'CREATE TABLE ' + @TableName + N' (' + @ColList + N'); ' +
+                   N'CREATE INDEX IX_ScanTime ON ' + @TableName + N'(ScanTimestamp DESC); ' +
+                   N'CREATE INDEX IX_UniqueCode ON ' + @TableName + N'(UniqueCode);';
+        EXEC(@Sql);
+    END
 
-    IF OBJECT_ID('tempdb..#tempM_ServiceSubscription') IS NOT NULL DROP TABLE #tempM_ServiceSubscription;
-
-    SELECT * 
-    INTO #tempM_ServiceSubscription 
-    FROM M_ServiceSubscription 
-    WHERE Comp_ID = @Comp_ID;
+    -- 5. Incremental Sync
+    DECLARE @LastSync DATETIME;
+    SET @Sql = N'SELECT @LastSync = MAX(ScanTimestamp) FROM ' + @TableName;
+    EXEC sp_executesql @Sql, N'@LastSync DATETIME OUTPUT', @LastSync OUTPUT;
+    
+    -- If table was empty or dropped, sync from company start date
+    IF @LastSync IS NULL
+    BEGIN
+        SELECT @LastSync = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_ID;
+    END
 
     ;WITH ResultCTE AS (
         SELECT 
