@@ -10,7 +10,7 @@ GO
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetInvalidCodeReport_AI]
     @Comp_ID NVARCHAR(50),
-    @datePreset NVARCHAR(20) = 'week',
+    @datePreset NVARCHAR(20) = 'All',
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
@@ -104,7 +104,7 @@ BEGIN
     END
     ELSE 
     BEGIN 
-        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
+        SET @finalFromDate = NULL; 
         SET @finalToDate = GETDATE(); 
     END
 
@@ -120,7 +120,7 @@ BEGIN
       AND pe.Enq_Date >= @CompanyStartDate
       AND pe.Is_Success = 0
       AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
-      AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
+      AND (@finalToDate IS NULL OR pe.Enq_Date <= @finalToDate)
       AND (@StateFilter IS NULL OR pe.State = @StateFilter)
       AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
       AND (@Search IS NULL OR pe.MobileNo LIKE '%'+@Search+'%' OR pe.Received_Code1 LIKE '%'+@Search+'%' OR pe.Received_Code2 LIKE '%'+@Search+'%');
