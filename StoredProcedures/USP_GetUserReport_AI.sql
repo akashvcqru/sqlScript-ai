@@ -10,7 +10,7 @@ GO
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetUserReport_AI]
     @Comp_ID NVARCHAR(50),
-    @datePreset NVARCHAR(20) = 'week',
+    @datePreset NVARCHAR(20) = 'ALL',
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
@@ -172,8 +172,8 @@ BEGIN
         mc.Email,
         ISNULL(mc.ConsumerName, '') AS ConsumerName,
         COUNT(pe.Received_Code1) AS TotalCodeScanned,
-        SUM(CASE WHEN pe.Is_Success = 1 THEN 1 ELSE 0 END) AS SuccessfulCodeScanned,
-        SUM(CASE WHEN pe.Is_Success <> 1 THEN 1 ELSE 0 END) AS UnsuccessfulCodeScanned,
+        SUM(CASE WHEN mc_tbl.Code1 IS NOT NULL AND pe.Is_Success = 1 THEN 1 ELSE 0 END) AS SuccessfulCodeScanned,
+        SUM(CASE WHEN mc_tbl.Code1 IS NULL OR pe.Is_Success <> 1 THEN 1 ELSE 0 END) AS UnsuccessfulCodeScanned,
         MIN(pe.Enq_Date) AS FirstScannedDate,
         MAX(pe.Enq_Date) AS LastScannedDate,
         mc.PinCode AS PostCode,
