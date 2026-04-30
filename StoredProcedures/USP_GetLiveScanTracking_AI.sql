@@ -30,8 +30,11 @@ BEGIN
     SET @IsExport = ISNULL(@IsExport, 0);
     IF @PageNumber IS NULL OR @PageNumber <= 0 SET @PageNumber = 1;
     IF @PageSize IS NULL OR @PageSize <= 0 SET @PageSize = 10;
+    -- Normalize search/filter
     IF LTRIM(RTRIM(ISNULL(@Search, ''))) = '' SET @Search = NULL;
-    IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' SET @StateFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' OR @StateFilter = 'All' SET @StateFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@CodeStatusFilter, ''))) = '' OR @CodeStatusFilter = 'All' SET @CodeStatusFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@DialModeFilter, ''))) = '' OR @DialModeFilter = 'All' SET @DialModeFilter = NULL;
 
     -- 1. Construct Dynamic Table Name
     DECLARE @CleanCompID NVARCHAR(100) = REPLACE(REPLACE(@Comp_ID, ' ', '_'), '-', '_');
@@ -203,9 +206,18 @@ BEGIN
         LEFT JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
         LEFT JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
         LEFT JOIN M_Consumer mcn ON mcn.MobileNo = pe.MobileNo
-        WHERE pe.Comp_ID = @Comp_ID and mcn.IsDelete = 0
+        WHERE pe.Comp_ID = @Comp_ID 
+          AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
           AND (@finalToDate IS NULL OR pe.Enq_Date <= @finalToDate)
+          AND (@StateFilter IS NULL OR pe.state = @StateFilter)
+          AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
+          AND (@Search IS NULL OR (
+                pe.MobileNo LIKE '%' + @Search + '%' OR 
+                (ISNULL(pe.Received_Code1, '') + ISNULL(pe.Received_Code2, '')) LIKE '%' + @Search + '%' OR 
+                mc.Batch_No LIKE '%' + @Search + '%' OR
+                pr.Pro_Name LIKE '%' + @Search + '%'
+          ))
     )
     SELECT 
         ROW_NUMBER() OVER (ORDER BY ScanTimestamp DESC) AS SNo,
@@ -232,6 +244,7 @@ BEGIN
         COUNT(*) OVER() AS TotalRecords
     FROM ResultCTE
     WHERE DupRank = 1
+      AND (@CodeStatusFilter IS NULL OR ScanResult = @CodeStatusFilter)
     ORDER BY ScanTimestamp DESC
     OFFSET (@PageNumber - 1) * @PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
