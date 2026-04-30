@@ -189,7 +189,7 @@ BEGIN
         --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     WHERE (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
       AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
-    GROUP BY mc.MobileNo, mc.State, mc.City, mc.Email, mc.PinCode
+    GROUP BY mc.MobileNo, mc.State, mc.City, mc.Email, mc.PinCode, mc.ConsumerName
     ORDER BY mc.MobileNo
     OFFSET (@PageNumber - 1) * @PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
