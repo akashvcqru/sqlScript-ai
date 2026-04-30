@@ -14,7 +14,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetCodeStatus_AI]
     @Type NVARCHAR(20) = NULL ,  -- DETAILS | SUMMARY | NULL
     @Page INT = NULL,
     @Limit INT = NULL,
-    @IsExport BIT = NULL,
+    @IsExport BIT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
