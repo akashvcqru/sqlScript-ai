@@ -8,6 +8,8 @@ CREATE TABLE tblInstallment_AI (
     vendorComment NVARCHAR(MAX),
     status INT DEFAULT 0, -- 0: Pending, 1: Approved, 2: Rejected, 3: Completed
     comp_id NVARCHAR(50),
+    latitude NVARCHAR(50),
+    longitude NVARCHAR(50),
     created_date DATETIME DEFAULT GETDATE(),
     updated_date DATETIME DEFAULT GETDATE()
 );
