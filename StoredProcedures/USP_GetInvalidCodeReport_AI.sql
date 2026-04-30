@@ -108,22 +108,55 @@ BEGIN
     END
 
     ------------------------------------------------------
-    -- Step 1: Pre-filter Pro_Enq (Filtered with Is_Success = 0)
+    -- Step 1: Pre-filter M_Code (Deduplicated per code pair)
+    ------------------------------------------------------
+    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+    
+    ;WITH DistinctCodes AS (
+        SELECT 
+            a.Code1, 
+            a.Code2, 
+            a.Pro_ID,
+            a.Use_Count,
+            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+        FROM M_Code a 
+        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+        WHERE b.Comp_ID = @Comp_ID
+          AND a.Use_Count > 0
+    )
+    SELECT Code1, Code2, Pro_ID
+    INTO #tempM_Code 
+    FROM DistinctCodes
+    WHERE rn = 1;
+
+    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+
+    ------------------------------------------------------
+    -- Step 2: Pre-filter Pro_Enq (Filtered for Invalid Scans)
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
     SELECT 
-        pe.MobileNo, pe.Received_Code1, pe.Received_Code2, pe.Enq_Date, pe.Dial_Mode
+        pe.MobileNo, 
+        pe.Received_Code1, 
+        pe.Received_Code2, 
+        pe.Enq_Date, 
+        pe.Dial_Mode
     INTO #tempPro_Enq
     FROM Pro_Enq pe
-    LEFT JOIN M_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
+    LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+          AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
     WHERE pe.Comp_ID = @Comp_ID
       AND pe.Enq_Date >= @CompanyStartDate
-      AND pe.Is_Success = 0
       AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
-      AND (@finalToDate IS NULL OR pe.Enq_Date <= @finalToDate)
+      AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
       AND (@StateFilter IS NULL OR pe.State = @StateFilter)
       AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
-      AND (@Search IS NULL OR pe.MobileNo LIKE '%'+@Search+'%' OR pe.Received_Code1 LIKE '%'+@Search+'%' OR pe.Received_Code2 LIKE '%'+@Search+'%');
+      AND (mc.Pro_ID IS NULL OR pe.Is_Success NOT IN (1, 2)) -- Matches Live Tracking 'Invalid' logic
+      AND (@Search IS NULL OR (
+            pe.MobileNo LIKE '%'+@Search+'%' OR 
+            pe.Received_Code1 LIKE '%'+@Search+'%' OR 
+            pe.Received_Code2 LIKE '%'+@Search+'%'
+      ));
 
     ------------------------------------------------------
     -- Main Query

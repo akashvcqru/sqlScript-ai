@@ -167,19 +167,19 @@ BEGIN
     SELECT 
         ROW_NUMBER() OVER (ORDER BY pe.MobileLast10) AS SNo,
         MAX(pe.MobileNo) AS MobileNo, -- Show one example mobile no
-        mc.State,
-        mc.City,
-        mc.Email,
-        ISNULL(mc.ConsumerName, '') AS ConsumerName,
+        ISNULL(mc.State, '') AS State,
+        ISNULL(mc.City, '') AS City,
+        ISNULL(mc.Email, '') AS Email,
+        ISNULL(mc.ConsumerName, 'Anonymous') AS ConsumerName,
         COUNT(pe.Received_Code1) AS TotalCodeScanned,
         SUM(CASE WHEN mc_tbl.Code1 IS NOT NULL AND pe.Is_Success = 1 THEN 1 ELSE 0 END) AS SuccessfulCodeScanned,
         SUM(CASE WHEN mc_tbl.Code1 IS NULL OR pe.Is_Success <> 1 THEN 1 ELSE 0 END) AS UnsuccessfulCodeScanned,
         MIN(pe.Enq_Date) AS FirstScannedDate,
         MAX(pe.Enq_Date) AS LastScannedDate,
-        mc.PinCode AS PostCode,
+        ISNULL(mc.PinCode, '') AS PostCode,
         COUNT(*) OVER() AS TotalRecords
     FROM #tempPro_Enq pe
-    INNER JOIN M_Consumer mc ON pe.MobileLast10 = mc.MobileLast10
+    LEFT JOIN M_Consumer mc ON pe.MobileLast10 = mc.MobileLast10
     LEFT JOIN #tempM_Code mc_tbl ON LTRIM(RTRIM(CAST(mc_tbl.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
           AND LTRIM(RTRIM(CAST(mc_tbl.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
     WHERE (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
