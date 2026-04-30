@@ -13,18 +13,17 @@ GO
 -- =============================================
 ALTER   PROCEDURE [dbo].[USP_GetProductWiseSummaryReport_AI]
     @Comp_ID NVARCHAR(50),
-    @datePreset NVARCHAR(20) = 'week',
+    @datePreset NVARCHAR(20) = 'ALL',
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
     @PageSize INT = 10,
-    @ServiceID NVARCHAR(50) = NULL,
     @IsExport BIT = 0,
     @Search NVARCHAR(100) = NULL,
     @StateFilter NVARCHAR(100) = NULL,
-    @KYCStatusFilter NVARCHAR(50) = NULL,
     @CodeStatusFilter NVARCHAR(20) = NULL,
-    @DialModeFilter NVARCHAR(50) = NULL
+    @DialModeFilter NVARCHAR(50) = NULL,
+    @ProductID NVARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -35,57 +34,83 @@ BEGIN
     IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' SET @StateFilter = NULL;
     IF LTRIM(RTRIM(ISNULL(@CodeStatusFilter, ''))) = '' SET @CodeStatusFilter = NULL;
     IF LTRIM(RTRIM(ISNULL(@DialModeFilter, ''))) = '' SET @DialModeFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@ProductID, ''))) = '' SET @ProductID = NULL;
 
     DECLARE @CompanyStartDate DATETIME;
     SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01')
     FROM Comp_Reg WHERE Comp_ID = @Comp_ID AND Status = 1;
 
     DECLARE @finalFromDate DATETIME, @finalToDate DATETIME
-    IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null')
-        SET @datePreset = 'week'
+    IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null' OR @datePreset = 'All')
+        SET @datePreset = 'ALL'
     ELSE
         SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
 
-        IF @datePreset = 'today'
-        BEGIN
-            SET @finalFromDate = @today
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'week'
-        BEGIN
-            -- Start of current week (Monday)
-            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'lastweek'
-        BEGIN
-            -- Start of last week (Monday)
-            DECLARE @thisMonday DATE = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
-            SET @finalFromDate = DATEADD(DAY, -7, @thisMonday)
-            SET @finalToDate = DATEADD(SECOND, -1, CAST(@thisMonday AS DATETIME))
-        END
-        ELSE IF @datePreset = 'month'
-        BEGIN
-            SET @finalFromDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
-            SET @finalToDate = GETDATE()
-        END
-        ELSE IF @datePreset = 'lastmonth'
-        BEGIN
-            SET @finalFromDate = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1))
-            SET @finalToDate = DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME))
-        END
-        ELSE IF @datePreset = 'quarter'
-        BEGIN
-            SET @finalFromDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0)
-            SET @finalToDate = GETDATE()
-        END
-        ELSE
-        BEGIN
-            -- Default to week
-            SET @finalFromDate = DATEADD(DAY, -(DATEDIFF(DAY, 0, GETDATE()) % 7), @today)
-            SET @finalToDate = GETDATE()
-        END
-    END;
+    DECLARE @today DATE = CAST(GETDATE() AS DATE); 
+    SET DATEFIRST 1; -- Monday as first day of week
+
+    IF @datePreset = 'ALL' 
+    BEGIN 
+        SET @finalFromDate = NULL; 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'CUSTOM' 
+    BEGIN 
+        SET @finalFromDate = @FromDate; 
+        SET @finalToDate = @ToDate; 
+    END
+    ELSE IF @datePreset = 'TODAY' 
+    BEGIN 
+        SET @finalFromDate = CAST(@today AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'YESTERDAY' OR @datePreset = 'LASTDAY' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(DAY, -1, @today) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@today AS DATETIME)) AS DATETIME); 
+    END
+    ELSE IF @datePreset = 'WEEK' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'LASTWEEK' 
+    BEGIN 
+        DECLARE @lastMonday DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); 
+        SET @finalFromDate = CAST(DATEADD(DAY, -7, @lastMonday) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@lastMonday AS DATETIME)) AS DATETIME); 
+    END
+    ELSE IF @datePreset = 'MONTH' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'LASTMONTH' 
+    BEGIN 
+        DECLARE @firstOfThisMonth DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+        SET @finalFromDate = CAST(DATEADD(MONTH, -1, @firstOfThisMonth) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@firstOfThisMonth AS DATETIME)) AS DATETIME); 
+    END
+    ELSE IF @datePreset = 'QUARTER' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'YEAR' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
+    ELSE IF @datePreset = 'LASTYEAR' 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1) AS DATETIME); 
+        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME)) AS DATETIME); 
+    END
+    ELSE 
+    BEGIN 
+        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
+        SET @finalToDate = GETDATE(); 
+    END
 
     ------------------------------------------------------
     -- Step 1: Pre-filter M_Code (Optimized columns)
@@ -94,7 +119,9 @@ BEGIN
     SELECT 
         a.Code1, 
         a.Code2, 
-        a.Pro_ID
+        a.Pro_ID,
+        a.Series_Order,
+        a.Series_Serial
     INTO #tempM_Code 
     FROM M_Code a 
     INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
@@ -137,32 +164,30 @@ BEGIN
     -- Step 3: Top State per product
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#TopStates') IS NOT NULL DROP TABLE #TopStates;
-    SELECT Pro_ID, State, ScanCount
-    INTO #TopStates
-    FROM (
+    
+    ;WITH StateCounts AS (
         SELECT 
-            Pro_ID, 
-            State, 
+            mc.Pro_ID, 
+            pe.State, 
             COUNT(*) AS ScanCount,
-            ROW_NUMBER() OVER (PARTITION BY pr.Pro_ID ORDER BY COUNT(*) DESC) AS StateRank
+            ROW_NUMBER() OVER (PARTITION BY mc.Pro_ID ORDER BY COUNT(*) DESC) AS StateRank
         FROM Pro_Enq pe
         INNER JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
-        INNER JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
-        --INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
-            --AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
-            --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
-            --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
-        WHERE pe.Comp_ID = @Comp_ID AND pe.IsActive = 1
-        --  AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
+        WHERE pe.Comp_ID = @Comp_ID
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
           AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
-        GROUP BY pr.Pro_ID, pe.State
+        GROUP BY mc.Pro_ID, pe.State
     ),
-    TopStates AS (
+    TopStatesCTE AS (
         SELECT Pro_ID, State, ScanCount
         FROM StateCounts
         WHERE StateRank = 1
     )
+    SELECT Pro_ID, State, ScanCount
+    INTO #TopStates
+    FROM TopStatesCTE;
+
+    CREATE INDEX IX_TopStates_ProID ON #TopStates(Pro_ID);
     SELECT 
         ROW_NUMBER() OVER (ORDER BY pr.Pro_Name) AS SNo,
         pr.Pro_Name AS Product, 
@@ -183,17 +208,13 @@ BEGIN
         COUNT(*) OVER() AS TotalRecords
     FROM Pro_Reg pr
     LEFT JOIN #tempM_Code mc ON mc.Pro_ID = pr.Pro_ID
-    --LEFT JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
-        --AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
-        --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
-        --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     LEFT JOIN Pro_Enq pe ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
           AND pe.Comp_ID = @Comp_ID
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
           AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
-    LEFT JOIN TopStates ts ON ts.Pro_ID = pr.Pro_ID
+    LEFT JOIN #TopStates ts ON ts.Pro_ID = pr.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
-     -- AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
+      AND (@ProductID IS NULL OR pr.Pro_ID = @ProductID)
     GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, ts.State, ts.ScanCount
     ORDER BY pr.Pro_Name
     OFFSET (@PageNumber-1)*@PageSize ROWS
