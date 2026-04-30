@@ -13,7 +13,7 @@ GO
 -- =============================================
 ALTER   PROCEDURE [dbo].[USP_GetLiveScanTracking_AI]
     @Comp_ID NVARCHAR(50),
-    @datePreset NVARCHAR(20) = 'month',
+    @datePreset NVARCHAR(20) = 'All',
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,

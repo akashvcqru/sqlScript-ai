@@ -213,7 +213,7 @@ BEGIN
           AND pe.Comp_ID = @Comp_ID
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
           AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
-    LEFT JOIN TopStates ts ON ts.Pro_ID = pr.Pro_ID
+    LEFT JOIN #TopStates ts ON ts.Pro_ID = pr.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
      -- AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
     GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, ts.State, ts.ScanCount
