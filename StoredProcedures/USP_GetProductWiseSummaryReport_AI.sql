@@ -161,32 +161,30 @@ BEGIN
     -- Step 3: Top State per product
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#TopStates') IS NOT NULL DROP TABLE #TopStates;
-    SELECT Pro_ID, State, ScanCount
-    INTO #TopStates
-    FROM (
+    
+    ;WITH StateCounts AS (
         SELECT 
-            Pro_ID, 
-            State, 
+            mc.Pro_ID, 
+            pe.State, 
             COUNT(*) AS ScanCount,
-            ROW_NUMBER() OVER (PARTITION BY pr.Pro_ID ORDER BY COUNT(*) DESC) AS StateRank
+            ROW_NUMBER() OVER (PARTITION BY mc.Pro_ID ORDER BY COUNT(*) DESC) AS StateRank
         FROM Pro_Enq pe
         INNER JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
-        INNER JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
-        --INNER JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
-            --AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
-            --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
-            --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
-        WHERE pe.Comp_ID = @Comp_ID AND pe.IsActive = 1
-        --  AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
+        WHERE pe.Comp_ID = @Comp_ID
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
           AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
-        GROUP BY pr.Pro_ID, pe.State
+        GROUP BY mc.Pro_ID, pe.State
     ),
-    TopStates AS (
+    TopStatesCTE AS (
         SELECT Pro_ID, State, ScanCount
         FROM StateCounts
         WHERE StateRank = 1
     )
+    SELECT Pro_ID, State, ScanCount
+    INTO #TopStates
+    FROM TopStatesCTE;
+
+    CREATE INDEX IX_TopStates_ProID ON #TopStates(Pro_ID);
     SELECT 
         ROW_NUMBER() OVER (ORDER BY pr.Pro_Name) AS SNo,
         pr.Pro_Name AS Product, 
