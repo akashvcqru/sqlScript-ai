@@ -162,7 +162,9 @@ BEGIN
         a.Code2, 
         a.Pro_ID,
         a.Batch_No,
-        a.Use_Count
+        a.Use_Count,
+        a.Series_Order,
+        a.Series_Serial
     INTO #tempM_Code 
     FROM M_Code a 
     INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
@@ -206,8 +208,13 @@ BEGIN
         LEFT JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
         LEFT JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
         LEFT JOIN M_Consumer mcn ON mcn.MobileNo = pe.MobileNo
+        LEFT JOIN M_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
+            AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
+                BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
+                    AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
         WHERE pe.Comp_ID = @Comp_ID 
           AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
+          AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
           AND (@finalToDate IS NULL OR pe.Enq_Date <= @finalToDate)
           AND (@StateFilter IS NULL OR pe.state = @StateFilter)

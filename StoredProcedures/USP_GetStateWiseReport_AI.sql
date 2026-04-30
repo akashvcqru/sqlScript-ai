@@ -15,6 +15,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetStateWiseReport_AI]
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
     @PageSize INT = 10,
+    @ServiceID NVARCHAR(50) = NULL,
     @IsExport BIT = 0,
     @Search NVARCHAR(100) = NULL,
     @StateFilter NVARCHAR(100) = NULL,
@@ -115,8 +116,14 @@ BEGIN
         pe.State, pe.City, pe.MobileNo, pe.Is_Success, pe.Enq_Date, pe.Received_Code1, pe.Received_Code2
     INTO #tempPro_Enq
     FROM Pro_Enq pe
+    LEFT JOIN M_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
+    LEFT JOIN M_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
+        AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
+            BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
+                AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     WHERE pe.Comp_ID = @Comp_ID
       AND pe.Enq_Date >= @CompanyStartDate
+      AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
       AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
       AND (@finalToDate IS NULL OR pe.Enq_Date <= @finalToDate)
       AND (@StateFilter IS NULL OR pe.State = @StateFilter)

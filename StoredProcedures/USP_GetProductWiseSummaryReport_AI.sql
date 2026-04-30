@@ -120,7 +120,9 @@ BEGIN
     SELECT 
         a.Code1, 
         a.Code2, 
-        a.Pro_ID
+        a.Pro_ID,
+        a.Series_Order,
+        a.Series_Serial
     INTO #tempM_Code 
     FROM M_Code a 
     INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
@@ -207,10 +209,10 @@ BEGIN
         COUNT(*) OVER() AS TotalRecords
     FROM Pro_Reg pr
     LEFT JOIN #tempM_Code mc ON mc.Pro_ID = pr.Pro_ID
-    --LEFT JOIN #tempM_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
-        --AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
-        --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
-        --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+    LEFT JOIN M_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
+        AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
+            BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
+                AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     LEFT JOIN Pro_Enq pe ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
           AND pe.Comp_ID = @Comp_ID
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
@@ -218,7 +220,7 @@ BEGIN
     LEFT JOIN #TopStates ts ON ts.Pro_ID = pr.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
       AND (@ProductID IS NULL OR pr.Pro_ID = @ProductID)
-     -- AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
+      AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
     GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, ts.State, ts.ScanCount
     ORDER BY pr.Pro_Name
     OFFSET (@PageNumber-1)*@PageSize ROWS
