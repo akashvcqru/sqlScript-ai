@@ -15,7 +15,6 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetUserReport_AI]
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
     @PageSize INT = 10,
-    @ServiceID NVARCHAR(50) = NULL,
     @IsExport BIT = 0,
     @Search NVARCHAR(100) = NULL,
     @StateFilter NVARCHAR(100) = NULL,
@@ -161,7 +160,6 @@ BEGIN
     INTO #tempM_ServiceSubscription 
     FROM M_ServiceSubscription 
     WHERE Comp_ID = @Comp_ID
-      AND (@ServiceID IS NULL OR Service_ID = @ServiceID);
 
     CREATE INDEX IX_tempM_ServiceSub_Pro ON #tempM_ServiceSubscription(Pro_ID);
 

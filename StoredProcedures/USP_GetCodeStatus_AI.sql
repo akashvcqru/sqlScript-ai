@@ -15,7 +15,6 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetCodeStatus_AI]
     @Page INT = NULL,
     @Limit INT = NULL,
     @IsExport BIT = NULL,
-    @ServiceID NVARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -52,7 +51,6 @@ BEGIN
     INNER JOIN Pro_Reg pr 
         ON pr.Pro_id = ss.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
-      AND (@ServiceID IS NULL OR ss.Service_ID = @ServiceID)
       AND sst.IsActive = 1 AND sst.IsDelete = 0
       AND ss.IsActive = 1 AND ss.IsDelete = 0;
 
@@ -164,7 +162,6 @@ BEGIN
         WHERE PE.Received_Code1 = @RecievedCode1
           AND PE.Received_Code2 = @RecievedCode2
           AND pr.Comp_ID = @Comp_ID
-          AND (@ServiceID IS NULL OR ss.Service_ID = @ServiceID)        
         ORDER BY PE.Enq_Date DESC;
     END
 END

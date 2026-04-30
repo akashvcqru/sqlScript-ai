@@ -18,7 +18,6 @@ ALTER   PROCEDURE [dbo].[USP_GetProductWiseSummaryReport_AI]
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
     @PageSize INT = 10,
-    @ServiceID NVARCHAR(50) = NULL,
     @IsExport BIT = 0,
     @Search NVARCHAR(100) = NULL,
     @StateFilter NVARCHAR(100) = NULL,
@@ -209,13 +208,6 @@ BEGIN
         COUNT(*) OVER() AS TotalRecords
     FROM Pro_Reg pr
     LEFT JOIN #tempM_Code mc ON mc.Pro_ID = pr.Pro_ID
-    LEFT JOIN M_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
-        AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
-        AND (
-            (mc.Series_Order > sd.start_order OR (mc.Series_Order = sd.start_order AND mc.Series_Serial >= sd.start_series))
-            AND
-            (mc.Series_Order < sd.end_order OR (mc.Series_Order = sd.end_order AND mc.Series_Serial <= sd.end_series))
-        )
     LEFT JOIN Pro_Enq pe ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
           AND pe.Comp_ID = @Comp_ID
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
@@ -223,7 +215,6 @@ BEGIN
     LEFT JOIN #TopStates ts ON ts.Pro_ID = pr.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
       AND (@ProductID IS NULL OR pr.Pro_ID = @ProductID)
-      AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
     GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, ts.State, ts.ScanCount
     ORDER BY pr.Pro_Name
     OFFSET (@PageNumber-1)*@PageSize ROWS

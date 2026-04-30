@@ -18,7 +18,6 @@ ALTER   PROCEDURE [dbo].[USP_GetLiveScanTracking_AI]
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
     @PageSize INT = 10,
-    @ServiceID NVARCHAR(50) = NULL,
     @IsExport BIT = 0,
     @Search NVARCHAR(100) = NULL,
     @StateFilter NVARCHAR(100) = NULL,
@@ -161,13 +160,6 @@ BEGIN
         LEFT JOIN #tempM_Code mc ON mc.Code1 = LTRIM(RTRIM(pe.Received_Code1)) AND mc.Code2 = LTRIM(RTRIM(pe.Received_Code2))
         LEFT JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
         LEFT JOIN M_Consumer mcn ON mcn.MobileNo = pe.MobileNo
-        LEFT JOIN M_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
-            AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
-            AND (
-                (mc.Series_Order > sd.start_order OR (mc.Series_Order = sd.start_order AND mc.Series_Serial >= sd.start_series))
-                AND
-                (mc.Series_Order < sd.end_order OR (mc.Series_Order = sd.end_order AND mc.Series_Serial <= sd.end_series))
-            )
         WHERE pe.Comp_ID = @Comp_ID 
           AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
@@ -180,8 +172,6 @@ BEGIN
                 mc.Batch_No LIKE '%' + @Search + '%' OR
                 pr.Pro_Name LIKE '%' + @Search + '%'
           ))
-          -- Ensure that if @ServiceID is provided, we only show records that are either invalid or match the service
-          AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID OR mc.Code1 IS NULL)
     )
     SELECT 
         ROW_NUMBER() OVER (ORDER BY ScanTimestamp DESC) AS SNo,
