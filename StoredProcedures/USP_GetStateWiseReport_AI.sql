@@ -10,7 +10,7 @@ GO
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetStateWiseReport_AI]
     @Comp_ID NVARCHAR(50),
-    @datePreset NVARCHAR(20) = 'week',
+    @datePreset NVARCHAR(20) = 'All',
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
@@ -27,9 +27,9 @@ BEGIN
     IF @PageNumber IS NULL OR @PageNumber <= 0 SET @PageNumber = 1;
     IF @PageSize IS NULL OR @PageSize <= 0 SET @PageSize = 10;
     IF LTRIM(RTRIM(ISNULL(@Search, ''))) = '' SET @Search = NULL;
-    IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' SET @StateFilter = NULL;
-    IF LTRIM(RTRIM(ISNULL(@CodeStatusFilter, ''))) = '' SET @CodeStatusFilter = NULL;
-    IF LTRIM(RTRIM(ISNULL(@DialModeFilter, ''))) = '' SET @DialModeFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' OR @StateFilter = 'All' SET @StateFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@CodeStatusFilter, ''))) = '' OR @CodeStatusFilter = 'All' OR @CodeStatusFilter = 'All Status' SET @CodeStatusFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@DialModeFilter, ''))) = '' OR @DialModeFilter = 'All' OR @DialModeFilter = 'All Modes' SET @DialModeFilter = NULL;
 
     DECLARE @CompanyStartDate DATETIME;
     SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01')
@@ -123,8 +123,8 @@ BEGIN
       AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
       AND (
           @CodeStatusFilter IS NULL OR
-          (@CodeStatusFilter = 'Verified' AND pe.Is_Success = 1) OR
-          (@CodeStatusFilter = 'Already Scanned' AND pe.Is_Success = 2) OR
+          (@CodeStatusFilter = 'Genuine' AND pe.Is_Success = 1) OR
+          (@CodeStatusFilter = 'Duplicate' AND pe.Is_Success = 2) OR
           (@CodeStatusFilter = 'Invalid' AND pe.Is_Success NOT IN (1, 2))
       );
 
