@@ -189,9 +189,7 @@ BEGIN
         --AND CONCAT(FORMAT(mc_tbl.Series_Order, '000#'), FORMAT(mc_tbl.Series_Serial, '000#')) 
         --    BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
         --        AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
-    WHERE pe.Comp_ID = @Comp_ID
-   --   AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
-      AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
+    WHERE (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
       AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
     GROUP BY mc.MobileNo, mc.State, mc.City, mc.Email, mc.PinCode
     ORDER BY mc.MobileNo
