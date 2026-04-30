@@ -158,14 +158,16 @@ BEGIN
             pe.Latitude,
             pe.Longitude
         FROM Pro_Enq pe
-        LEFT JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
+        LEFT JOIN #tempM_Code mc ON mc.Code1 = LTRIM(RTRIM(pe.Received_Code1)) AND mc.Code2 = LTRIM(RTRIM(pe.Received_Code2))
         LEFT JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
         LEFT JOIN M_Consumer mcn ON mcn.MobileNo = pe.MobileNo
         LEFT JOIN M_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
             AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
-            AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
-                BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
-                    AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+            AND (
+                (mc.Series_Order > sd.start_order OR (mc.Series_Order = sd.start_order AND mc.Series_Serial >= sd.start_series))
+                AND
+                (mc.Series_Order < sd.end_order OR (mc.Series_Order = sd.end_order AND mc.Series_Serial <= sd.end_series))
+            )
         WHERE pe.Comp_ID = @Comp_ID 
           AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)

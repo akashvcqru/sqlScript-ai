@@ -119,9 +119,11 @@ BEGIN
     LEFT JOIN M_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
     LEFT JOIN M_ServiceSubscription sd ON sd.Pro_ID = mc.Pro_ID 
         AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID)
-        AND CONCAT(FORMAT(mc.Series_Order, '000#'), FORMAT(mc.Series_Serial, '000#')) 
-            BETWEEN CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#')) 
-                AND CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+        AND (
+            (mc.Series_Order > sd.start_order OR (mc.Series_Order = sd.start_order AND mc.Series_Serial >= sd.start_series))
+            AND
+            (mc.Series_Order < sd.end_order OR (mc.Series_Order = sd.end_order AND mc.Series_Serial <= sd.end_series))
+        )
     WHERE pe.Comp_ID = @Comp_ID
       AND pe.Enq_Date >= @CompanyStartDate
       AND (@ServiceID IS NULL OR sd.Service_ID = @ServiceID OR mc.Code1 IS NULL)
