@@ -154,6 +154,7 @@ BEGIN
             END AS RiskAbuseFlag,
             NULL AS ClaimID,
             pe.MobileNo AS ConsumerMobile,
+            mcn.ConsumerName,
             pe.Latitude,
             pe.Longitude
         FROM Pro_Enq pe
@@ -193,6 +194,7 @@ BEGIN
         RiskAbuseFlag,
         ClaimID,
         ConsumerMobile,
+        ConsumerName,
         Latitude,
         Longitude,
         COUNT(*) OVER() AS TotalRecords
