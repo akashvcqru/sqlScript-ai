@@ -108,18 +108,48 @@ BEGIN
     END
 
     ------------------------------------------------------
-    -- Step 1: Pre-filter Pro_Enq
+    -- Step 1: Pre-filter M_Code (Deduplicated per code pair)
+    ------------------------------------------------------
+    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+    
+    ;WITH DistinctCodes AS (
+        SELECT 
+            a.Code1, 
+            a.Code2, 
+            a.Pro_ID,
+            a.Use_Count,
+            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+        FROM M_Code a 
+        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+        WHERE b.Comp_ID = @Comp_ID 
+          AND a.Use_Count > 0
+    )
+    SELECT Code1, Code2, Pro_ID
+    INTO #tempM_Code 
+    FROM DistinctCodes
+    WHERE rn = 1;
+
+    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+
+    ------------------------------------------------------
+    -- Step 2: Pre-filter Pro_Enq
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
     SELECT 
-        pe.State, pe.City, pe.MobileNo, pe.Is_Success, pe.Enq_Date, pe.Received_Code1, pe.Received_Code2
+        pe.State, 
+        pe.City, 
+        pe.MobileNo, 
+        pe.Is_Success, 
+        pe.Enq_Date, 
+        pe.Received_Code1, 
+        pe.Received_Code2,
+        RIGHT(pe.MobileNo, 10) AS MobileLast10
     INTO #tempPro_Enq
     FROM Pro_Enq pe
-    LEFT JOIN M_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
     WHERE pe.Comp_ID = @Comp_ID
       AND pe.Enq_Date >= @CompanyStartDate
       AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
-      AND (@finalToDate IS NULL OR pe.Enq_Date <= @finalToDate)
+      AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
       AND (@StateFilter IS NULL OR pe.State = @StateFilter)
       AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
       AND (
@@ -130,17 +160,7 @@ BEGIN
       );
 
     CREATE INDEX IX_tempPro_Enq_Codes ON #tempPro_Enq(Received_Code1, Received_Code2);
-    CREATE INDEX IX_tempPro_Enq_Mobile ON #tempPro_Enq(MobileNo);
-
-    ------------------------------------------------------
-    -- Step 2: Pre-filter M_Code
-    ------------------------------------------------------
-    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
-    SELECT a.Code1, a.Code2 INTO #tempM_Code FROM M_Code a 
-    INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
-    WHERE b.Comp_ID = @Comp_ID AND a.Print_Date >= @CompanyStartDate;
-
-    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+    CREATE INDEX IX_tempPro_Enq_Mobile ON #tempPro_Enq(MobileLast10);
 
     -- Get unique locations from scans and consumers
     ;WITH RawData AS (
@@ -148,15 +168,16 @@ BEGIN
             pe.State,
             pe.City,
             mc.PinCode AS PostCode,
-            pe.MobileNo,
+            pe.MobileLast10,
             mc.IsActive,
             mc.Entry_Date AS ConsumerEntryDate,
             pe.Is_Success,
             pe.Enq_Date,
-            CASE WHEN m.Code1 IS NOT NULL THEN 1 ELSE 0 END AS CodeExists
+            CASE WHEN m.Pro_ID IS NOT NULL THEN 1 ELSE 0 END AS CodeExists
         FROM #tempPro_Enq pe
-        LEFT JOIN M_Consumer mc ON pe.MobileNo = mc.MobileNo
-        LEFT JOIN #tempM_Code m ON pe.Received_Code1 = m.Code1 AND pe.Received_Code2 = m.Code2
+        LEFT JOIN M_Consumer mc ON pe.MobileLast10 = mc.MobileLast10
+        LEFT JOIN #tempM_Code m ON LTRIM(RTRIM(CAST(m.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+              AND LTRIM(RTRIM(CAST(m.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
         WHERE (@Search IS NULL OR pe.State LIKE '%'+@Search+'%' OR pe.City LIKE '%'+@Search+'%' OR mc.PinCode LIKE '%'+@Search+'%')
     ),
     LocationGroups AS (
@@ -164,14 +185,14 @@ BEGIN
             State,
             City,
             PostCode,
-            COUNT(DISTINCT CASE WHEN IsActive = 1 THEN MobileNo END) AS ActiveConsumers,
-            COUNT(DISTINCT CASE WHEN ConsumerEntryDate >= @finalFromDate AND ConsumerEntryDate <= @finalToDate THEN MobileNo END) AS NewConsumers,
-            COUNT(DISTINCT CASE WHEN ConsumerEntryDate < @finalFromDate THEN MobileNo END) AS ReturningConsumers,
+            COUNT(DISTINCT CASE WHEN IsActive = 1 THEN MobileLast10 END) AS ActiveConsumers,
+            COUNT(DISTINCT CASE WHEN ConsumerEntryDate >= @finalFromDate AND ConsumerEntryDate < DATEADD(DAY, 1, @finalToDate) THEN MobileLast10 END) AS NewConsumers,
+            COUNT(DISTINCT CASE WHEN ConsumerEntryDate < @finalFromDate THEN MobileLast10 END) AS ReturningConsumers,
             COUNT(*) AS TotalScans,
-            SUM(CASE WHEN Is_Success = 1 THEN 1 ELSE 0 END) AS GenuineScans,
-            SUM(CASE WHEN Is_Success = 0 AND CodeExists = 1 THEN 1 ELSE 0 END) AS DuplicateScans,
-            SUM(CASE WHEN Is_Success = 0 AND CodeExists = 0 THEN 1 ELSE 0 END) AS CounterfeitScans,
-            CAST(CAST(COUNT(*) AS DECIMAL(18,2)) / NULLIF(COUNT(DISTINCT MobileNo), 0) AS DECIMAL(18,2)) AS AvgScansPerConsumer
+            SUM(CASE WHEN CodeExists = 1 AND Is_Success = 1 THEN 1 ELSE 0 END) AS GenuineScans,
+            SUM(CASE WHEN CodeExists = 1 AND Is_Success = 2 THEN 1 ELSE 0 END) AS DuplicateScans,
+            SUM(CASE WHEN CodeExists = 0 OR Is_Success NOT IN (1, 2) THEN 1 ELSE 0 END) AS CounterfeitScans,
+            CAST(CAST(COUNT(*) AS DECIMAL(18,2)) / NULLIF(COUNT(DISTINCT MobileLast10), 0) AS DECIMAL(18,2)) AS AvgScansPerConsumer
         FROM RawData
         GROUP BY State, City, PostCode
     )
