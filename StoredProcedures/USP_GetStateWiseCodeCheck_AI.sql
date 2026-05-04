@@ -10,7 +10,7 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetStateWiseCodeCheck_AI] --'Comp-1436'    
 (    
     @Comp_id varchar(20),  
-    @Window NVARCHAR(10) = NULL  
+    @datePreset NVARCHAR(20) = 'ALL'  
 )    
 AS      
 BEGIN         
@@ -21,7 +21,9 @@ BEGIN
     -- Determine start date based on window  
     DECLARE @StartDate DATE, @EndDate DATE;
     DECLARE @Today DATE = CAST(GETDATE() AS DATE);
-    DECLARE @Win NVARCHAR(10) = UPPER(ISNULL(@Window,''));
+    DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset,''))));
+    
+    IF @Win = '' OR @Win = 'NULL' SET @Win = 'ALL';
 
     IF @Win = 'TODAY'
     BEGIN
