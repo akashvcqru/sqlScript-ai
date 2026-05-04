@@ -106,9 +106,18 @@ BEGIN
         ISNULL(pr.Dispatch_Location, '')                      AS Dispatch_Location,
         '/assets/Product/comp-' 
             + SUBSTRING(pr.Comp_ID, 6, 4) 
-            + '/' + pr.Pro_ID + '.jpg'                        AS ImgPath
+            + '/' + pr.Pro_ID + '.jpg'                        AS ImgPath,
+        ISNULL(latest_batch.Batch_No, '')                     AS Batch_No,
+        ISNULL(CONVERT(VARCHAR, latest_batch.Mfd_Date, 105), '') AS Mfd_Date,
+        ISNULL(CONVERT(VARCHAR, latest_batch.Exp_Date, 105), '') AS Exp_Date
     FROM   Pro_Reg pr
     LEFT JOIN M_Label ml ON pr.Label_Code = ml.Label_Code
+    OUTER APPLY (
+        SELECT TOP 1 t.Batch_No, t.Mfd_Date, t.Exp_Date
+        FROM T_Pro t
+        WHERE t.Pro_ID = pr.Pro_ID
+        ORDER BY t.Entry_Date DESC
+    ) AS latest_batch
     WHERE
         ('' = @Comp_ID OR pr.Comp_ID = @Comp_ID)
         AND (@SearchQuery = '' OR pr.Pro_Name LIKE '%' + @SearchQuery + '%' OR pr.Pro_ID = @SearchQuery)
