@@ -380,7 +380,8 @@ END
             OR B.M_ConsumerId IS NOT NULL 
             OR C.Mobileno IS NOT NULL 
             OR UU.M_Consumerid IS NOT NULL
-        );
+        )
+        AND ISNULL(B.Benefit,0) > 0;
 
     ---------------------------------------------------------
     -- PAGED RESULT
