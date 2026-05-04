@@ -113,25 +113,32 @@ BEGIN
     END
 
     ------------------------------------------------------
-    -- Step 1: Pre-filter M_Code (Optimized columns)
+    -- Step 1: Pre-filter M_Code (Deduplicated per code pair)
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
-    SELECT 
-        a.Code1, 
-        a.Code2, 
-        a.Pro_ID,
-        a.Series_Order,
-        a.Series_Serial
+    
+    ;WITH DistinctCodes AS (
+        SELECT 
+            a.Code1, 
+            a.Code2, 
+            a.Pro_ID,
+            a.Use_Count,
+            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+        FROM M_Code a 
+        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+        WHERE b.Comp_ID = @Comp_ID 
+          AND a.Use_Count > 0
+    )
+    SELECT Code1, Code2, Pro_ID
     INTO #tempM_Code 
-    FROM M_Code a 
-    INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
-    WHERE b.Comp_ID = @Comp_ID AND a.Print_Date >= @CompanyStartDate;
+    FROM DistinctCodes
+    WHERE rn = 1;
 
     CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
     CREATE INDEX IX_tempM_Code_ProID ON #tempM_Code(Pro_ID);
 
     ------------------------------------------------------
-    -- Step 2: Pre-filter Pro_Enq (Optimized columns)
+    -- Step 2: Pre-filter Pro_Enq (Definitive list of scans)
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
     SELECT 
@@ -144,10 +151,9 @@ BEGIN
         mc.Pro_ID
     INTO #tempPro_Enq
     FROM Pro_Enq pe
-    INNER JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
-    WHERE pe.Comp_ID = @Comp_ID
-      AND pe.Enq_Date >= @CompanyStartDate
-      AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
+    INNER JOIN #tempM_Code mc ON CAST(mc.Code1 AS VARCHAR(50)) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+          AND CAST(mc.Code2 AS VARCHAR(50)) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+    WHERE (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
       AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
       AND (@StateFilter IS NULL OR pe.State = @StateFilter)
       AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
@@ -161,22 +167,18 @@ BEGIN
     CREATE INDEX IX_tempPro_Enq_ProID ON #tempPro_Enq(Pro_ID);
 
     ------------------------------------------------------
-    -- Step 3: Top State per product
+    -- Step 3: Top State per product (From temp table)
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#TopStates') IS NOT NULL DROP TABLE #TopStates;
     
     ;WITH StateCounts AS (
         SELECT 
-            mc.Pro_ID, 
-            pe.State, 
+            Pro_ID, 
+            State, 
             COUNT(*) AS ScanCount,
-            ROW_NUMBER() OVER (PARTITION BY mc.Pro_ID ORDER BY COUNT(*) DESC) AS StateRank
-        FROM Pro_Enq pe
-        INNER JOIN #tempM_Code mc ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
-        WHERE pe.Comp_ID = @Comp_ID
-          AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
-          AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
-        GROUP BY mc.Pro_ID, pe.State
+            ROW_NUMBER() OVER (PARTITION BY Pro_ID ORDER BY COUNT(*) DESC) AS StateRank
+        FROM #tempPro_Enq
+        GROUP BY Pro_ID, State
     ),
     TopStatesCTE AS (
         SELECT Pro_ID, State, ScanCount
@@ -188,34 +190,52 @@ BEGIN
     FROM TopStatesCTE;
 
     CREATE INDEX IX_TopStates_ProID ON #TopStates(Pro_ID);
+
+    ------------------------------------------------------
+    -- Step 4: Aggregate Metrics per product
+    ------------------------------------------------------
+    IF OBJECT_ID('tempdb..#ProductMetrics') IS NOT NULL DROP TABLE #ProductMetrics;
+    SELECT 
+        Pro_ID,
+        COUNT(DISTINCT MobileNo) AS UniqueConsumers,
+        COUNT(DISTINCT CAST(Received_Code1 AS VARCHAR(50))+'-'+CAST(Received_Code2 AS VARCHAR(50))) AS UniqueUIDsScanned,
+        SUM(CASE WHEN Is_Success=1 THEN 1 ELSE 0 END) AS Genuine,
+        SUM(CASE WHEN Is_Success<>1 THEN 1 ELSE 0 END) AS Duplicate,
+        COUNT(*) AS TotalScans,
+        MAX(Enq_Date) AS LastScan,
+        SUM(CASE WHEN Enq_Date >= DATEADD(day,-7,GETDATE()) THEN 1 ELSE 0 END) AS Last7DaysScans
+    INTO #ProductMetrics
+    FROM #tempPro_Enq
+    GROUP BY Pro_ID;
+
+    CREATE INDEX IX_ProductMetrics_ProID ON #ProductMetrics(Pro_ID);
+
+    ------------------------------------------------------
+    -- Step 5: Final Result Projection
+    ------------------------------------------------------
     SELECT 
         ROW_NUMBER() OVER (ORDER BY pr.Pro_Name) AS SNo,
         pr.Pro_Name AS Product, 
         pr.Pro_ID AS ProductID_SKU, 
         pr.Pro_Entry_Date AS ProductEntryDate,
-        COUNT(DISTINCT pe.MobileNo) AS UniqueConsumers,
-        COUNT(DISTINCT CAST(pe.Received_Code1 AS VARCHAR(50))+'-'+CAST(pe.Received_Code2 AS VARCHAR(50))) AS UniqueUIDsScanned,
-        SUM(CASE WHEN pe.Is_Success=1 THEN 1 ELSE 0 END) AS Genuine,
-        SUM(CASE WHEN pe.Is_Success=0 THEN 1 ELSE 0 END) AS Duplicate,
-        COUNT(pe.Received_Code1) AS TotalScans,
-        MAX(pe.Enq_Date) AS LastScan,
+        ISNULL(pm.UniqueConsumers, 0) AS UniqueConsumers,
+        ISNULL(pm.UniqueUIDsScanned, 0) AS UniqueUIDsScanned,
+        ISNULL(pm.Genuine, 0) AS Genuine,
+        ISNULL(pm.Duplicate, 0) AS Duplicate,
+        ISNULL(pm.TotalScans, 0) AS TotalScans,
+        pm.LastScan,
         ISNULL(ts.State,'N/A') AS TopState, 
         ISNULL(ts.ScanCount,0) AS StateScanCount,
-        SUM(CASE WHEN pe.Enq_Date >= DATEADD(day,-7,GETDATE()) THEN 1 ELSE 0 END) AS Last7DaysScans,
-        CAST(ISNULL(SUM(CASE WHEN pe.Is_Success=1 THEN 1 ELSE 0 END)*100.0/NULLIF(COUNT(pe.Received_Code1),0),0) AS DECIMAL(18,2)) AS GenuineRate,
-        CAST(ISNULL((COUNT(pe.Received_Code1)-COUNT(DISTINCT CAST(pe.Received_Code1 AS VARCHAR(50))+'-'+CAST(pe.Received_Code2 AS VARCHAR(50))))*100.0/NULLIF(COUNT(pe.Received_Code1),0),0) AS DECIMAL(18,2)) AS RepeatScanRate,
-        CAST(ISNULL(COUNT(pe.Received_Code1)*1.0/NULLIF(COUNT(DISTINCT CAST(pe.Received_Code1 AS VARCHAR(50))+'-'+CAST(pe.Received_Code2 AS VARCHAR(50))),0),0) AS DECIMAL(18,2)) AS AvgScansPerUID,
+        ISNULL(pm.Last7DaysScans, 0) AS Last7DaysScans,
+        CAST(ISNULL(pm.Genuine*100.0/NULLIF(pm.TotalScans,0),0) AS DECIMAL(18,2)) AS GenuineRate,
+        CAST(ISNULL(pm.Duplicate*100.0/NULLIF(pm.TotalScans,0),0) AS DECIMAL(18,2)) AS RepeatScanRate,
+        CAST(ISNULL(pm.TotalScans*1.0/NULLIF(pm.UniqueUIDsScanned,0),0) AS DECIMAL(18,2)) AS AvgScansPerUID,
         COUNT(*) OVER() AS TotalRecords
     FROM Pro_Reg pr
-    LEFT JOIN #tempM_Code mc ON mc.Pro_ID = pr.Pro_ID
-    LEFT JOIN Pro_Enq pe ON mc.Code1 = pe.Received_Code1 AND mc.Code2 = pe.Received_Code2
-          AND pe.Comp_ID = @Comp_ID
-          AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
-          AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
+    LEFT JOIN #ProductMetrics pm ON pm.Pro_ID = pr.Pro_ID
     LEFT JOIN #TopStates ts ON ts.Pro_ID = pr.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
       AND (@ProductID IS NULL OR pr.Pro_ID = @ProductID)
-    GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, ts.State, ts.ScanCount
     ORDER BY pr.Pro_Name
     OFFSET (@PageNumber-1)*@PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport=1 THEN 1000000 ELSE @PageSize END) ROWS ONLY

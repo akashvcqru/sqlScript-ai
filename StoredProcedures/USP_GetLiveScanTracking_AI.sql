@@ -13,7 +13,7 @@ GO
 -- =============================================
 ALTER   PROCEDURE [dbo].[USP_GetLiveScanTracking_AI]
     @Comp_ID NVARCHAR(50),
-    @datePreset NVARCHAR(20) = 'All',
+    @datePreset NVARCHAR(20) = 'ALL',
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
     @PageNumber INT = 1,
@@ -108,20 +108,28 @@ BEGIN
         SET @finalToDate = GETDATE(); 
     END
 
-    -- 2. Pre-filter M_Code
+    -- 2. Pre-filter M_Code (Deduplicated per code pair)
     IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
-    SELECT 
-        a.Code1, 
-        a.Code2, 
-        a.Pro_ID,
-        a.Batch_No,
-        a.Use_Count,
-        a.Series_Order,
-        a.Series_Serial
+    
+    ;WITH DistinctCodes AS (
+        SELECT 
+            a.Code1, 
+            a.Code2, 
+            a.Pro_ID,
+            a.Batch_No,
+            a.Use_Count,
+            a.Series_Order,
+            a.Series_Serial,
+            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC, a.Series_Order DESC) AS rn
+        FROM M_Code a 
+        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+        WHERE b.Comp_ID = @Comp_ID
+          AND a.Use_Count > 0
+    )
+    SELECT Code1, Code2, Pro_ID, Batch_No, Use_Count, Series_Order, Series_Serial
     INTO #tempM_Code 
-    FROM M_Code a 
-    INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
-    WHERE b.Comp_ID = @Comp_ID;
+    FROM DistinctCodes
+    WHERE rn = 1;
 
     CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
 
@@ -154,23 +162,26 @@ BEGIN
             END AS RiskAbuseFlag,
             NULL AS ClaimID,
             pe.MobileNo AS ConsumerMobile,
+            mcn.ConsumerName,
             pe.Latitude,
             pe.Longitude
         FROM Pro_Enq pe
-        LEFT JOIN #tempM_Code mc ON mc.Code1 = LTRIM(RTRIM(pe.Received_Code1)) AND mc.Code2 = LTRIM(RTRIM(pe.Received_Code2))
+        LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+              AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
         LEFT JOIN Pro_Reg pr ON pr.Pro_ID = mc.Pro_ID
         LEFT JOIN M_Consumer mcn ON mcn.MobileNo = pe.MobileNo
-        WHERE pe.Comp_ID = @Comp_ID 
+        WHERE (pe.Comp_ID = @Comp_ID OR mc.Pro_ID IS NOT NULL)
           AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
           AND (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
-          AND (@finalToDate IS NULL OR pe.Enq_Date <= @finalToDate)
+          AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
           AND (@StateFilter IS NULL OR pe.state = @StateFilter)
           AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
           AND (@Search IS NULL OR (
                 pe.MobileNo LIKE '%' + @Search + '%' OR 
-                (ISNULL(pe.Received_Code1, '') + ISNULL(pe.Received_Code2, '')) LIKE '%' + @Search + '%' OR 
+                (ISNULL(CAST(pe.Received_Code1 AS VARCHAR(50)), '') + ISNULL(CAST(pe.Received_Code2 AS VARCHAR(50)), '')) LIKE '%' + @Search + '%' OR 
                 mc.Batch_No LIKE '%' + @Search + '%' OR
-                pr.Pro_Name LIKE '%' + @Search + '%'
+                pr.Pro_Name LIKE '%' + @Search + '%' OR
+                pr.Pro_ID LIKE '%' + @Search + '%'
           ))
     )
     SELECT 
@@ -193,6 +204,7 @@ BEGIN
         RiskAbuseFlag,
         ClaimID,
         ConsumerMobile,
+        ConsumerName,
         Latitude,
         Longitude,
         COUNT(*) OVER() AS TotalRecords
