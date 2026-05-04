@@ -1,3 +1,6 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetUserReport_AI]    Script Date: 4/28/2026 6:53:52 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -189,5 +192,6 @@ BEGIN
     OFFSET (@PageNumber - 1) * @PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
     OPTION (RECOMPILE);
+END
 END
 GO
