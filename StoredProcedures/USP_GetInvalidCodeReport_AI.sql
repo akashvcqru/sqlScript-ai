@@ -1,3 +1,6 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetInvalidCodeReport_AI]    Script Date: 4/28/2026 4:48:56 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -175,4 +178,3 @@ BEGIN
     FETCH NEXT (CASE WHEN @IsExport=1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
     OPTION (RECOMPILE);
 END
-GO
