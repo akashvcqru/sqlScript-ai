@@ -132,12 +132,16 @@ BEGIN
     ---------------------------------------------------------
     IF (@Type IS NULL OR @Type = '' OR @Type = 'SUMMARY')
     BEGIN
+        DECLARE @Total INT, @Success INT, @Failed INT;
+        SELECT @Total = COUNT(1) FROM #FinalData;
+        SELECT @Success = COUNT(1) FROM #FinalData WHERE CodeStatus = 'Success';
+        SELECT @Failed = COUNT(1) FROM #FinalData WHERE CodeStatus = 'Unsuccess';
+
         SELECT
             @MobileNo AS MobileNo,
-            CAST(COUNT(*) AS INT) AS TotalScans,
-            CAST(ISNULL(SUM(CASE WHEN CodeStatus = 'Success' THEN 1 ELSE 0 END), 0) AS INT) AS SuccessScans,
-            CAST(ISNULL(SUM(CASE WHEN CodeStatus = 'Unsuccess' THEN 1 ELSE 0 END), 0) AS INT) AS FailedScans
-        FROM #FinalData;
+            ISNULL(@Total, 0) AS TotalScans,
+            ISNULL(@Success, 0) AS SuccessScans,
+            ISNULL(@Failed, 0) AS FailedScans;
     END
 END
 GO
