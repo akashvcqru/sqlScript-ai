@@ -93,6 +93,28 @@ BEGIN
       AND pr.Comp_ID = @Comp_ID;
 
     ---------------------------------------------------------
+    -- Calculate Summary Counts
+    ---------------------------------------------------------
+    DECLARE @TotalScans BIGINT = (SELECT COUNT(*) FROM #FinalData);
+    DECLARE @SuccessScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE CodeStatus = 'Success');
+    DECLARE @FailedScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE CodeStatus = 'Unsuccess');
+
+    ---------------------------------------------------------
+    -- DETAILS RESULT
+    ---------------------------------------------------------
+    ---------------------------------------------------------
+    -- SUMMARY RESULT
+    ---------------------------------------------------------
+    IF (@Type IS NULL OR @Type = '' OR @Type = 'SUMMARY')
+    BEGIN
+        SELECT
+            @MobileNo AS MobileNo,
+            @TotalScans AS ScanCountTotal,
+            @SuccessScans AS ScanCountSuccess,
+            @FailedScans AS ScanCountFailed;
+    END
+
+    ---------------------------------------------------------
     -- DETAILS RESULT
     ---------------------------------------------------------
     IF (@Type IS NULL OR @Type = '' OR @Type = 'DETAILS')
@@ -120,28 +142,10 @@ BEGIN
     IF (@IsExport = 0 AND (@Type IS NULL OR @Type = '' OR @Type = 'DETAILS'))
     BEGIN
         SELECT
-            COUNT(*) AS TotalRecords,
+            @TotalScans AS TotalRecords,
             @Page AS CurrentPage,
             @Limit AS [Limit],
-            CEILING(COUNT(*) * 1.0 / @Limit) AS TotalPages
-        FROM #FinalData;
-    END
-
-    ---------------------------------------------------------
-    -- SUMMARY RESULT
-    ---------------------------------------------------------
-    IF (@Type IS NULL OR @Type = '' OR @Type = 'SUMMARY')
-    BEGIN
-        DECLARE @Total INT, @Success INT, @Failed INT;
-        SELECT @Total = COUNT(1) FROM #FinalData;
-        SELECT @Success = COUNT(1) FROM #FinalData WHERE CodeStatus = 'Success';
-        SELECT @Failed = COUNT(1) FROM #FinalData WHERE CodeStatus = 'Unsuccess';
-
-        SELECT
-            @MobileNo AS MobileNo,
-            ISNULL(@Total, 0) AS TotalScans,
-            ISNULL(@Success, 0) AS SuccessScans,
-            ISNULL(@Failed, 0) AS FailedScans;
+            CEILING(@TotalScans * 1.0 / @Limit) AS TotalPages;
     END
 END
 GO
