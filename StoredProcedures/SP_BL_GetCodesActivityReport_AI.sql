@@ -121,7 +121,9 @@ BEGIN
         Dial_Mode,
         Is_Success,
         MobileNo,
-        M.Row_ID AS M_Codeid
+        M.Row_ID AS M_Codeid,
+        M.Series_Order,
+        M.Series_Serial
     INTO #Enq
     FROM Pro_Enq
 	INNER JOIN M_code M 
@@ -158,7 +160,10 @@ BEGIN
     SELECT 
         MCd.Code1,
         MCd.Code2,
-        MCd.Pro_ID
+        MCd.Pro_ID,
+        MCd.Series_Order,
+        MCd.Series_Serial,
+        MCd.Row_ID AS M_Codeid
     INTO #MCode
     FROM M_Code MCd
     INNER JOIN #Codes C
@@ -216,7 +221,7 @@ BEGIN
 
     SELECT
         MC.M_Codeid,
-        SUM(CAST(
+        MAX(CAST(
             CASE 
                 WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(BL.Cash, 0) * 1.10
                 ELSE ISNULL(BL.Points, 0)
@@ -237,28 +242,30 @@ BEGIN
     CREATE INDEX IX_Points_MCodeid ON #Points(M_Codeid);
 
     ----------------------------------------------------
-    -- CONFIG POINTS (PRODUCT LEVEL FALLBACK)
+    -- CODE CONFIG POINTS (PRECISE BY SERIES RANGE)
     ----------------------------------------------------
-    IF OBJECT_ID('tempdb..#ConfigPoints') IS NOT NULL DROP TABLE #ConfigPoints;
+    IF OBJECT_ID('tempdb..#CodeConfigPoints') IS NOT NULL DROP TABLE #CodeConfigPoints;
 
     SELECT 
-        SS.Pro_ID,
-        MAX(CAST(
+        MC.M_Codeid,
+        CAST(
             CASE 
                 WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
                 ELSE ISNULL(SST.Points, 0)
             END 
-        AS DECIMAL(18,2))) AS ConfigPoints
-    INTO #ConfigPoints
-    FROM M_ServiceSubscriptionTrans SST WITH (NOLOCK)
-    INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+        AS DECIMAL(18,2)) AS ConfigPoints
+    INTO #CodeConfigPoints
+    FROM #MCode MC
+    INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = MC.Pro_ID
+    INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
     WHERE SS.Comp_ID = @Comp_Id 
-      AND SS.IsActive = 1 
-      AND SST.IsActive = 1
+      AND SS.IsActive = 1 AND SS.IsDelete = 0
+      AND SST.IsActive = 1 AND SST.IsDelete = 0
       AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
-    GROUP BY SS.Pro_ID;
+      AND (MC.Series_Order > SS.start_order OR (MC.Series_Order = SS.start_order AND MC.Series_Serial >= SS.start_series))
+      AND (MC.Series_Order < SS.end_order OR (MC.Series_Order = SS.end_order AND MC.Series_Serial <= SS.end_series));
 
-    CREATE INDEX IX_ConfigPoints_ProID ON #ConfigPoints(Pro_ID);
+    CREATE INDEX IX_CodeConfigPoints_MCodeid ON #CodeConfigPoints(M_Codeid);
 
     ----------------------------------------------------
     -- RESULT SET 1
@@ -281,7 +288,7 @@ BEGIN
             G.City,
             PR.Pro_Name,
             CASE 
-                WHEN E.Is_Success = 1 THEN ISNULL(NULLIF(P.Points, 0), ISNULL(CP.ConfigPoints, 0)) 
+                WHEN E.Is_Success = 1 AND E.rn = 1 THEN ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0)) 
                 ELSE 0 
             END AS Points,
             CASE 
@@ -303,9 +310,9 @@ BEGIN
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
         LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid
-        LEFT JOIN #MCode MCd ON MCd.Code1 = E.Received_Code1 AND MCd.Code2 = E.Received_Code2
+        LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
-        LEFT JOIN #ConfigPoints CP ON CP.Pro_ID = MCd.Pro_ID
+        LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
         WHERE
 		 E.rn = 1
           AND  (@StateFilter IS NULL OR G.State = @StateFilter)
@@ -331,8 +338,6 @@ BEGIN
             E.Enq_Date,
             E.Dial_Mode,
             MC.ConsumerName,
-           -- MC.MobileNo,
-			--case when LEN(MC.MobileNo)<10 THEN E.MobileNo ELSE MC.MobileNo END MobileNo,
 			CASE 
 				WHEN LEN(ISNULL(MC.MobileNo,'')) < 10 
 					 THEN ISNULL(E.MobileNo,'')
@@ -342,7 +347,7 @@ BEGIN
             G.City,
             PR.Pro_Name,
             CASE 
-                WHEN E.Is_Success = 1 THEN ISNULL(NULLIF(P.Points, 0), ISNULL(CP.ConfigPoints, 0)) 
+                WHEN E.Is_Success = 1 AND E.rn = 1 THEN ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0)) 
                 ELSE 0 
             END AS Points,
             CASE 
@@ -350,13 +355,22 @@ BEGIN
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
             END AS Result
-        FROM #Enq E
+        FROM 
+		(
+			SELECT *,
+				   CASE 
+					   WHEN Is_Success = 1 
+					   THEN ROW_NUMBER() OVER (PARTITION BY Received_Code1, Received_Code2, Is_Success ORDER BY Enq_Date)
+					   ELSE 1
+				   END AS rn
+			FROM #Enq
+		) E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
         LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid
-        LEFT JOIN #MCode MCd ON MCd.Code1 = E.Received_Code1 AND MCd.Code2 = E.Received_Code2
+        LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
-        LEFT JOIN #ConfigPoints CP ON CP.Pro_ID = MCd.Pro_ID
+        LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
         WHERE
             (@StateFilter IS NULL OR G.State = @StateFilter)
             AND (
@@ -366,11 +380,10 @@ BEGIN
                 (@CodeStatusFilter = 'Invalid' AND E.Is_Success NOT IN (1,2))
             )
             AND (
-               -- @Search IS NULL OR MC.MobileNo LIKE '%' + @Search + '%'
 				 @Search IS NULL
 				 OR LTRIM(RTRIM(@Search)) = ''
-               OR @Search IS NULL OR E.MobileNo LIKE '%' + @Search + '%'
-              OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
+               OR E.MobileNo LIKE '%' + @Search + '%'
+               OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
             )
         ORDER BY E.Enq_Date DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
@@ -383,7 +396,16 @@ BEGIN
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM #Enq E
+        FROM 
+		(
+			SELECT *,
+				   CASE 
+					   WHEN Is_Success = 1 
+					   THEN ROW_NUMBER() OVER (PARTITION BY Received_Code1, Received_Code2, Is_Success ORDER BY Enq_Date)
+					   ELSE 1
+				   END AS rn
+			FROM #Enq
+		) E
         LEFT JOIN #Geo G
             ON G.Code1 = E.Received_Code1
            AND G.Code2 = E.Received_Code2
@@ -399,8 +421,8 @@ BEGIN
             AND (
 				 @Search IS NULL
 				 OR LTRIM(RTRIM(@Search)) = ''
-               OR @Search IS NULL OR E.MobileNo LIKE '%' + @Search + '%'
-              OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
+               OR E.MobileNo LIKE '%' + @Search + '%'
+               OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
             );
     END
 END
