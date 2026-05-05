@@ -1,6 +1,6 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetBeneficiariesReport]    Script Date: 4/28/2026 2:51:11 PM ******/
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetBeneficiariesReport]    Script Date: 5/5/2026 12:02:47 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -112,7 +112,7 @@ BEGIN
     ---------------------------------------------------------
     DROP TABLE IF EXISTS #Users, #State, #Benefit, #Claims, #UPI, #FinalData;
 
-    ---------------------------------------------------------
+   ---------------------------------------------------------
     -- USERS + KYC
     ---------------------------------------------------------
     SELECT DISTINCT
@@ -132,7 +132,7 @@ BEGIN
     FROM tbl_VendorViseKYCStatus V WITH (NOLOCK)
     LEFT JOIN M_Consumer MC WITH (NOLOCK)
         ON V.M_ConsumerId = MC.M_ConsumerId
-    WHERE V.Comp_Id = @Comp_Id;
+    WHERE V.Comp_Id = @Comp_Id and MC.IsDelete=0;
 
     ---------------------------------------------------------
     -- LATEST STATE / CITY
@@ -191,16 +191,6 @@ END
 ELSE
 BEGIN
     INSERT INTO #Benefit (M_ConsumerId, Benefit, LastScan)
-    /*SELECT
-        M_ConsumerId,
-		CASE WHEN @Comp_Id='Comp-1274' THEN  SUM(ISNULL(Cash,0)) ELSE  SUM(ISNULL(Points,0)) END Benefit,
-       -- SUM(ISNULL(Points,0)) AS Benefit,
-        MAX(UpdateDate) AS LastScan
-    FROM BLoyaltyPointsEarned WITH (NOLOCK)
-    WHERE CompId = @Comp_Id
-      AND (@StartDate IS NULL OR UpdateDate >= @StartDate)
-      AND (@EndDate   IS NULL OR UpdateDate <  @EndDate)
-    GROUP BY M_ConsumerId; */
 	SELECT
         bp.M_ConsumerId,
 		CAST(
@@ -216,23 +206,17 @@ BEGIN
     -- Using LEFT JOIN to be safe, but primarily relying on bp.CompId
     LEFT JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
     LEFT JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
-    WHERE bp.CompId = @Comp_Id
+	left join dbo.claimredeem cl on cl.compid=ms.Comp_ID 
+    WHERE ms.Comp_ID = @Comp_Id
       AND (@StartDate IS NULL OR bp.UpdateDate >= @StartDate)
       AND (@EndDate   IS NULL OR bp.UpdateDate <  @EndDate)
     GROUP BY bp.M_ConsumerId;
 
+
+
 END
 
-	 /*SELECT
-        M_ConsumerId,
-        SUM(ISNULL(Points,0)) AS Benefit,
-        MAX(UpdateDate) AS LastScan
-    INTO #Benefit
-    FROM BLoyaltyPointsEarned WITH (NOLOCK)
-    WHERE CompId = @Comp_Id
-      AND (@StartDate IS NULL OR UpdateDate >= @StartDate)
-      AND (@EndDate   IS NULL OR UpdateDate <  @EndDate)
-    GROUP BY M_ConsumerId; */
+	 
 
 
 	
@@ -242,24 +226,6 @@ END
     ---------------------------------------------------------
 
 
-    /*SELECT
-        Mobileno,
-        SUM(
-            CASE
-                WHEN NULLIF(LTRIM(RTRIM(PointsValue)), '') IS NOT NULL
-                     THEN ISNULL(Amount,0)
-                ELSE ISNULL(TRY_CONVERT(NUMERIC(18,2), PointsValue),0)
-            END
-        ) AS ClaimsAmount,
-        SUM(ISNULL(tdsAmount,0)) AS TDSAmount
-    INTO #Claims
-    FROM ClaimDetails WITH (NOLOCK)
-    WHERE Comp_id = @Comp_Id
-      AND Isapproved = 1
-    GROUP BY Mobileno;
-
-	*/
-	
 	
 	SELECT
         Mobileno,
@@ -280,8 +246,17 @@ END
 		(@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND Comp_id = @Comp_Id)
 	)
 	AND Isapproved = 1
-	 AND (@StartDate IS NULL OR action_date >= @StartDate)
-      AND (@EndDate   IS NULL OR action_date <  @EndDate)
+	-- AND (@StartDate IS NULL OR action_date >= @StartDate)
+      --AND (@EndDate   IS NULL OR action_date <  @EndDate)
+	  AND
+(
+    action_date IS NULL
+    OR
+    (
+        (@StartDate IS NULL OR action_date >= @StartDate)
+        AND (@EndDate IS NULL OR action_date < @EndDate)
+    )
+)
 	GROUP BY Mobileno;
 	
 
@@ -295,20 +270,7 @@ CREATE TABLE #UPI
     UPIAmount NUMERIC(18,2)
 );
 --select top 1* from Transactions
-IF(@Comp_Id = 'Comp-1274')
-BEGIN
-    INSERT INTO #UPI (M_Consumerid, UPIAmount)
-    SELECT
-        M_CounserID,
-        SUM(ISNULL(Amount,0))
-    FROM Transactions WITH (NOLOCK)
-    WHERE CompId = '1274'
-	 AND (@StartDate IS NULL OR TransactionDate >= @StartDate)
-      AND (@EndDate   IS NULL OR TransactionDate <  @EndDate)
-    GROUP BY M_CounserID;
-END
-ELSE
-BEGIN
+
     INSERT INTO #UPI (M_Consumerid, UPIAmount)
     SELECT
         M_Consumerid,
@@ -320,18 +282,8 @@ BEGIN
 	   AND (@StartDate IS NULL OR ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR ReqDate <  @EndDate)
     GROUP BY M_Consumerid;
-END
-	/*
-    SELECT
-        M_Consumerid,
-        SUM(ISNULL(Amount,0)) AS UPIAmount
-    INTO #UPI
-    FROM tblUPITransactionDetails WITH (NOLOCK)
-    WHERE Comp_Id = @Comp_Id
-      AND Status = 'Success'
-      AND LEN(Code1) > 3
-    GROUP BY M_Consumerid;
-*/
+
+
 
     ---------------------------------------------------------
     -- FINAL DATA WITH ROW_NUMBER (KEY FIX)
