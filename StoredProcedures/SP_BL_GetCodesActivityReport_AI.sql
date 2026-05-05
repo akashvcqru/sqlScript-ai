@@ -1,29 +1,27 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 4/28/2026 11:05:47 AM ******/
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 5/5/2026 12:47:13 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-
--- exec [dbo].[SP_BL_GetCodesActivityReport_AI] 'Comp-1727',NULL,'2026-01-02','2026-01-07',NULL,NULL,NULL,1,10,1
-ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
+ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
      @FromDate DATE  = NULL,                -- NEW
     @ToDate DATE  = NULL,                  -- NEW
     @CodeStatusFilter NVARCHAR(20) = NULL,     -- NEW (Verified, Already Scanned, Invalid)
-     @StateFilter NVARCHAR(100) = NULL,       -- ✅ NEW
-    @DialModeFilter NVARCHAR(50) = NULL,     -- ✅ NEW
-    @Page INT = NULL,                        -- ✅ NEW
-    @Limit INT = NULL,                      -- ✅ NEW
+     @StateFilter NVARCHAR(100) = NULL,       -- Ã¢Å“â€¦ NEW
+    @DialModeFilter NVARCHAR(50) = NULL,     -- Ã¢Å“â€¦ NEW
+    @Page INT = NULL,                        -- Ã¢Å“â€¦ NEW
+    @Limit INT = NULL,                      -- Ã¢Å“â€¦ NEW
      @IsExport BIT =NULL,
        @Search nvarchar(30) = null
 AS
 BEGIN
   SET NOCOUNT ON;
 
-    ----------------------------------------------------
+     ----------------------------------------------------
     -- Pagination Defaults
     ----------------------------------------------------
     IF @Page IS NULL OR @Page < 1 SET @Page = 1;
@@ -122,9 +120,7 @@ BEGIN
         Enq_Date,
         Dial_Mode,
         Is_Success,
-        MobileNo,
-        Latitude,
-        Longitude
+        MobileNo
     INTO #Enq
     FROM Pro_Enq
 	INNER JOIN M_code M 
@@ -196,9 +192,7 @@ BEGIN
         Code2,
         MobileNo,
         State,
-        City,
-        Latitude,
-        Longitude
+        City
     INTO #Geo
     FROM (
         SELECT 
@@ -217,31 +211,40 @@ BEGIN
     CREATE INDEX IX_Geo ON #Geo(Code1, Code2, MobileNo);
 
     ----------------------------------------------------
-    -- POINTS
-    ----------------------------------------------------
-    IF OBJECT_ID('tempdb..#Points') IS NOT NULL DROP TABLE #Points;
+-- POINTS
+----------------------------------------------------
+IF OBJECT_ID('tempdb..#Points') IS NOT NULL DROP TABLE #Points;
 
-    SELECT 
-        Code1,
-        Code2,
-        --Points
-		CASE WHEN Points>0 THEN Points ELSE Cash END Points
-    INTO #Points
-    FROM (
-        SELECT 
-            P.*,
-            ROW_NUMBER() OVER (
-                PARTITION BY P.Code1, P.Code2
-                ORDER BY (SELECT NULL)
-            ) rn
-        FROM BLoyaltyPointsEarned P
-        INNER JOIN #Codes C
-            ON P.Code1 = C.Received_Code1
-           AND P.Code2 = C.Received_Code2
-    ) X
-    WHERE rn = 1;
+SELECT
+    MC.MobileNo,
+    CASE
+        WHEN X.Points > 0 THEN X.Points
+        ELSE X.Cash
+    END AS Points
+INTO #Points
+FROM
+(
+    SELECT
+        BL.M_consumerid,
+        BL.Points,
+        BL.Cash,
+        ROW_NUMBER() OVER
+        (
+            PARTITION BY BL.M_consumerid
+            ORDER BY BL.UpdateDate DESC
+        ) rn
+    FROM BLoyaltyPointsEarned BL
+    INNER JOIN M_ServiceSubscriptionTrans MST
+        ON BL.sst_id = MST.sst_id
+    INNER JOIN M_ServiceSubscription MSS
+        ON MST.Subscribe_Id = MSS.Subscribe_Id
+    WHERE MSS.Comp_ID = @Comp_Id
+) X
+INNER JOIN M_Consumer MC
+    ON MC.M_Consumerid = X.M_consumerid
+WHERE X.rn = 1;
 
-    CREATE INDEX IX_Points ON #Points(Code1, Code2);
+CREATE INDEX IX_Points ON #Points(MobileNo);
 
     ----------------------------------------------------
     -- RESULT SET 1
@@ -268,9 +271,7 @@ BEGIN
                 WHEN E.Is_Success = 1 THEN 'Verified'
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
-            END AS Result,
-            ISNULL(G.Latitude, E.Latitude) AS Latitude,
-            ISNULL(G.Longitude, E.Longitude) AS Longitude
+            END AS Result
         --FROM #Enq E
 		FROM
 		(
@@ -284,7 +285,7 @@ BEGIN
 		) E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
-        LEFT JOIN #Points P ON P.Code1 = E.Received_Code1 AND P.Code2 = E.Received_Code2
+        LEFT JOIN #Points P ON  RIGHT(P.MobileNo,10) = RIGHT(E.MobileNo,10)
         LEFT JOIN #MCode MCd ON MCd.Code1 = E.Received_Code1 AND MCd.Code2 = E.Received_Code2
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         WHERE
@@ -327,13 +328,11 @@ BEGIN
                 WHEN E.Is_Success = 1 THEN 'Verified'
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
-            END AS Result,
-            ISNULL(G.Latitude, E.Latitude) AS Latitude,
-            ISNULL(G.Longitude, E.Longitude) AS Longitude
+            END AS Result
         FROM #Enq E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
-        LEFT JOIN #Points P ON P.Code1 = E.Received_Code1 AND P.Code2 = E.Received_Code2
+        LEFT JOIN #Points P ON RIGHT(P.MobileNo,10) = RIGHT(E.MobileNo,10)
         LEFT JOIN #MCode MCd ON MCd.Code1 = E.Received_Code1 AND MCd.Code2 = E.Received_Code2
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         WHERE
@@ -361,7 +360,7 @@ BEGIN
             COUNT(1) AS TotalRecords,
             @Page AS CurrentPage,
             @Limit AS [Limit],
-            CAST(CEILING(COUNT(1) * 1.0 / @Limit) AS INT) AS TotalPages
+            CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
         FROM #Enq E
         LEFT JOIN #Geo G
             ON G.Code1 = E.Received_Code1
