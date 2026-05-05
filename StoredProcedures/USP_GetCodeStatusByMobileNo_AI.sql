@@ -102,21 +102,6 @@ BEGIN
     ---------------------------------------------------------
     -- DETAILS RESULT
     ---------------------------------------------------------
-    ---------------------------------------------------------
-    -- SUMMARY RESULT
-    ---------------------------------------------------------
-    IF (@Type IS NULL OR @Type = '' OR @Type = 'SUMMARY')
-    BEGIN
-        SELECT
-            @MobileNo AS MobileNo,
-            @TotalScans AS ScanCountTotal,
-            @SuccessScans AS ScanCountSuccess,
-            @FailedScans AS ScanCountFailed;
-    END
-
-    ---------------------------------------------------------
-    -- DETAILS RESULT
-    ---------------------------------------------------------
     IF (@Type IS NULL OR @Type = '' OR @Type = 'DETAILS')
     BEGIN
         IF (@IsExport = 1)
@@ -146,6 +131,18 @@ BEGIN
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(@TotalScans * 1.0 / @Limit) AS TotalPages;
+    END
+
+    ---------------------------------------------------------
+    -- SUMMARY RESULT
+    ---------------------------------------------------------
+    IF (@Type IS NULL OR @Type = '' OR @Type = 'SUMMARY')
+    BEGIN
+        SELECT
+            @MobileNo AS MobileNo,
+            @TotalScans AS TotalScans,
+            @SuccessScans AS SuccessScans,
+            @FailedScans AS FailedScans;
     END
 END
 GO
