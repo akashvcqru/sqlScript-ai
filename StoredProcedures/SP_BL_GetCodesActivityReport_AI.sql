@@ -120,14 +120,13 @@ BEGIN
         Enq_Date,
         Dial_Mode,
         Is_Success,
-        MobileNo
+        MobileNo,
+        M.Row_ID AS M_Codeid
     INTO #Enq
     FROM Pro_Enq
 	INNER JOIN M_code M 
 	    ON Received_Code1 = CAST(code1 AS VARCHAR(50))
 	 AND Received_Code2 = CAST(Code2 AS VARCHAR(50))
-   -- ON Received_Code1 = M.code1 
-   --AND Received_Code2 = M.Code2
    INNER JOIN Pro_Reg PR
    ON PR.Pro_ID=M.Pro_ID
     WHERE PR.Comp_ID = @Comp_Id
@@ -211,40 +210,55 @@ BEGIN
     CREATE INDEX IX_Geo ON #Geo(Code1, Code2, MobileNo);
 
     ----------------------------------------------------
--- POINTS
-----------------------------------------------------
-IF OBJECT_ID('tempdb..#Points') IS NOT NULL DROP TABLE #Points;
+    -- POINTS (REFACTORED - ID BASED)
+    ----------------------------------------------------
+    IF OBJECT_ID('tempdb..#Points') IS NOT NULL DROP TABLE #Points;
 
-SELECT
-    MC.MobileNo,
-    CASE
-        WHEN X.Points > 0 THEN X.Points
-        ELSE X.Cash
-    END AS Points
-INTO #Points
-FROM
-(
     SELECT
-        BL.M_consumerid,
-        BL.Points,
-        BL.Cash,
-        ROW_NUMBER() OVER
-        (
-            PARTITION BY BL.M_consumerid
-            ORDER BY BL.UpdateDate DESC
-        ) rn
-    FROM BLoyaltyPointsEarned BL
-    INNER JOIN M_ServiceSubscriptionTrans MST
-        ON BL.sst_id = MST.sst_id
-    INNER JOIN M_ServiceSubscription MSS
-        ON MST.Subscribe_Id = MSS.Subscribe_Id
-    WHERE MSS.Comp_ID = @Comp_Id
-) X
-INNER JOIN M_Consumer MC
-    ON MC.M_Consumerid = X.M_consumerid
-WHERE X.rn = 1;
+        MC.M_Codeid,
+        SUM(CAST(
+            CASE 
+                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(BL.Cash, 0) * 1.10
+                ELSE ISNULL(BL.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS Points
+    INTO #Points
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    INNER JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    WHERE 
+    (
+        (@Comp_Id IN ('Comp-1567','Comp-1650') AND BL.compid IN ('Comp-1567','Comp-1650'))
+        OR
+        (@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND BL.compid = @Comp_Id)
+    )
+    GROUP BY MC.M_Codeid;
 
-CREATE INDEX IX_Points ON #Points(MobileNo);
+    CREATE INDEX IX_Points_MCodeid ON #Points(M_Codeid);
+
+    ----------------------------------------------------
+    -- CONFIG POINTS (PRODUCT LEVEL FALLBACK)
+    ----------------------------------------------------
+    IF OBJECT_ID('tempdb..#ConfigPoints') IS NOT NULL DROP TABLE #ConfigPoints;
+
+    SELECT 
+        SS.Pro_ID,
+        MAX(CAST(
+            CASE 
+                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
+                ELSE ISNULL(SST.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS ConfigPoints
+    INTO #ConfigPoints
+    FROM M_ServiceSubscriptionTrans SST WITH (NOLOCK)
+    INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+    WHERE SS.Comp_ID = @Comp_Id 
+      AND SS.IsActive = 1 
+      AND SST.IsActive = 1
+      AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
+    GROUP BY SS.Pro_ID;
+
+    CREATE INDEX IX_ConfigPoints_ProID ON #ConfigPoints(Pro_ID);
 
     ----------------------------------------------------
     -- RESULT SET 1
@@ -266,7 +280,10 @@ CREATE INDEX IX_Points ON #Points(MobileNo);
             G.State,
             G.City,
             PR.Pro_Name,
-            CASE WHEN E.Is_Success = 1 THEN ISNULL(P.Points,0) ELSE 0 END AS Points,
+            CASE 
+                WHEN E.Is_Success = 1 THEN ISNULL(NULLIF(P.Points, 0), ISNULL(CP.ConfigPoints, 0)) 
+                ELSE 0 
+            END AS Points,
             CASE 
                 WHEN E.Is_Success = 1 THEN 'Verified'
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
@@ -285,9 +302,10 @@ CREATE INDEX IX_Points ON #Points(MobileNo);
 		) E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
-        LEFT JOIN #Points P ON  RIGHT(P.MobileNo,10) = RIGHT(E.MobileNo,10)
+        LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid
         LEFT JOIN #MCode MCd ON MCd.Code1 = E.Received_Code1 AND MCd.Code2 = E.Received_Code2
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
+        LEFT JOIN #ConfigPoints CP ON CP.Pro_ID = MCd.Pro_ID
         WHERE
 		 E.rn = 1
           AND  (@StateFilter IS NULL OR G.State = @StateFilter)
@@ -323,7 +341,10 @@ CREATE INDEX IX_Points ON #Points(MobileNo);
             G.State,
             G.City,
             PR.Pro_Name,
-            CASE WHEN E.Is_Success = 1 THEN ISNULL(P.Points,0) ELSE 0 END AS Points,
+            CASE 
+                WHEN E.Is_Success = 1 THEN ISNULL(NULLIF(P.Points, 0), ISNULL(CP.ConfigPoints, 0)) 
+                ELSE 0 
+            END AS Points,
             CASE 
                 WHEN E.Is_Success = 1 THEN 'Verified'
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
@@ -332,9 +353,10 @@ CREATE INDEX IX_Points ON #Points(MobileNo);
         FROM #Enq E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
-        LEFT JOIN #Points P ON RIGHT(P.MobileNo,10) = RIGHT(E.MobileNo,10)
+        LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid
         LEFT JOIN #MCode MCd ON MCd.Code1 = E.Received_Code1 AND MCd.Code2 = E.Received_Code2
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
+        LEFT JOIN #ConfigPoints CP ON CP.Pro_ID = MCd.Pro_ID
         WHERE
             (@StateFilter IS NULL OR G.State = @StateFilter)
             AND (
