@@ -16,21 +16,22 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_ManageLandingPagePurchasedFrom_AI]
     @Action VARCHAR(20),
     @ID INT = NULL,
     @purchased_From VARCHAR(100) = NULL,
-    @IsActive BIT = 1
+    @IsActive BIT = 1,
+    @Comp_ID VARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
 
     IF @Action = 'Add'
     BEGIN
-        IF EXISTS (SELECT 1 FROM purchased_FromLandingpage WHERE purchased_From = @purchased_From AND IsDeleted = 0)
+        IF EXISTS (SELECT 1 FROM purchased_FromLandingpage WHERE purchased_From = @purchased_From AND Comp_ID = @Comp_ID AND IsDeleted = 0)
         BEGIN
             SELECT 0 AS [ID], 'Purchased from option already exists' AS [Message], 0 AS [Status];
             RETURN;
         END
 
-        INSERT INTO purchased_FromLandingpage (purchased_From, IsActive, IsDeleted, Create_Date)
-        VALUES (@purchased_From, @IsActive, 0, GETDATE());
+        INSERT INTO purchased_FromLandingpage (purchased_From, Comp_ID, IsActive, IsDeleted, Create_Date)
+        VALUES (@purchased_From, @Comp_ID, @IsActive, 0, GETDATE());
         
         SELECT SCOPE_IDENTITY() AS [ID], 'Added successfully' AS [Message], 1 AS [Status];
     END
@@ -61,7 +62,8 @@ BEGIN
     BEGIN
         SELECT ID, purchased_From, IsActive, Create_Date
         FROM purchased_FromLandingpage
-        WHERE IsDeleted = 0
+        WHERE IsDeleted = 0 
+        AND (Comp_ID = @Comp_ID OR @Comp_ID IS NULL)
         ORDER BY Create_Date DESC;
     END
 END

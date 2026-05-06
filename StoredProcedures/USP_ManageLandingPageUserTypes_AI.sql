@@ -16,21 +16,22 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_ManageLandingPageUserTypes_AI]
     @Action VARCHAR(20),
     @ID INT = NULL,
     @User_Type VARCHAR(100) = NULL,
-    @IsActive BIT = 1
+    @IsActive BIT = 1,
+    @Comp_ID VARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
 
     IF @Action = 'Add'
     BEGIN
-        IF EXISTS (SELECT 1 FROM user_typemasterLandingpage WHERE User_Type = @User_Type AND IsDeleted = 0)
+        IF EXISTS (SELECT 1 FROM user_typemasterLandingpage WHERE User_Type = @User_Type AND Comp_ID = @Comp_ID AND IsDeleted = 0)
         BEGIN
             SELECT 0 AS [ID], 'User type already exists' AS [Message], 0 AS [Status];
             RETURN;
         END
 
-        INSERT INTO user_typemasterLandingpage (User_Type, IsActive, IsDeleted, Create_Date)
-        VALUES (@User_Type, @IsActive, 0, GETDATE());
+        INSERT INTO user_typemasterLandingpage (User_Type, Comp_ID, IsActive, IsDeleted, Create_Date)
+        VALUES (@User_Type, @Comp_ID, @IsActive, 0, GETDATE());
         
         SELECT SCOPE_IDENTITY() AS [ID], 'Added successfully' AS [Message], 1 AS [Status];
     END
@@ -61,7 +62,8 @@ BEGIN
     BEGIN
         SELECT ID, User_Type, IsActive, Create_Date
         FROM user_typemasterLandingpage
-        WHERE IsDeleted = 0
+        WHERE IsDeleted = 0 
+        AND (Comp_ID = @Comp_ID OR @Comp_ID IS NULL)
         ORDER BY Create_Date DESC;
     END
 END

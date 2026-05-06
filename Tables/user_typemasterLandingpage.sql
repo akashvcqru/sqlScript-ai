@@ -12,6 +12,7 @@ BEGIN
 CREATE TABLE [dbo].[user_typemasterLandingpage](
 	[ID] [int] IDENTITY(1,1) NOT NULL,
 	[User_Type] [varchar](100) NOT NULL,
+	[Comp_ID] [varchar](50) NULL,
 	[IsActive] [bit] NULL CONSTRAINT [DF_user_typemasterLandingpage_IsActive]  DEFAULT ((1)),
 	[IsDeleted] [bit] NULL CONSTRAINT [DF_user_typemasterLandingpage_IsDeleted]  DEFAULT ((0)),
 	[Create_Date] [datetime] NULL CONSTRAINT [DF_user_typemasterLandingpage_Create_Date]  DEFAULT (getdate()),

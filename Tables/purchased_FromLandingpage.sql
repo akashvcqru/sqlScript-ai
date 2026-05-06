@@ -12,6 +12,7 @@ BEGIN
 CREATE TABLE [dbo].[purchased_FromLandingpage](
 	[ID] [int] IDENTITY(1,1) NOT NULL,
 	[purchased_From] [varchar](100) NOT NULL,
+	[Comp_ID] [varchar](50) NULL,
 	[IsActive] [bit] NULL CONSTRAINT [DF_purchased_FromLandingpage_IsActive]  DEFAULT ((1)),
 	[IsDeleted] [bit] NULL CONSTRAINT [DF_purchased_FromLandingpage_IsDeleted]  DEFAULT ((0)),
 	[Create_Date] [datetime] NULL CONSTRAINT [DF_purchased_FromLandingpage_Create_Date]  DEFAULT (getdate()),
