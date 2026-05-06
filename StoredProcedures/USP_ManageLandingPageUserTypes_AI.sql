@@ -57,5 +57,12 @@ BEGIN
             SELECT @ID AS [ID], 'User type not found' AS [Message], 0 AS [Status];
         END
     END
+    ELSE IF @Action = 'List'
+    BEGIN
+        SELECT ID, User_Type, IsActive, Create_Date
+        FROM user_typemasterLandingpage
+        WHERE IsDeleted = 0
+        ORDER BY Create_Date DESC;
+    END
 END
 GO

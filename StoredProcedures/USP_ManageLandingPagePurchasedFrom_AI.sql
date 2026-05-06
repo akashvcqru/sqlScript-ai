@@ -57,5 +57,12 @@ BEGIN
             SELECT @ID AS [ID], 'Option not found' AS [Message], 0 AS [Status];
         END
     END
+    ELSE IF @Action = 'List'
+    BEGIN
+        SELECT ID, purchased_From, IsActive, Create_Date
+        FROM purchased_FromLandingpage
+        WHERE IsDeleted = 0
+        ORDER BY Create_Date DESC;
+    END
 END
 GO
