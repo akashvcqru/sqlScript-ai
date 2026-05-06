@@ -110,7 +110,7 @@ BEGIN
     ---------------------------------------------------------
     -- CLEAN TEMP TABLES
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Users, #State, #Benefit, #Claims, #UPI, #FinalData;
+    DROP TABLE IF EXISTS #Users, #State, #Benefit, #Claims, #UPI, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints;
 
    ---------------------------------------------------------
     -- USERS + KYC
@@ -172,51 +172,131 @@ CREATE TABLE #Benefit
     LastScan DATETIME
 );
 
-IF @Comp_Id IN ('Comp-1567','Comp-1650')
-BEGIN
+CREATE TABLE #UniqueScans
+(
+    MobileNo NVARCHAR(50),
+    Received_Code1 NVARCHAR(50),
+    Received_Code2 NVARCHAR(50),
+    Is_Success INT,
+    Enq_Date DATETIME,
+    M_Codeid BIGINT,
+    Series_Order INT,
+    Series_Serial INT,
+    Pro_ID NVARCHAR(50),
+    rn INT
+);
+
+CREATE TABLE #EarnedPoints
+(
+    M_Codeid BIGINT,
+    Points DECIMAL(18,2)
+);
+
+CREATE TABLE #ConfigPoints
+(
+    M_Codeid BIGINT,
+    ConfigPoints DECIMAL(18,2)
+);
+
+    ---------------------------------------------------------
+    -- PRECISE POINT CALCULATION (MATCHING ACTIVITY REPORT)
+    ---------------------------------------------------------
+    -- 1. Get Enquiries for the company in date range (Source: Pro_Enq)
+    -- This matches SP_BL_GetCodesActivityReport_AI exactly to ensure point consistency.
+    INSERT INTO #UniqueScans (MobileNo, Received_Code1, Received_Code2, Is_Success, Enq_Date, M_Codeid, Series_Order, Series_Serial, Pro_ID, rn)
+    SELECT 
+        E.MobileNo,
+        E.Received_Code1,
+        E.Received_Code2,
+        E.Is_Success,
+        E.Enq_Date,
+        E.M_Codeid,
+        E.Series_Order,
+        E.Series_Serial,
+        E.Pro_ID,
+        ROW_NUMBER() OVER (PARTITION BY E.Received_Code1, E.Received_Code2, E.Is_Success ORDER BY E.Enq_Date) as rn
+    FROM (
+        SELECT 
+            PE.MobileNo,
+            PE.Received_Code1,
+            PE.Received_Code2,
+            PE.Is_Success,
+            PE.Enq_Date,
+            M.Row_ID AS M_Codeid,
+            M.Pro_ID,
+            M.Series_Order,
+            M.Series_Serial
+        FROM Pro_Enq PE WITH (NOLOCK)
+        INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = CAST(M.Code1 AS VARCHAR(50)) AND PE.Received_Code2 = CAST(M.Code2 AS VARCHAR(50))
+        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
+        WHERE (
+            (@Comp_Id IN ('Comp-1567','Comp-1650') AND PR.Comp_Id IN ('Comp-1567','Comp-1650'))
+            OR
+            (@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND PR.Comp_Id = @Comp_Id)
+        )
+        AND PE.Is_Success = 1
+        AND (@StartDate IS NULL OR PE.Enq_Date >= @StartDate)
+        AND (@EndDate   IS NULL OR PE.Enq_Date <  @EndDate)
+    ) E;
+
+    -- 2. Get Earned Points (Fallback)
+    INSERT INTO #EarnedPoints (M_Codeid, Points)
+    SELECT
+        MC.M_Codeid,
+        MAX(CAST(
+            CASE 
+                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(BL.Cash, 0) * 1.10
+                ELSE ISNULL(BL.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS Points
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    INNER JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    WHERE (
+            (@Comp_Id IN ('Comp-1567','Comp-1650') AND BL.compid IN ('Comp-1567','Comp-1650'))
+            OR
+            (@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND BL.compid = @Comp_Id)
+        )
+    GROUP BY MC.M_Codeid;
+
+    -- 3. Get Config Points (Precise Range)
+    INSERT INTO #ConfigPoints (M_Codeid, ConfigPoints)
+    SELECT 
+        US.M_Codeid,
+        MAX(CAST(
+            CASE 
+                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
+                ELSE ISNULL(SST.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS ConfigPoints
+    FROM #UniqueScans US
+    INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = US.Pro_ID
+    INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+    WHERE (
+            (@Comp_Id IN ('Comp-1567','Comp-1650') AND SS.Comp_Id IN ('Comp-1567','Comp-1650'))
+            OR
+            (@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND SS.Comp_Id = @Comp_Id)
+        )
+      AND SS.IsActive = 1 AND SS.IsDelete = 0
+      AND SST.IsActive = 1 AND SST.IsDelete = 0
+      AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
+      AND (US.Series_Order > SS.start_order OR (US.Series_Order = SS.start_order AND US.Series_Serial >= SS.start_series))
+      AND (US.Series_Order < SS.end_order OR (US.Series_Order = SS.end_order AND US.Series_Serial <= SS.end_series))
+    GROUP BY US.M_Codeid;
+
+    -- 4. Aggregate into #Benefit
     INSERT INTO #Benefit (M_ConsumerId, Benefit, LastScan)
     SELECT
-        bp.M_ConsumerId,
-        SUM(ISNULL(bp.Points,0)) AS Benefit,
-        MAX(bp.UpdateDate) AS LastScan
-    FROM BLoyaltyPointsEarned bp WITH (NOLOCK)
-    -- LEFT JOIN to ensure we capture points even if subscription link is missing in some records
-    LEFT JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
-    LEFT JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
-    WHERE (bp.CompId IN ('Comp-1567','Comp-1650') OR ms.Comp_ID IN ('Comp-1567','Comp-1650'))
-      AND (@StartDate IS NULL OR bp.UpdateDate >= @StartDate)
-      AND (@EndDate   IS NULL OR bp.UpdateDate <  @EndDate)
-    GROUP BY bp.M_ConsumerId;
-END
-ELSE
-BEGIN
-    INSERT INTO #Benefit (M_ConsumerId, Benefit, LastScan)
-	SELECT
-        bp.M_ConsumerId,
-		CAST(
-            CASE 
-                WHEN @Comp_Id = 'Comp-1274' 
-                    THEN SUM(ISNULL(bp.Cash,0)) * 1.10   -- add 10% extra
-                ELSE 
-                    SUM(ISNULL(bp.Points,0))
-            END
-        AS DECIMAL(18,2)) AS Benefit,
-        MAX(bp.UpdateDate) AS LastScan
-    FROM BLoyaltyPointsEarned bp WITH (NOLOCK)
-    -- Using LEFT JOIN to be safe, but primarily relying on bp.CompId
-    LEFT JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id 
-    LEFT JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
-	left join dbo.claimredeem cl on cl.compid=ms.Comp_ID 
-    WHERE ms.Comp_ID = @Comp_Id
-      AND (@StartDate IS NULL OR bp.UpdateDate >= @StartDate)
-      AND (@EndDate   IS NULL OR bp.UpdateDate <  @EndDate)
-    GROUP BY bp.M_ConsumerId;
+        MC.M_ConsumerId,
+        SUM(ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0))) AS Benefit,
+        MAX(E.Enq_Date) AS LastScan
+    FROM #UniqueScans E
+    INNER JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = E.MobileNo AND MC.IsDelete = 0
+    LEFT JOIN #EarnedPoints P ON P.M_Codeid = E.M_Codeid
+    LEFT JOIN #ConfigPoints CP ON CP.M_Codeid = E.M_Codeid
+    WHERE E.rn = 1
+    GROUP BY MC.M_ConsumerId;
 
-
-
-END
-
-	 
 
 
 	
@@ -288,6 +368,16 @@ CREATE TABLE #UPI
     ---------------------------------------------------------
     -- FINAL DATA WITH ROW_NUMBER (KEY FIX)
     ---------------------------------------------------------
+    ---------------------------------------------------------
+    -- NORMALIZE FILTERS
+    ---------------------------------------------------------
+    IF LTRIM(RTRIM(ISNULL(@KYCStatusFilter, ''))) = '' OR @KYCStatusFilter = 'null' SET @KYCStatusFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' OR @StateFilter = 'null' SET @StateFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@Search, ''))) = '' OR @Search = 'null' SET @Search = NULL;
+
+    ---------------------------------------------------------
+    -- FINAL DATA WITH ROW_NUMBER (KEY FIX)
+    ---------------------------------------------------------
     SELECT
         U.ConsumerName,
         U.MobileNo,
@@ -325,15 +415,7 @@ CREATE TABLE #UPI
             U.MobileNo     LIKE '%' + @Search + '%' OR
             U.City         LIKE '%' + @Search + '%' OR
             U.State        LIKE '%' + @Search + '%'
-        )
-        -- Date Filter Correction: When a date range is selected, only show users with activity
-        AND (
-            @Win = 'ALL' 
-            OR B.M_ConsumerId IS NOT NULL 
-            OR C.Mobileno IS NOT NULL 
-            OR UU.M_Consumerid IS NOT NULL
-        )
-        AND ISNULL(B.Benefit,0) > 0;
+        );
 
     ---------------------------------------------------------
     -- PAGED RESULT
