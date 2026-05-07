@@ -121,6 +121,8 @@ BEGIN
         Dial_Mode,
         Is_Success,
         MobileNo,
+        Latitude,
+        Longitude,
         M.Row_ID AS M_Codeid,
         M.Series_Order,
         M.Series_Serial
@@ -295,7 +297,9 @@ BEGIN
                 WHEN E.Is_Success = 1 THEN 'Verified'
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
-            END AS Result
+            END AS Result,
+			E.Latitude,
+			E.Longitude
         --FROM #Enq E
 		FROM
 		(
@@ -354,7 +358,9 @@ BEGIN
                 WHEN E.Is_Success = 1 THEN 'Verified'
                 WHEN E.Is_Success = 2 THEN 'Already Scanned'
                 ELSE 'Invalid'
-            END AS Result
+            END AS Result,
+			E.Latitude,
+			E.Longitude
         FROM 
 		(
 			SELECT *,
