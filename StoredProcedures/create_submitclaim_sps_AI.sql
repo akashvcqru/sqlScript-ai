@@ -186,7 +186,10 @@ BEGIN
         );
     END
 
-	update M_Consumer set bankekycStatus = '1' where M_Consumerid = @ConsumerID
+    UPDATE M_Consumer 
+    SET bankekycStatus = '1', 
+        ConsumerName = CASE WHEN ISNULL(@NameAtBank, '') <> '' THEN @NameAtBank ELSE ConsumerName END 
+    WHERE M_Consumerid = @ConsumerID;
 
     SELECT 
         1 AS Success,
