@@ -1,18 +1,17 @@
 CREATE OR ALTER PROCEDURE [dbo].[USP_ResetVendorPassword_AI]
     @Email NVARCHAR(255),
-    @Token NVARCHAR(100),
+    @OTP NVARCHAR(10),
     @NewPassword NVARCHAR(50)
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Verify token/email in Tbl_EmailVerification
-    -- We use VerificationToken as the reset token OR VerificationCode (OTP)
+    -- Verify OTP (VerificationCode) in Tbl_EmailVerification
     IF EXISTS (
         SELECT 1 
         FROM Tbl_EmailVerification 
         WHERE Email = @Email 
-          AND (VerificationToken = @Token OR VerificationCode = @Token)
+          AND VerificationCode = @OTP
           AND ExpiryTime > GETDATE()
     )
     BEGIN
@@ -22,17 +21,17 @@ BEGIN
             Update_Flag = 1
         WHERE Comp_Email = @Email;
 
-        -- Invalidate token
+        -- Invalidate OTP
         UPDATE Tbl_EmailVerification
         SET IsVerified = 1,
             VerifiedAt = GETDATE()
-        WHERE Email = @Email AND (VerificationToken = @Token OR VerificationCode = @Token);
+        WHERE Email = @Email AND VerificationCode = @OTP;
 
         SELECT 1 AS Success, 'Password reset successfully.' AS Message;
     END
     ELSE
     BEGIN
-        SELECT 0 AS Success, 'Invalid or expired reset token/OTP.' AS Message;
+        SELECT 0 AS Success, 'Invalid or expired OTP.' AS Message;
     END
 END
 GO
