@@ -65,18 +65,18 @@ BEGIN
         @IsVerified BIT,
         @ResponseCode VARCHAR(5);
 
-	   INSERT INTO dbo.UserClaimPreferences
-        (
-            M_Consumerid,
-            Comp_Id,
-            ClaimMode
-        )
-        VALUES
-        (
-            @ConsumerID,
-            @Comp_ID,
-            @ClaimMode
-        );
+    -- Add or update user claim preferences
+    IF EXISTS (SELECT 1 FROM dbo.UserClaimPreferences WHERE M_Consumerid = @ConsumerID AND Comp_Id = @Comp_ID)
+    BEGIN
+        UPDATE dbo.UserClaimPreferences 
+        SET ClaimMode = @ClaimMode
+        WHERE M_Consumerid = @ConsumerID AND Comp_Id = @Comp_ID;
+    END
+    ELSE
+    BEGIN
+        INSERT INTO dbo.UserClaimPreferences (M_Consumerid, Comp_Id, ClaimMode)
+        VALUES (@ConsumerID, @Comp_ID, @ClaimMode);
+    END
 
     SET @BankRefId = 'KYC-' + CONVERT(VARCHAR(20), @Now, 112)
                      + REPLACE(CONVERT(VARCHAR(8), @Now, 108), ':', '');
@@ -190,6 +190,46 @@ BEGIN
     SET bankekycStatus = '1', 
         ConsumerName = CASE WHEN ISNULL(@NameAtBank, '') <> '' THEN @NameAtBank ELSE ConsumerName END 
     WHERE M_Consumerid = @ConsumerID;
+
+	-- Logic for auto-approve vendor kyc status based on Brand Settings
+	DECLARE @KycDetails NVARCHAR(MAX);
+	SELECT @KycDetails = kyc_Details FROM dbo.BrandSettings_AI WHERE Comp_ID = @Comp_ID;
+
+	IF JSON_VALUE(@KycDetails, '$.autoaprove') = 'yes'
+	BEGIN
+		DECLARE @ReqPan BIT = CASE WHEN JSON_VALUE(@KycDetails, '$.PANCard') = 'yes' THEN 1 ELSE 0 END;
+		DECLARE @ReqUPI BIT = CASE WHEN JSON_VALUE(@KycDetails, '$.UPI') = 'yes' THEN 1 ELSE 0 END;
+		
+		DECLARE @IsPanDone BIT = 1;
+		DECLARE @IsUPIDone BIT = 1;
+
+		IF @ReqPan = 1
+		BEGIN
+			IF NOT EXISTS (SELECT 1 FROM M_Consumer WHERE M_Consumerid = @ConsumerID AND (panekycStatus = '1' OR panekycStatus = 'Online'))
+				SET @IsPanDone = 0;
+		END
+
+		IF @ReqUPI = 1
+		BEGIN
+			IF NOT EXISTS (SELECT 1 FROM M_Consumer WHERE M_Consumerid = @ConsumerID AND (UPIKYCSTATUS = '1' OR UPIKYCSTATUS = 'Online'))
+				SET @IsUPIDone = 0;
+		END
+
+		IF @IsPanDone = 1 AND @IsUPIDone = 1
+		BEGIN
+			IF EXISTS (SELECT 1 FROM tbl_Vendorvisekycstatus WHERE M_consumerId = @ConsumerID AND Comp_id = @Comp_ID)
+			BEGIN
+				UPDATE tbl_Vendorvisekycstatus 
+				SET VRKbl_KYC_status = 1, Approved_Date = @Now 
+				WHERE M_consumerId = @ConsumerID AND Comp_id = @Comp_ID;
+			END
+			ELSE
+			BEGIN
+				INSERT INTO tbl_Vendorvisekycstatus (M_consumerId, Comp_id, VRKbl_KYC_status, Entry_date, Approved_Date, IsActive, IsDelete)
+				VALUES (@ConsumerID, @Comp_ID, 1, @Now, @Now, 1, 0);
+			END
+		END
+	END
 
     SELECT 
         1 AS Success,
