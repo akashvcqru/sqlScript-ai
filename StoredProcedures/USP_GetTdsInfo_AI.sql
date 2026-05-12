@@ -121,7 +121,7 @@ BEGIN
     -- Result 2: Certificates
     SELECT img_path FROM tds_certificate WHERE M_Consumerid = @M_Consumerid AND Comp_ID = @Comp_ID;
 
-	select @Comp_ID,@startDate,@endDate
+	--select @Comp_ID,@startDate,@endDate
     -- Result 3: History
 	IF (@Comp_ID = 'Comp-1152')
     BEGIN
