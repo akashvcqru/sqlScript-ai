@@ -93,6 +93,13 @@ BEGIN
       AND pr.Comp_ID = @Comp_ID;
 
     ---------------------------------------------------------
+    -- Calculate Summary Counts
+    ---------------------------------------------------------
+    DECLARE @TotalScans BIGINT = (SELECT COUNT(*) FROM #FinalData);
+    DECLARE @SuccessScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE CodeStatus = 'Success');
+    DECLARE @FailedScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE CodeStatus = 'Unsuccess');
+
+    ---------------------------------------------------------
     -- DETAILS RESULT
     ---------------------------------------------------------
     IF (@Type IS NULL OR @Type = '' OR @Type = 'DETAILS')
@@ -120,11 +127,10 @@ BEGIN
     IF (@IsExport = 0 AND (@Type IS NULL OR @Type = '' OR @Type = 'DETAILS'))
     BEGIN
         SELECT
-            COUNT(*) AS TotalRecords,
+            @TotalScans AS TotalRecords,
             @Page AS CurrentPage,
             @Limit AS [Limit],
-            CEILING(COUNT(*) * 1.0 / @Limit) AS TotalPages
-        FROM #FinalData;
+            CEILING(@TotalScans * 1.0 / @Limit) AS TotalPages;
     END
 
     ---------------------------------------------------------
@@ -133,27 +139,10 @@ BEGIN
     IF (@Type IS NULL OR @Type = '' OR @Type = 'SUMMARY')
     BEGIN
         SELECT
-            M.ConsumerName,
-            M.MobileNo,
-            M.Email,
-            COUNT(*) AS CodeCheckCount,
-            SUM(CASE WHEN PE.Is_Success = 1 THEN 1 ELSE 0 END) AS TotalSuccessCodeCheck,
-            SUM(CASE WHEN PE.Is_Success <> 1 THEN 1 ELSE 0 END) AS TotalUNSuccessCodeCheck
-        FROM Pro_Enq PE
-        LEFT JOIN M_Consumer M 
-            ON RIGHT(M.MobileNo, 10) = RIGHT(PE.MobileNo, 10)
-           AND M.IsDelete = 0
-        INNER JOIN M_Code mc 
-            ON mc.Code1 = PE.Received_Code1
-           AND mc.Code2 = PE.Received_Code2
-        INNER JOIN Pro_Reg pr 
-            ON pr.Pro_ID = mc.Pro_ID
-        WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
-          AND pr.Comp_ID = @Comp_ID
-        GROUP BY 
-            M.ConsumerName,
-            M.MobileNo,
-            M.Email;
+            @MobileNo AS MobileNo,
+            @TotalScans AS TotalScans,
+            @SuccessScans AS SuccessScans,
+            @FailedScans AS FailedScans;
     END
 END
 GO
