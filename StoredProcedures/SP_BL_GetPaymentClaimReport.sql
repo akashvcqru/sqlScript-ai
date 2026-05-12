@@ -138,7 +138,10 @@ BEGIN
     ---------------------------------------------------------
 
     DECLARE @BaseWhere NVARCHAR(MAX) = N'
-    WHERE VC.Comp_id = @Comp_Id
+    WHERE (
+            (CD.Comp_id = @Comp_Id) OR 
+            (@Comp_Id IN (''Comp-1567'',''Comp-1650'') AND CD.Comp_id IN (''Comp-1567'',''Comp-1650''))
+          )
       AND (@StartDate IS NULL OR CD.Claim_Date >= @StartDate)
       AND (@EndDate   IS NULL OR CD.Claim_Date <  DATEADD(DAY, 1, @EndDate))
 ';
@@ -195,10 +198,8 @@ BEGIN
         MB.IFSC_Code,
         MB.Branch
     FROM ClaimDetails CD
-    INNER JOIN M_Consumer MC 
+    LEFT JOIN M_Consumer MC 
         ON MC.MobileNo = CD.Mobileno
-    INNER JOIN tbl_Vendorvisekycstatus VC 
-        ON VC.M_consumerId = MC.M_Consumerid
 
     -- ONLY LATEST BANK ACCOUNT
     OUTER APPLY
@@ -225,10 +226,8 @@ BEGIN
         @Limit AS [Limit],
         CEILING(COUNT(DISTINCT CD.Row_id) * 1.0 / @Limit) AS TotalPages
     FROM ClaimDetails CD
-    INNER JOIN M_Consumer MC 
+    LEFT JOIN M_Consumer MC 
         ON MC.MobileNo = CD.Mobileno
-    INNER JOIN tbl_Vendorvisekycstatus VC 
-        ON VC.M_consumerId = MC.M_Consumerid
     ' + @BaseWhere;
 
     ---------------------------------------------------------

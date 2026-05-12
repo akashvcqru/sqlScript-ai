@@ -11,7 +11,7 @@ GO
 -- Create date: 2026-04-07
 -- Description: Get Anti-Counterfeit solutions data (Success vs Unsuccess scans)
 -- =============================================
-CREATE PROCEDURE [dbo].[USP_AntiCounterFeitSolutions_AI]
+CREATE OR ALTER PROCEDURE [dbo].[USP_AntiCounterFeitSolutions_AI]
     @Comp_Id VARCHAR(20),
     @datePreset NVARCHAR(20) = NULL
 AS      
@@ -94,25 +94,46 @@ BEGIN
     END
 
     ------------------------------------------------------
-    -- Prepare scan data
+    -- Step 1: Pre-filter M_Code (Deduplicated per code pair)
+    ------------------------------------------------------
+    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+    
+    ;WITH DistinctCodes AS (
+        SELECT 
+            a.Code1, 
+            a.Code2, 
+            a.Pro_ID,
+            a.Use_Count,
+            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+        FROM M_Code a 
+        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+        WHERE b.Comp_ID = @Comp_Id 
+          AND a.Use_Count > 0
+    )
+    SELECT Code1, Code2, Pro_ID
+    INTO #tempM_Code 
+    FROM DistinctCodes
+    WHERE rn = 1;
+
+    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+
+    ------------------------------------------------------
+    -- Step 2: Prepare scan data
     ------------------------------------------------------
     DROP TABLE IF EXISTS #ValidScans;
 
     SELECT
         CAST(pe.Enq_Date AS DATE) AS ScanDate,
         pe.Is_Success,
-        mc.Use_Count
+        CASE WHEN mc.Pro_ID IS NOT NULL THEN 1 ELSE 0 END AS CodeExists
     INTO #ValidScans
     FROM Pro_Enq pe WITH (NOLOCK)
-    INNER JOIN M_Code mc WITH (NOLOCK)
-        ON (pe.Received_Code1 + pe.Received_Code2) =
-           (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20)))
-    INNER JOIN Pro_Reg pr WITH (NOLOCK)
-        ON pr.Pro_ID = mc.Pro_ID
-       AND pr.Comp_ID = @Comp_Id
-    WHERE pe.Enq_Date >= @StartDate
+    LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+          AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+    WHERE pe.Comp_ID = @Comp_Id
+      AND pe.Enq_Date >= @StartDate
       AND pe.Enq_Date <  @EndDate
-      AND mc.Gen_Date >= @CompanyStartDate;
+      AND pe.Enq_Date >= @CompanyStartDate;
 
     ------------------------------------------------------
     -- Result Set 1: Periodic Data
@@ -126,8 +147,8 @@ BEGIN
                 DATEADD(MONTH, DATEDIFF(MONTH, 0, ScanDate), 0),
                 ScanDate
             ) + 1 AS WeekNumber,
-            SUM(CASE WHEN Use_Count = 1 AND Is_Success = 1 THEN 1 ELSE 0 END) AS Success,
-            SUM(CASE WHEN Is_Success <> 1 THEN 1 ELSE 0 END) AS UnSuccess
+            SUM(CASE WHEN CodeExists = 1 AND Is_Success = 1 THEN 1 ELSE 0 END) AS Success,
+            SUM(CASE WHEN CodeExists = 0 OR Is_Success <> 1 THEN 1 ELSE 0 END) AS UnSuccess
         INTO #WeekSummary
         FROM #ValidScans
         GROUP BY
@@ -182,8 +203,8 @@ BEGIN
             DATENAME(MONTH, ScanDate) + ' ' + CAST(YEAR(ScanDate) AS VARCHAR(4)) AS Label,
             YEAR(ScanDate)  AS Yr,
             MONTH(ScanDate) AS Mn,
-            SUM(CASE WHEN Use_Count = 1 AND Is_Success = 1 THEN 1 ELSE 0 END) AS Success,
-            SUM(CASE WHEN Is_Success <> 1 THEN 1 ELSE 0 END) AS UnSuccess
+            SUM(CASE WHEN CodeExists = 1 AND Is_Success = 1 THEN 1 ELSE 0 END) AS Success,
+            SUM(CASE WHEN CodeExists = 0 OR Is_Success <> 1 THEN 1 ELSE 0 END) AS UnSuccess
         INTO #MonthSummary
         FROM #ValidScans
         GROUP BY YEAR(ScanDate), MONTH(ScanDate), DATENAME(MONTH, ScanDate);
@@ -209,8 +230,8 @@ BEGIN
         SELECT 
             DATEPART(WEEKDAY, ScanDate) AS WeekDayNumber,
             DATENAME(WEEKDAY, ScanDate) AS Label,
-            SUM(CASE WHEN Use_Count = 1 AND Is_Success = 1 THEN 1 ELSE 0 END) AS Success,
-            SUM(CASE WHEN Is_Success <> 1 THEN 1 ELSE 0 END) AS UnSuccess
+            SUM(CASE WHEN CodeExists = 1 AND Is_Success = 1 THEN 1 ELSE 0 END) AS Success,
+            SUM(CASE WHEN CodeExists = 0 OR Is_Success <> 1 THEN 1 ELSE 0 END) AS UnSuccess
         INTO #WeekdaySummary
         FROM #ValidScans
         GROUP BY DATEPART(WEEKDAY, ScanDate), DATENAME(WEEKDAY, ScanDate);
