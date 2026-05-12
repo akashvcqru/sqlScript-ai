@@ -1,15 +1,12 @@
 USE [Vcqru]
 GO
+/****** Object:  StoredProcedure [dbo].[USP_GetTdsInfo_AI]    Script Date: 5/12/2026 6:33:07 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
--- =============================================
--- Author:      Antigravity
--- Create date: 2026-04-22
--- Description: Consolidated TDS Info API data retrieval with special handling for Comp-1152
--- =============================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetTdsInfo_AI]
+
+ALTER   PROCEDURE [dbo].[USP_GetTdsInfo_AI]
 (
     @M_Consumerid VARCHAR(50),
     @Comp_ID VARCHAR(50),
@@ -26,7 +23,7 @@ BEGIN
     DECLARE @compIdNumeric VARCHAR(20) = SUBSTRING(@Comp_ID, CHARINDEX('-', @Comp_ID) + 1, LEN(@Comp_ID));
 
     -- Get Mobile Number
-    SELECT TOP 1 @mobileNo = RIGHT(MobileNo, 10) 
+    SELECT TOP 1 @mobileNo = MobileNo
     FROM m_consumer 
     WHERE M_Consumerid = @M_Consumerid 
     ORDER BY M_Consumerid DESC;
@@ -42,7 +39,7 @@ BEGIN
     BEGIN
         SELECT @TotalPoints = COALESCE(SUM(CAST(cash AS INT)), 0)
         FROM ConsumerPointsCashDetails
-        WHERE M_Consumerid = @M_Consumerid AND Enq_Date BETWEEN @startDate AND @endDate;
+        WHERE M_Consumerid = @M_Consumerid;
     END
     ELSE
     BEGIN
@@ -52,15 +49,13 @@ BEGIN
                    (SELECT COALESCE(SUM(CAST(bp2.Points AS INT)), 0)
                     FROM BLoyaltyPointsEarned bp2
                     WHERE bp2.M_Consumerid = @M_Consumerid AND bp2.compid = @Comp_ID AND bp2.ServiceName in ('Referral','KYCRewards')
-                      AND bp2.UpdateDate BETWEEN @startDate AND @endDate
                    ), 0
                )
         FROM BLoyaltyPointsEarned bp
         INNER JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id
         INNER JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
         WHERE bp.M_Consumerid = @M_Consumerid 
-          AND (ms.Comp_ID = @Comp_ID OR (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND ms.Comp_ID IN ('Comp-1650', 'Comp-1567') ))
-          AND bp.UpdateDate BETWEEN @startDate AND @endDate;
+          AND (ms.Comp_ID = @Comp_ID OR (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND ms.Comp_ID IN ('Comp-1650', 'Comp-1567') ));
     END
 
     -- 2. EarnAmountFY and TdsAmountFY and TotalCash
@@ -73,7 +68,7 @@ BEGIN
         SELECT @TdsAmountFY = ISNULL(SUM(tdsAmount), 0),
                @TotalCash = ISNULL(SUM(amount_won), 0)
         FROM TBL_M_Star_Codeverification 
-        WHERE Mobile_Number = '91' + @mobileNo 
+        WHERE Mobile_Number =   @mobileNo 
           AND Comp_id = @Comp_ID AND payStatus = 1 AND enquiry_date BETWEEN @startDate AND @endDate;
     END
     ELSE
@@ -83,9 +78,9 @@ BEGIN
         WHERE M_Consumerid = @M_Consumerid AND status = 'Success' AND Comp_id = @Comp_ID AND ReqDate BETWEEN @startDate AND @endDate;
         
         IF @Comp_ID = 'Comp-1274'
-            SELECT @TotalCash = ISNULL(SUM(Cash), 0) * 1.10 FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND compid = @Comp_ID AND UpdateDate BETWEEN @startDate AND @endDate;
+            SELECT @TotalCash = ISNULL(SUM(Cash), 0) * 1.10 FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND compid = @Comp_ID;
         ELSE
-            SELECT @TotalCash = ISNULL(SUM(Cash), 0) FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND (compid = @Comp_ID or (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567') ) ) AND UpdateDate BETWEEN @startDate AND @endDate;
+            SELECT @TotalCash = ISNULL(SUM(Cash), 0) FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND (compid = @Comp_ID or (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567') ) );
     END
 
     SET @TransferredCash = @TotalCash - @TdsAmountFY;
@@ -110,6 +105,7 @@ BEGIN
            @TdsType = CASE WHEN tds_status=0 THEN 'Not Aplicable' WHEN tds_status =1 THEN 'Enable' ELSE 'Disable' END 
     FROM set_tds WHERE Comp_id = @Comp_ID;
 
+
     -- Result 1: Summary info
     SELECT 
         CAST(@EarnAmountFY AS VARCHAR) AS reedemPoint,
@@ -123,13 +119,35 @@ BEGIN
         @PanNumber AS PanNumber;
 
     -- Result 2: Certificates
-    SELECT img_path FROM tds_certificate WHERE M_Consumerid = @M_Consumerid AND Comp_ID = @Comp_ID AND inserted_date BETWEEN @startDate AND @endDate;
+    SELECT img_path FROM tds_certificate WHERE M_Consumerid = @M_Consumerid AND Comp_ID = @Comp_ID;
 
+	select @Comp_ID,@startDate,@endDate
     -- Result 3: History
-    SELECT
+	IF (@Comp_ID = 'Comp-1152')
+    BEGIN
+        SELECT  ID AS TransactionId,
+        CAST((amount_won ) AS DECIMAL(18,2)) AS TotalAmount,
+         TdsAmount,
+        amount_won AS GrossAmount,
+        Status AS TransactionStatus,  
+		CAST(
+        (CAST(TdsAmount AS DECIMAL(18,2)) * 100.0) / 
+        NULLIF(CAST(amount_won AS DECIMAL(18,2)), 0)
+        AS DECIMAL(18,2)
+    ) AS tdsper,
+       -- tdsper,
+        CONVERT(VARCHAR, enquiry_date, 120) AS TransactionDate
+        FROM TBL_M_Star_Codeverification 
+        WHERE  Mobile_Number =  @mobileNo
+          AND Comp_id = @Comp_ID and payStatus = '1'
+          AND enquiry_date BETWEEN @startDate AND @endDate
+    END
+    ELSE
+    BEGIN
+         SELECT
         OrderId AS TransactionId,
         CAST((Amount) AS DECIMAL(18,2)) AS TotalAmount,
-        TdsAmount,
+         TdsAmount,
         Points_Val AS GrossAmount,
         Status AS TransactionStatus,
         tdsper,
@@ -137,17 +155,18 @@ BEGIN
     FROM tblUPITransactionDetails
     WHERE M_ConsumerId = @M_Consumerid AND Comp_ID = @Comp_ID AND CAST(ReqDate AS DATE) BETWEEN @startDate AND @endDate
     ORDER BY ReqDate DESC;
-
-    -- Result 4: Detailed Measures
-    SELECT 'Earn Amount (FY)' AS title, @EarnAmountFY AS TotalCount
-    UNION ALL
-    SELECT 'TDS Amount (FY)', @TdsAmountFY
-    UNION ALL
-    SELECT 'Total Cash (FY)', @TotalCash
-    UNION ALL
-    SELECT 'Transferred Cash (FY)', @TransferredCash
-    UNION ALL
-    SELECT 'Total Points (FY)', @TotalPoints;
+    END
+    --SELECT
+    --    OrderId AS TransactionId,
+    --    CAST((Amount ) AS DECIMAL(18,2)) AS TotalAmount,
+    --     TdsAmount,
+    --    Points_Val AS GrossAmount,
+    --    Status AS TransactionStatus,
+    --    tdsper,
+    --    CONVERT(VARCHAR, ReqDate, 120) AS TransactionDate
+    --FROM tblUPITransactionDetails
+    --WHERE M_ConsumerId = @M_Consumerid AND Comp_ID = @Comp_ID AND CAST(ReqDate AS DATE) BETWEEN @startDate AND @endDate
+    --ORDER BY ReqDate DESC;
 END;
 
-GO
+
