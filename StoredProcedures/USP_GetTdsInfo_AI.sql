@@ -42,7 +42,7 @@ BEGIN
     BEGIN
         SELECT @TotalPoints = COALESCE(SUM(CAST(cash AS INT)), 0)
         FROM ConsumerPointsCashDetails
-        WHERE M_Consumerid = @M_Consumerid;
+        WHERE M_Consumerid = @M_Consumerid AND Enq_Date BETWEEN @startDate AND @endDate;
     END
     ELSE
     BEGIN
@@ -52,13 +52,15 @@ BEGIN
                    (SELECT COALESCE(SUM(CAST(bp2.Points AS INT)), 0)
                     FROM BLoyaltyPointsEarned bp2
                     WHERE bp2.M_Consumerid = @M_Consumerid AND bp2.compid = @Comp_ID AND bp2.ServiceName in ('Referral','KYCRewards')
+                      AND bp2.UpdateDate BETWEEN @startDate AND @endDate
                    ), 0
                )
         FROM BLoyaltyPointsEarned bp
         INNER JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id
         INNER JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
         WHERE bp.M_Consumerid = @M_Consumerid 
-          AND (ms.Comp_ID = @Comp_ID OR (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND ms.Comp_ID IN ('Comp-1650', 'Comp-1567') ));
+          AND (ms.Comp_ID = @Comp_ID OR (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND ms.Comp_ID IN ('Comp-1650', 'Comp-1567') ))
+          AND bp.UpdateDate BETWEEN @startDate AND @endDate;
     END
 
     -- 2. EarnAmountFY and TdsAmountFY and TotalCash
@@ -81,9 +83,9 @@ BEGIN
         WHERE M_Consumerid = @M_Consumerid AND status = 'Success' AND Comp_id = @Comp_ID AND ReqDate BETWEEN @startDate AND @endDate;
         
         IF @Comp_ID = 'Comp-1274'
-            SELECT @TotalCash = ISNULL(SUM(Cash), 0) * 1.10 FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND compid = @Comp_ID;
+            SELECT @TotalCash = ISNULL(SUM(Cash), 0) * 1.10 FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND compid = @Comp_ID AND UpdateDate BETWEEN @startDate AND @endDate;
         ELSE
-            SELECT @TotalCash = ISNULL(SUM(Cash), 0) FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND (compid = @Comp_ID or (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567') ) );
+            SELECT @TotalCash = ISNULL(SUM(Cash), 0) FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND (compid = @Comp_ID or (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567') ) ) AND UpdateDate BETWEEN @startDate AND @endDate;
     END
 
     SET @TransferredCash = @TotalCash - @TdsAmountFY;
@@ -121,19 +123,31 @@ BEGIN
         @PanNumber AS PanNumber;
 
     -- Result 2: Certificates
-    SELECT img_path FROM tds_certificate WHERE M_Consumerid = @M_Consumerid AND Comp_ID = @Comp_ID;
+    SELECT img_path FROM tds_certificate WHERE M_Consumerid = @M_Consumerid AND Comp_ID = @Comp_ID AND inserted_date BETWEEN @startDate AND @endDate;
 
     -- Result 3: History
     SELECT
         OrderId AS TransactionId,
-        CAST((Amount - TdsAmount) AS DECIMAL(18,2)) AS TotalAmount,
+        CAST((Amount) AS DECIMAL(18,2)) AS TotalAmount,
         TdsAmount,
-        Amount AS GrossAmount,
+        Points_Val AS GrossAmount,
         Status AS TransactionStatus,
         tdsper,
         CONVERT(VARCHAR, ReqDate, 120) AS TransactionDate
     FROM tblUPITransactionDetails
     WHERE M_ConsumerId = @M_Consumerid AND Comp_ID = @Comp_ID AND CAST(ReqDate AS DATE) BETWEEN @startDate AND @endDate
     ORDER BY ReqDate DESC;
+
+    -- Result 4: Detailed Measures
+    SELECT 'Earn Amount (FY)' AS title, @EarnAmountFY AS TotalCount
+    UNION ALL
+    SELECT 'TDS Amount (FY)', @TdsAmountFY
+    UNION ALL
+    SELECT 'Total Cash (FY)', @TotalCash
+    UNION ALL
+    SELECT 'Transferred Cash (FY)', @TransferredCash
+    UNION ALL
+    SELECT 'Total Points (FY)', @TotalPoints;
 END;
+
 GO
