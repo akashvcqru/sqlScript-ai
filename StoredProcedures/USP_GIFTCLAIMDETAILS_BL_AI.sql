@@ -51,5 +51,27 @@ BEGIN
 	  and Claim_mode='Manual'  
   and (a.Comp_id = @Comp_id or (@Comp_id IN ('Comp-1650', 'Comp-1567') and a.Comp_id IN ('Comp-1650', 'Comp-1567') ) )   
     
+    UNION ALL
+
+    -- Transaction records for specific companies (e.g., Comp-1152)
+    SELECT 
+        FORMAT(TransactionDate, 'dd MMM yyyy HH:mm tt') AS Date,
+        Amount,
+        Issuccess AS Isapproved,
+        MobileNumber AS Mobileno,
+        TransctionNumber AS Message,
+        'Cash Claim' AS Gift_name,
+        Amount AS Gift_value,
+        '' AS Gift_desc,
+        'SRV1002' AS Service_ID,
+        'Cash Transfer' AS ServiceName,
+        'images/Gift/new/Cash_transfer.png' AS Gift_image,
+        '' AS gift_id,
+        TransactionsId AS claimid
+    FROM [dbo].[Transactions] WITH (NOLOCK)
+    WHERE (MobileNumber = @Mobileno OR RIGHT(MobileNumber, 10) = RIGHT(@Mobileno, 10))
+      AND ('Comp-' + CAST(CompId AS VARCHAR) = @Comp_id OR CAST(CompId AS VARCHAR) = @Comp_id)
+      AND (@Comp_id = 'Comp-1152' OR @Comp_id = '1152')
+    
     ORDER BY claimid DESC      
 END
