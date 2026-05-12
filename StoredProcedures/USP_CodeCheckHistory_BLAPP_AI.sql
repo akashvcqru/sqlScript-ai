@@ -1,6 +1,5 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_CodeCheckHistory_BLAPP_AI]    Script Date: 4/29/2026 10:15:14 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -11,14 +10,48 @@ ALTER PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]
     @M_Consumer_id INT  
 AS  
 BEGIN  
-    WITH EnquiryData AS (  
+    IF @Comp_ID = 'comp-1152' OR @Comp_ID = 'Comp-1152'
+    BEGIN
+        SELECT   
+            CASE   
+                WHEN bl.Is_Success = 1 THEN 'Success'   
+                WHEN bl.Is_Success = 0 THEN 'Invalid'   
+                WHEN bl.Is_Success = 2 THEN 'Unsuccess'
+                ELSE 'Unsuccess'   
+            END AS Status,  
+            bl.Service_ID,
+            FORMAT(bl.UpdateDate, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+            'VCQRU' AS Comp_Name,  
+            'Points' AS Pro_Name,  
+            CONCAT(bl.Code1, bl.Code2) AS [Code],  
+            bl.Code1,  
+            bl.Code2,  
+            bl.MobileNo,
+            @M_Consumer_id AS M_Consumerid,
+            CONCAT('+', bl.points) AS Points,  
+            ms.ServiceName,  
+            ms.ServiceName AS ServiceNameNew,
+            CASE  
+                WHEN bl.Is_Success = 1 THEN 'Green'  
+                WHEN bl.Is_Success = 0 THEN 'Red'  
+                ELSE 'Red'  
+            END AS ColourCode  
+        FROM [dbo].[ConsumerPointsCashDetails] bl
+        LEFT JOIN M_Service ms ON ms.Service_ID = bl.Service_ID
+        WHERE bl.MobileNo = @MobileNo
+        ORDER BY bl.UpdateDate DESC;
+        RETURN;
+    END
+
+    ;WITH EnquiryData AS (  
         SELECT   
             CASE   
                 WHEN pe.Is_Success = 1 THEN 'Success'   
                 WHEN pe.Is_Success = 2 THEN 'Unsuccess'   
                 WHEN pe.Is_Success = 0 THEN 'Invalid'
                 ELSE 'Invalid'   
-            END AS Status,  '' as Service_ID,
+            END AS Status,
+            '' as Service_ID,
             FORMAT(pe.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
             ISNULL(cr.Comp_Name, 'N/A') AS Comp_Name,  
             ISNULL(pr.Pro_Name, 'N/A') AS Pro_Name,  
@@ -58,11 +91,10 @@ BEGIN
             ELSE 'Red'  
         END AS ColourCode  
     FROM ConsumerData t2  
-    INNER JOIN BLoyaltyPointsEarned bl  
-	inner join M_ServiceSubscriptionTrans a on bl.SST_id = a.SST_Id 
-	inner join M_ServiceSubscription b on a.Subscribe_Id = b.Subscribe_Id 
-	inner join M_Service c on b.Service_ID = c.Service_ID
-        ON t2.M_Consumerid = bl.M_Consumerid  
+    INNER JOIN BLoyaltyPointsEarned bl ON t2.M_Consumerid = bl.M_Consumerid
+    INNER JOIN M_ServiceSubscriptionTrans a ON bl.SST_id = a.SST_Id 
+    INNER JOIN M_ServiceSubscription b ON a.Subscribe_Id = b.Subscribe_Id 
+    INNER JOIN M_Service c ON b.Service_ID = c.Service_ID
     WHERE t2.Status = 'Success'  
       AND t2.Code1 = bl.Code1   
       AND t2.Code2 = bl.Code2  
@@ -85,7 +117,8 @@ BEGIN
     UNION  
   
     SELECT   
-        'Success' AS Status,  '' as Service_ID,
+        'Success' AS Status,
+        '' as Service_ID,
         FORMAT(bll.UpdateDate, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
         cr.Comp_Name,  
         '' AS Pro_Name,  
@@ -99,11 +132,11 @@ BEGIN
         bll.ServiceName AS ServiceNameNew,
         'Green' AS ColourCode  
     FROM BLoyaltyPointsEarned bll  
-    INNER JOIN Comp_Reg cr   
-        ON cr.Comp_ID = bll.compid  
+    INNER JOIN Comp_Reg cr ON cr.Comp_ID = bll.compid  
     WHERE bll.M_Consumerid = @M_Consumer_id   
       AND bll.ServiceName = 'Referral'   
       AND bll.compid = @Comp_ID  
   
     ORDER BY Enq_Date DESC;  
 END
+GO

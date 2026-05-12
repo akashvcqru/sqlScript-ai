@@ -42,16 +42,29 @@ BEGIN
             (SELECT ISNULL(SUM(ISNULL(Points_Val, Amount)), 0) 
              FROM tblUPITransactionDetails 
              WHERE RIGHT(Mobileno, 10) = RIGHT(@MobileNo, 10) AND Status IN ('Pending','Success') AND Comp_id = @CompID AND Code2 > 0)
+            +
+            (SELECT ISNULL(SUM(Amount), 0)
+             FROM Transactions WITH (NOLOCK)
+             WHERE IsSuccess = 1
+               AND M_CounserID = @M_Consumerid
+               AND 'Comp-' + CAST(CompId AS VARCHAR) = @CompID
+               AND TransactionDate >= '2022-11-25 00:00:00.000'
+               AND TransactionDate < GETDATE())
         ) as ReedemPoints,
         (SELECT COUNT(pe.Received_Code1) 
          FROM Pro_Enq pe 
          WHERE pe.MobileNo = @MobileNo AND pe.Is_Success = 1) as SuccessCode,
-        (SELECT ISNULL(SUM(TRY_CAST(Cash AS DECIMAL(18,2))), 0) 
-         FROM BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND CompID = @CompID) as TotalCash,
-        (SELECT COALESCE(SUM(TRY_CAST(bp.Points AS DECIMAL(18,2))), 0) 
-         FROM BLoyaltyPointsEarned bp
-         WHERE bp.M_Consumerid = @M_Consumerid 
-           AND (bp.CompID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND bp.CompID IN ('Comp-1650', 'Comp-1567')))) as TotalPoints,
+        CASE 
+            WHEN @CompID = 'comp-1152' OR @CompID = 'Comp-1152' THEN (SELECT ISNULL(SUM(TRY_CAST(cash AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo)
+            ELSE (SELECT ISNULL(SUM(TRY_CAST(Cash AS DECIMAL(18,2))), 0) FROM BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND CompID = @CompID)
+        END as TotalCash,
+        CASE 
+            WHEN @CompID = 'comp-1152' OR @CompID = 'Comp-1152' THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo)
+            ELSE (SELECT COALESCE(SUM(TRY_CAST(bp.Points AS DECIMAL(18,2))), 0) 
+                  FROM BLoyaltyPointsEarned bp
+                  WHERE bp.M_Consumerid = @M_Consumerid 
+                    AND (bp.CompID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND bp.CompID IN ('Comp-1567', 'Comp-1650'))))
+        END as TotalPoints,
         @HasServiceWiseGifts as HasServiceWiseGifts;
 
     -- Result Set 2: Service-Wise Stats
