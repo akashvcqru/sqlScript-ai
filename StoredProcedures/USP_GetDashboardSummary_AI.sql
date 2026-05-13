@@ -19,14 +19,63 @@ BEGIN
 
     IF @MobileNo IS NULL RETURN;
 
-    -- Flag for service-wise gifts presence (User Requirement: gift_clim -> Claim_gift)
+    -- Flag for service-wise gifts presence
     DECLARE @HasServiceWiseGifts BIT = 0;
     IF EXISTS (SELECT 1 FROM Claim_gift WHERE CompID = @CompID AND Service_id IS NOT NULL AND Isdelete = 0)
     BEGIN
         SET @HasServiceWiseGifts = 1;
     END
 
-    -- Result Set 1: Overall Stats + Logic Flag
+    --------------------------------------------------------------------------------
+    -- CTE for precise point calculation from scans
+    --------------------------------------------------------------------------------
+    ;WITH UserScans AS (
+        SELECT 
+            M.Row_ID as M_Codeid,
+            M.Pro_ID,
+            M.Series_Order,
+            M.Series_Serial,
+            ROW_NUMBER() OVER (PARTITION BY PE.Received_Code1, PE.Received_Code2 ORDER BY PE.Enq_Date) as rn
+        FROM Pro_Enq PE WITH (NOLOCK)
+        INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
+        WHERE PE.MobileNo = @MobileNo 
+          AND PE.Is_Success = '1'
+          AND (PE.Comp_ID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND PE.Comp_ID IN ('Comp-1650', 'Comp-1567')))
+    ),
+    ConfiguredPoints AS (
+        SELECT 
+            SS.Service_ID,
+            SUM(CAST(
+                CASE 
+                    WHEN @CompID = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
+                    ELSE ISNULL(SST.Points, 0)
+                END 
+            AS DECIMAL(18,2))) AS ServiceTotalPoints,
+            SUM(CAST(ISNULL(SST.IsCash, 0) AS DECIMAL(18,2))) AS ServiceTotalCash
+        FROM UserScans US
+        INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = US.Pro_ID
+        INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+        WHERE US.rn = 1
+          AND (SS.Comp_ID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND SS.Comp_ID IN ('Comp-1650', 'Comp-1567')))
+          AND SS.IsActive = 1 AND SS.IsDelete = 0
+          AND SST.IsActive = 1 AND SST.IsDelete = 0
+          AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
+          AND CONCAT(FORMAT(US.Series_Order, '000#'), FORMAT(US.Series_Serial, '000#')) 
+              BETWEEN CONCAT(FORMAT(SS.start_order, '000#'), FORMAT(SS.start_series, '000#')) 
+                  AND CONCAT(FORMAT(SS.end_order, '000#'), FORMAT(SS.end_series, '000#'))
+        GROUP BY SS.Service_ID
+    ),
+    ReferralStats AS (
+        SELECT 
+            ISNULL(SUM(CAST(Points AS DECIMAL(18,2))), 0) as RefPoints,
+            ISNULL(SUM(CAST(Cash AS DECIMAL(18,2))), 0) as RefCash
+        FROM BLoyaltyPointsEarned
+        WHERE M_Consumerid = @M_Consumerid 
+          AND (compid = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567')))
+          AND ServiceName IN ('Referral', 'KYCRewards')
+    )
+
+    -- Result Set 1: Overall Stats
     SELECT 
         (SELECT COUNT(pe.Received_Code1) 
          FROM Pro_Enq pe 
@@ -34,7 +83,8 @@ BEGIN
         (SELECT 
             (SELECT ISNULL(SUM(TRY_CAST(RedeemPoints AS INT)), 0) 
              FROM BPointsTransaction WHERE RedeemBy = @M_Consumerid AND bpstatus <> 'FAILURE')
-            +             (SELECT ISNULL(SUM(Amount), 0) 
+            + 
+            (SELECT ISNULL(SUM(Amount), 0) 
               FROM ClaimDetails cl 
               WHERE RIGHT(cl.Mobileno, 10) = RIGHT(@MobileNo, 10) AND cl.Isapproved <> 2
                 AND (cl.Comp_id = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND cl.Comp_ID IN ('Comp-1650', 'Comp-1567'))))
@@ -55,15 +105,12 @@ BEGIN
          FROM Pro_Enq pe 
          WHERE pe.MobileNo = @MobileNo AND pe.Is_Success = 1) as SuccessCode,
         CASE 
-            WHEN @CompID = 'comp-1152' OR @CompID = 'Comp-1152' THEN (SELECT ISNULL(SUM(TRY_CAST(cash AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo)
-            ELSE (SELECT ISNULL(SUM(TRY_CAST(Cash AS DECIMAL(18,2))), 0) FROM BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND CompID = @CompID)
+            WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(cash AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo)
+            ELSE (SELECT ISNULL(SUM(ServiceTotalCash), 0) FROM ConfiguredPoints) + (SELECT RefCash FROM ReferralStats)
         END as TotalCash,
         CASE 
-            WHEN @CompID = 'comp-1152' OR @CompID = 'Comp-1152' THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo)
-            ELSE (SELECT COALESCE(SUM(TRY_CAST(bp.Points AS DECIMAL(18,2))), 0) 
-                  FROM BLoyaltyPointsEarned bp
-                  WHERE bp.M_Consumerid = @M_Consumerid 
-                    AND (bp.CompID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND bp.CompID IN ('Comp-1567', 'Comp-1650'))))
+            WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo)
+            ELSE (SELECT ISNULL(SUM(ServiceTotalPoints), 0) FROM ConfiguredPoints) + (SELECT RefPoints FROM ReferralStats)
         END as TotalPoints,
         @HasServiceWiseGifts as HasServiceWiseGifts;
 
@@ -71,14 +118,21 @@ BEGIN
     SELECT 
         ms.Service_ID,
         ms_name.ServiceName,
-        ISNULL(SUM(TRY_CAST(bp.Points AS DECIMAL(18,2))), 0) as ServiceTotalPoints,
-        ISNULL(SUM(TRY_CAST(bp.Cash AS DECIMAL(18,2))), 0) as ServiceTotalCash
+        ISNULL(cp.ServiceTotalPoints, 0) as ServiceTotalPoints,
+        ISNULL(cp.ServiceTotalCash, 0) as ServiceTotalCash
     FROM M_ServiceSubscription ms
     LEFT JOIN M_Service ms_name ON ms_name.Service_ID = ms.Service_ID
-    LEFT JOIN M_ServiceSubscriptionTrans mss ON ms.Subscribe_Id = mss.Subscribe_Id
-    LEFT JOIN BLoyaltyPointsEarned bp ON bp.M_Consumerid = @M_Consumerid AND bp.SST_Id = mss.SST_Id
+    LEFT JOIN ConfiguredPoints cp ON cp.Service_ID = ms.Service_ID
     WHERE ms.Comp_ID = @CompID AND ms.IsActive = 1
-    GROUP BY ms.Service_ID, ms_name.ServiceName;
+    UNION ALL
+    -- Include Referral/KYC if they have data
+    SELECT 
+        'SRV1000' as Service_ID, -- Generic ID for other rewards
+        'Other Rewards' as ServiceName,
+        RefPoints as ServiceTotalPoints,
+        RefCash as ServiceTotalCash
+    FROM ReferralStats
+    WHERE RefPoints > 0 OR RefCash > 0;
 
     -- Result Set 3: Claim Amounts Service-Wise
     SELECT Service_ID, SUM(ClaimAmount) as ClaimAmount
@@ -101,4 +155,5 @@ BEGIN
     ) t
     GROUP BY Service_ID;
 END
+
 GO
