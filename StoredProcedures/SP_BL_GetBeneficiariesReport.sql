@@ -119,7 +119,7 @@ BEGIN
     ---------------------------------------------------------
     -- CLEAN TEMP TABLES
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Users, #State, #Benefit, #Claims, #UPI, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints;
+    DROP TABLE IF EXISTS #Users, #State, #Benefit, #Claims, #UPI, #BPoints, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints;
 
     ---------------------------------------------------------
     -- USERS + KYC
@@ -294,6 +294,22 @@ BEGIN
     CREATE CLUSTERED INDEX IX_UPI_ConsumerId ON #UPI(M_Consumerid);
 
     ---------------------------------------------------------
+    -- BPOINTS TRANSACTION
+    ---------------------------------------------------------
+    SELECT
+        RedeemBy,
+        SUM(ISNULL(RedeemPoints, 0)) AS BPointsAmount
+    INTO #BPoints
+    FROM BPointsTransaction WITH (NOLOCK)
+    INNER JOIN @CompanyList CL ON companyid = CL.Comp_Id
+    WHERE bpstatus IN ('Accepted', 'SUCCESS')
+      AND (@StartDate IS NULL OR Redeemdate >= @StartDate)
+      AND (@EndDate   IS NULL OR Redeemdate <  @EndDate)
+    GROUP BY RedeemBy;
+
+    CREATE CLUSTERED INDEX IX_BPoints_RedeemBy ON #BPoints(RedeemBy);
+
+    ---------------------------------------------------------
     -- FINAL DATA
     ---------------------------------------------------------
     IF LTRIM(RTRIM(ISNULL(@KYCStatusFilter, ''))) = '' OR @KYCStatusFilter = 'null' SET @KYCStatusFilter = NULL;
@@ -308,8 +324,8 @@ BEGIN
         U.PinCode,
         U.KYCStatus,
         ISNULL(B.Benefit,0) AS PointsEarned,
-        ISNULL(C.ClaimsAmount,0) + ISNULL(UU.UPIAmount,0) AS RedeemAmount,
-        ISNULL(B.Benefit,0) - (ISNULL(C.ClaimsAmount,0) + ISNULL(UU.UPIAmount,0)) AS BalanceAmount,
+        ISNULL(C.ClaimsAmount,0) + ISNULL(UU.UPIAmount,0) + ISNULL(BP.BPointsAmount,0) AS RedeemAmount,
+        ISNULL(B.Benefit,0) - (ISNULL(C.ClaimsAmount,0) + ISNULL(UU.UPIAmount,0) + ISNULL(BP.BPointsAmount,0)) AS BalanceAmount,
         ISNULL(C.TDSAmount,0) AS TDSAmount,
         B.LastScan,
         ROW_NUMBER() OVER (ORDER BY ISNULL(B.Benefit,0) DESC, U.M_ConsumerId) AS RN
@@ -319,6 +335,7 @@ BEGIN
     LEFT JOIN #Benefit B  ON B.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #Claims  C  ON C.Mobileno     = U.MobileNo
     LEFT JOIN #UPI     UU ON UU.M_Consumerid = CAST(U.M_ConsumerId AS VARCHAR(50))
+    LEFT JOIN #BPoints BP ON BP.RedeemBy    = U.M_ConsumerId
     WHERE
         (@StateFilter IS NULL OR ISNULL(S.State, U.State) = @StateFilter)
         AND (
