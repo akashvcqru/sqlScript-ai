@@ -1,11 +1,17 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 5/13/2026 11:02:04 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
--- Description: Consolidated dashboard summary for multi-user dashboard.
--- Optimized to return overall stats, service-wise stats, and claims in ONE call.
--- Incorporates check for service-wise gift existence.
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
+
+
+
+
+
+
+ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
     @CompID VARCHAR(50)
@@ -42,9 +48,10 @@ BEGIN
     INTO #UserScans
     FROM Pro_Enq PE WITH (NOLOCK)
     INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
+	inner join Pro_Reg pr on pr.Pro_ID = M.Pro_ID
     WHERE PE.MobileNo = @MobileNo 
       AND PE.Is_Success = '1'
-      AND (PE.Comp_ID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND PE.Comp_ID IN ('Comp-1650', 'Comp-1567')));
+      AND (pr.Comp_ID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND pr.Comp_ID IN ('Comp-1650', 'Comp-1567')));
 
     SELECT 
         SS.Service_ID,
@@ -61,8 +68,8 @@ BEGIN
     INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
     WHERE US.rn = 1
       AND (SS.Comp_ID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND SS.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-      AND SS.IsActive = 1 AND SS.IsDelete = 0
       AND SST.IsActive = 1 AND SST.IsDelete = 0
+      AND SS.IsActive = 1 AND SS.IsDelete = 0
       AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
       AND CONCAT(FORMAT(US.Series_Order, '000#'), FORMAT(US.Series_Serial, '000#')) 
           BETWEEN CONCAT(FORMAT(SS.start_order, '000#'), FORMAT(SS.start_series, '000#')) 
@@ -159,4 +166,3 @@ BEGIN
     GROUP BY Service_ID;
 END
 
-GO
