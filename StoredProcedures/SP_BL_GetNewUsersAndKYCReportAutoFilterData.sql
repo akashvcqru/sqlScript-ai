@@ -179,6 +179,11 @@ BEGIN
             ELSE ''KYC Pending''
         END AS KYCStatus,
 
+        -- KYC channel-wise statuses
+        MC.panekycStatus,
+        MC.aadharkycStatus,
+        MC.bankekycStatus,
+
         MC.dob,
         MC.aadharNumber,
         MC.pancard_number,

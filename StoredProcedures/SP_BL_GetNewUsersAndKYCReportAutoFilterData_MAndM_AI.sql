@@ -9,7 +9,7 @@ GO
 -- Create date: 08-05-2026
 -- Description:	Get New Users and KYC Report for Mahindra & Mahindra (M&M) Dashboard
 -- =============================================
-CREATE PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData_MAndM_AI]
+ALTER PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData_MAndM_AI]
     @Comp_Id VARCHAR(15),
     @datePreset NVARCHAR(20) = NULL ,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
     @FromDate DATE = NULL,              
@@ -183,6 +183,11 @@ BEGIN
             WHEN VKS.VRKbl_KYC_status = 2 THEN ''KYC Rejected''
             ELSE ''KYC Pending''
         END AS KYCStatus,
+
+        -- KYC channel-wise statuses
+        MC.panekycStatus,
+        MC.aadharkycStatus,
+        MC.bankekycStatus,
 
         MC.dob,
         MC.aadharNumber,
