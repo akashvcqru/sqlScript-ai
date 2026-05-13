@@ -88,8 +88,7 @@ BEGIN
             ELSE IF (@Service_ID = 'SRV1005')  
             BEGIN  
                 UPDATE BLoyaltyPointsEarned 
-                SET Cash = ISNULL(Cash, 0) + @IsCash, 
-                    ServiceName = CASE WHEN ServiceName IS NULL OR ServiceName = '' THEN 'cash' ELSE ServiceName END 
+                SET ServiceName = 'cash' 
                 WHERE BLoyalty_PointEarnedID = @BLoyalty_PointEarnedID;  
             END  
   

@@ -37,7 +37,7 @@ END AS User_Type
  AS Vrkabel_User_Type
 
  from M_Consumer m    
- left join tbl_Vendorvisekycstatus v on v.M_consumerId=m.M_Consumerid
+ left join tbl_Vendorvisekycstatus v on v.M_consumerId=m.M_Consumerid AND v.Comp_id = @Comp_Id
  left join User_Type u on v.Vrkabel_User_Type=u.Row_ID    
  left join User_Type k on m.Vrkabel_User_Type=k.Row_ID    
  left join Profile_images pic on pic.m_consumerid=m.M_Consumerid  
