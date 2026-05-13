@@ -188,37 +188,28 @@ BEGIN
         Email        = CASE WHEN @Email IS NOT NULL AND LTRIM(RTRIM(@Email)) <> '' THEN @Email ELSE Email END,      
         UPIId        = CASE WHEN @UPI IS NOT NULL AND LTRIM(RTRIM(@UPI)) <> '' THEN @UPI ELSE UPIId END,      
         Address      = CASE WHEN @Address IS NOT NULL AND LTRIM(RTRIM(@Address)) <> '' THEN @Address ELSE Address END,
-        DOB          = CASE WHEN @Vr_dob IS NOT NULL AND LTRIM(RTRIM(@Vr_dob)) <> '' THEN @Vr_dob ELSE DOB END
+        DOB          = CASE WHEN @Vr_dob IS NOT NULL AND LTRIM(RTRIM(@Vr_dob)) <> '' THEN @Vr_dob ELSE DOB END,
+        employeeID   = CASE WHEN @employeeID IS NOT NULL AND LTRIM(RTRIM(@employeeID)) <> '' THEN @employeeID ELSE employeeID END,
+        distributorID = CASE WHEN @distributorID IS NOT NULL AND LTRIM(RTRIM(@distributorID)) <> '' THEN @distributorID ELSE distributorID END
     WHERE       
         @M_ConsumerId IS NOT NULL AND LTRIM(RTRIM(@M_ConsumerId)) <> '' AND M_Consumerid = @M_ConsumerId;      
 
-    IF (@Comp_id = 'Comp-1152')
-    BEGIN
-        UPDATE M_Consumer
-        SET 
-            employeeID = @Outlet_name,
-            distributorID = @Owner_name
-        WHERE 
-            @M_ConsumerId IS NOT NULL 
-            AND LTRIM(RTRIM(@M_ConsumerId)) <> '' 
-            AND M_Consumerid = @M_ConsumerId;
-    END
 
     UPDATE tbl_Vendorvisekycstatus          
     SET             
-        Name = @ConsumerName,            
-        EmailId = @Email,            
-        usercity = @City,            
-        userpin = @PinCode,            
-        userstate = @state,            
-        Vrkabel_User_Type=@Vrkabel_User_Type,          
-        userupi = @UPI,            
-        Segmanet_name=@Segmanet_name,      
-        Outlet_name=@Outlet_name,      
-        Owner_name=@Owner_name,      
-        Branddetails=@Branddetails,    
-        Dealer_M_consumerid=@Dealer_M_consumerid,  
-        shop_file=@shop_file  
+        Name = CASE WHEN @ConsumerName IS NOT NULL AND LTRIM(RTRIM(@ConsumerName)) <> '' THEN @ConsumerName ELSE Name END,            
+        EmailId = CASE WHEN @Email IS NOT NULL AND LTRIM(RTRIM(@Email)) <> '' THEN @Email ELSE EmailId END,            
+        usercity = CASE WHEN @City IS NOT NULL AND LTRIM(RTRIM(@City)) <> '' THEN @City ELSE usercity END,            
+        userpin = CASE WHEN @PinCode IS NOT NULL AND LTRIM(RTRIM(@PinCode)) <> '' THEN @PinCode ELSE userpin END,            
+        userstate = CASE WHEN @state IS NOT NULL AND LTRIM(RTRIM(@state)) <> '' THEN @state ELSE userstate END,            
+        Vrkabel_User_Type = CASE WHEN @Vrkabel_User_Type IS NOT NULL THEN @Vrkabel_User_Type ELSE Vrkabel_User_Type END,          
+        userupi = CASE WHEN @UPI IS NOT NULL AND LTRIM(RTRIM(@UPI)) <> '' THEN @UPI ELSE userupi END,            
+        Segmanet_name = CASE WHEN @Segmanet_name IS NOT NULL AND LTRIM(RTRIM(@Segmanet_name)) <> '' THEN @Segmanet_name ELSE Segmanet_name END,      
+        Outlet_name = CASE WHEN @Outlet_name IS NOT NULL AND LTRIM(RTRIM(@Outlet_name)) <> '' THEN @Outlet_name ELSE Outlet_name END,      
+        Owner_name = CASE WHEN @Owner_name IS NOT NULL AND LTRIM(RTRIM(@Owner_name)) <> '' THEN @Owner_name ELSE Owner_name END,      
+        Branddetails = CASE WHEN @Branddetails IS NOT NULL AND LTRIM(RTRIM(@Branddetails)) <> '' THEN @Branddetails ELSE Branddetails END,    
+        Dealer_M_consumerid = CASE WHEN @Dealer_M_consumerid IS NOT NULL AND LTRIM(RTRIM(@Dealer_M_consumerid)) <> '' THEN @Dealer_M_consumerid ELSE Dealer_M_consumerid END,  
+        shop_file = CASE WHEN @shop_file IS NOT NULL AND LTRIM(RTRIM(@shop_file)) <> '' THEN @shop_file ELSE shop_file END  
     WHERE M_Consumerid = @M_ConsumerId;            
             
     SELECT * FROM [M_Consumer] WHERE M_Consumerid = @M_ConsumerId;
