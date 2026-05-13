@@ -180,9 +180,9 @@ BEGIN
         END AS KYCStatus,
 
         -- KYC channel-wise statuses
-        MC.panekycStatus,
-        MC.aadharkycStatus,
-        MC.bankekycStatus,
+        ISNULL(MC.panekycStatus, '''') AS panekycStatus,
+        ISNULL(MC.aadharkycStatus, '''') AS aadharkycStatus,
+        ISNULL(MC.bankekycStatus, '''') AS bankekycStatus,
 
         MC.dob,
         MC.aadharNumber,
