@@ -43,7 +43,7 @@ BEGIN
 	,'BENEFICIARY BANK IS DOWN',
 	'Beneficiary Bank is not responding, try again later'
 	,'TRANSACTION TYPE NOT SUPPORTED'
-	) and LEN(Code1)=5 and LEN(Code1)=8
+	) and LEN(Code1)=5 and LEN(Code2)=8
 	and Comp_Id=@Comp_ID
       AND ReqDate >'2026-05-10 00:00:17.100'
 	   ORDER BY Id ASC;
