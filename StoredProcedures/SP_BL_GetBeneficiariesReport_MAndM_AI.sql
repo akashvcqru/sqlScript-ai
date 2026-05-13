@@ -91,7 +91,7 @@ BEGIN
     ---------------------------------------------------------
     -- CLEAN TEMP TABLES
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Users, #State, #Benefit, #Claims, #UPI, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints;
+    DROP TABLE IF EXISTS #Users, #State, #Benefit, #Claims, #UPI, #BPoints, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints;
 
     ---------------------------------------------------------
     -- USERS + KYC
@@ -175,6 +175,20 @@ BEGIN
     GROUP BY M_Consumerid;
 
     ---------------------------------------------------------
+    -- BPOINTS TRANSACTION
+    ---------------------------------------------------------
+    SELECT
+        RedeemBy,
+        SUM(ISNULL(RedeemPoints, 0)) AS BPointsAmount
+    INTO #BPoints
+    FROM BPointsTransaction WITH (NOLOCK)
+    WHERE companyid = @Comp_Id
+      AND bpstatus IN ('Accepted', 'SUCCESS')
+      AND (@StartDate IS NULL OR Redeemdate >= @StartDate)
+      AND (@EndDate   IS NULL OR Redeemdate <  @EndDate)
+    GROUP BY RedeemBy;
+
+    ---------------------------------------------------------
     -- FINAL DATA
     ---------------------------------------------------------
     SELECT
@@ -185,8 +199,8 @@ BEGIN
         U.PinCode,
         U.KYCStatus,
         ISNULL(B.Benefit, 0) AS PointsEarned,
-        ISNULL(C.ClaimsAmount, 0) + ISNULL(UU.UPIAmount, 0) AS RedeemAmount,
-        ISNULL(B.Benefit, 0) - (ISNULL(C.ClaimsAmount, 0) + ISNULL(UU.UPIAmount, 0)) AS BalanceAmount,
+        ISNULL(C.ClaimsAmount, 0) + ISNULL(UU.UPIAmount, 0) + ISNULL(BP.BPointsAmount, 0) AS RedeemAmount,
+        ISNULL(B.Benefit, 0) - (ISNULL(C.ClaimsAmount, 0) + ISNULL(UU.UPIAmount, 0) + ISNULL(BP.BPointsAmount, 0)) AS BalanceAmount,
         ISNULL(C.TDSAmount, 0) AS TDSAmount,
         B.LastScan,
         ROW_NUMBER() OVER (ORDER BY ISNULL(B.Benefit, 0) DESC) AS RN
@@ -196,6 +210,7 @@ BEGIN
     LEFT JOIN #Benefit B ON B.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #Claims C ON C.Mobileno = U.MobileNo
     LEFT JOIN #UPI UU ON UU.M_Consumerid = CAST(U.M_ConsumerId AS VARCHAR(50))
+    LEFT JOIN #BPoints BP ON BP.RedeemBy = U.M_ConsumerId
     WHERE
         (@StateFilter IS NULL OR ISNULL(S.State, U.State) = @StateFilter)
         AND (@KYCStatusFilter IS NULL OR U.KYCStatus = @KYCStatusFilter)
