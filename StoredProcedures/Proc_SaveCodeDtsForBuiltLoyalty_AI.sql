@@ -76,6 +76,10 @@ BEGIN
 
             INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Points, Cash, ServiceName)  
             VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @Points, @IsCash, @Service_ID);  
+
+            UPDATE [dbo].[ConsumerPointsCashDetails]
+            SET Points = @Points, Cash = @IsCash
+            WHERE PE_ID = @intM_Consumer_MCode;
   
             SET @BLoyalty_PointEarnedID = SCOPE_IDENTITY();  
   
