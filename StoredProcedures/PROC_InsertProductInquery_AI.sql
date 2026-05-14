@@ -238,5 +238,6 @@ BEGIN
 END
   
 SELECT @M_Consumerid =M_Consumerid FROM [M_Consumer] where [MobileNo] = @MobileNo  
+SELECT ISNULL(@scp, 0) AS Row_ID;
 END
 GO
