@@ -42,7 +42,6 @@ BEGIN
     DECLARE @SerialFrom INT;
     DECLARE @SerialTo INT;
     DECLARE @NewBatchRowId NUMERIC(20, 0);
-    DECLARE @NewBatchKey VARCHAR(50);
 
     BEGIN TRY
         -- 1. Parse Serial Codes
@@ -150,16 +149,20 @@ BEGIN
         );
 
         SET @NewBatchRowId = SCOPE_IDENTITY();
-        SET @NewBatchKey = CAST(@NewBatchRowId AS VARCHAR(50));
 
         -- 4. Update M_Code records
         DECLARE @OldBatchIDs TABLE (Batch_No NVARCHAR(50));
+        INSERT INTO @OldBatchIDs
+        SELECT DISTINCT Batch_No 
+        FROM M_Code 
+        WHERE Pro_ID = @OrigProId 
+          AND Series_Order = @SeriesOrder 
+          AND Series_Serial >= @SerialFrom 
+          AND Series_Serial <= @SerialTo;
 
-        -- Single pass: update codes and capture former Batch_No values (avoids a duplicate scan of M_Code).
         UPDATE M_Code
         SET Pro_ID = @TargetProId,
             Batch_No = CAST(@NewBatchRowId AS NVARCHAR(50))
-        OUTPUT deleted.Batch_No INTO @OldBatchIDs (Batch_No)
         WHERE Pro_ID = @OrigProId 
           AND Series_Order = @SeriesOrder 
           AND Series_Serial >= @SerialFrom 
@@ -202,68 +205,95 @@ BEGIN
             @ToSeriesSerial
         );
 
-        -- 6. Refresh Series_Limit (same rules as UpdateM_codeByBatch_No, inlined to avoid N+1 proc calls and repeated full scans).
-        UPDATE [dbo].[T_Pro]
-        SET [Series_Limit] = (
-            (SELECT TOP 1 'From  ' + pro_id + '-' + 
-                (CASE WHEN LEN(CONVERT(NVARCHAR, [Series_Order])) = 1 THEN '0' + CONVERT(NVARCHAR, [Series_Order]) ELSE CONVERT(NVARCHAR, [Series_Order]) END) + '-' +
-                (CASE 
-                    WHEN LEN(CONVERT(NVARCHAR, [Series_Serial])) = 1 THEN '000' + CONVERT(NVARCHAR, [Series_Serial]) 
-                    WHEN LEN(CONVERT(NVARCHAR, [Series_Serial])) = 2 THEN '00' + CONVERT(NVARCHAR, [Series_Serial]) 
-                    WHEN LEN(CONVERT(NVARCHAR, [Series_Serial])) = 3 THEN '0' + CONVERT(NVARCHAR, [Series_Serial]) 
-                    ELSE CONVERT(NVARCHAR, [Series_Serial]) 
-                END)
-             FROM [M_Code] 
-             WHERE print_status = 1 AND pro_id = @TargetProId AND Batch_no = @NewBatchKey
-             ORDER BY [Series_Order], [Series_Serial]) 
-            + '   ' +
-            (SELECT TOP 1 'To  ' + pro_id + '-' + 
-                (CASE WHEN LEN(CONVERT(NVARCHAR, [Series_Order])) = 1 THEN '0' + CONVERT(NVARCHAR, [Series_Order]) ELSE CONVERT(NVARCHAR, [Series_Order]) END) + '-' +
-                (CASE 
-                    WHEN LEN(CONVERT(NVARCHAR, [Series_Serial])) = 1 THEN '000' + CONVERT(NVARCHAR, [Series_Serial]) 
-                    WHEN LEN(CONVERT(NVARCHAR, [Series_Serial])) = 2 THEN '00' + CONVERT(NVARCHAR, [Series_Serial]) 
-                    WHEN LEN(CONVERT(NVARCHAR, [Series_Serial])) = 3 THEN '0' + CONVERT(NVARCHAR, [Series_Serial]) 
-                    ELSE CONVERT(NVARCHAR, [Series_Serial]) 
-                END)
-             FROM [M_Code] 
-             WHERE print_status = 1 AND pro_id = @TargetProId AND Batch_no = @NewBatchKey
-             ORDER BY [Series_Order] DESC, [Series_Serial] DESC)
-        )
-        WHERE Row_ID = @NewBatchRowId;
+        -- 5b. Create entries in M_ServiceSubscription and M_ServiceSubscriptionTrans if target product has a subscription
+        DECLARE @LastSubscribeId NVARCHAR(50);
+        SELECT TOP 1 @LastSubscribeId = Subscribe_Id
+        FROM M_ServiceSubscription WITH (NOLOCK)
+        WHERE Pro_ID = @TargetProId
+        ORDER BY EntryDate DESC, Subscribe_Id DESC;
 
-        UPDATE tp
-        SET tp.[Series_Limit] = (fr.from_part + '   ' + fr.to_part)
-        FROM [dbo].[T_Pro] AS tp
-        INNER JOIN (
-            SELECT DISTINCT ob.Batch_No AS bn
-            FROM @OldBatchIDs AS ob
-            WHERE ob.Batch_No IS NOT NULL
-        ) AS batches ON CAST(tp.Row_ID AS NVARCHAR(50)) = batches.bn
-        CROSS APPLY (
-            SELECT 
-                (SELECT TOP 1 'From  ' + c.pro_id + '-' + 
-                    (CASE WHEN LEN(CONVERT(NVARCHAR, c.[Series_Order])) = 1 THEN '0' + CONVERT(NVARCHAR, c.[Series_Order]) ELSE CONVERT(NVARCHAR, c.[Series_Order]) END) + '-' +
-                    (CASE 
-                        WHEN LEN(CONVERT(NVARCHAR, c.[Series_Serial])) = 1 THEN '000' + CONVERT(NVARCHAR, c.[Series_Serial]) 
-                        WHEN LEN(CONVERT(NVARCHAR, c.[Series_Serial])) = 2 THEN '00' + CONVERT(NVARCHAR, c.[Series_Serial]) 
-                        WHEN LEN(CONVERT(NVARCHAR, c.[Series_Serial])) = 3 THEN '0' + CONVERT(NVARCHAR, c.[Series_Serial]) 
-                        ELSE CONVERT(NVARCHAR, c.[Series_Serial]) 
-                    END)
-                 FROM [M_Code] AS c
-                 WHERE c.print_status = 1 AND c.pro_id = @OrigProId AND c.Batch_no = batches.bn
-                 ORDER BY c.[Series_Order], c.[Series_Serial]) AS from_part,
-                (SELECT TOP 1 'To  ' + c.pro_id + '-' + 
-                    (CASE WHEN LEN(CONVERT(NVARCHAR, c.[Series_Order])) = 1 THEN '0' + CONVERT(NVARCHAR, c.[Series_Order]) ELSE CONVERT(NVARCHAR, c.[Series_Order]) END) + '-' +
-                    (CASE 
-                        WHEN LEN(CONVERT(NVARCHAR, c.[Series_Serial])) = 1 THEN '000' + CONVERT(NVARCHAR, c.[Series_Serial]) 
-                        WHEN LEN(CONVERT(NVARCHAR, c.[Series_Serial])) = 2 THEN '00' + CONVERT(NVARCHAR, c.[Series_Serial]) 
-                        WHEN LEN(CONVERT(NVARCHAR, c.[Series_Serial])) = 3 THEN '0' + CONVERT(NVARCHAR, c.[Series_Serial]) 
-                        ELSE CONVERT(NVARCHAR, c.[Series_Serial]) 
-                    END)
-                 FROM [M_Code] AS c
-                 WHERE c.print_status = 1 AND c.pro_id = @OrigProId AND c.Batch_no = batches.bn
-                 ORDER BY c.[Series_Order] DESC, c.[Series_Serial] DESC) AS to_part
-        ) AS fr;
+        IF @LastSubscribeId IS NOT NULL
+        BEGIN
+            DECLARE @NewSubscribeId NVARCHAR(50);
+            DECLARE @Prefix NVARCHAR(10);
+            DECLARE @StartVal BIGINT;
+
+            WHILE 1 = 1
+            BEGIN
+                SELECT TOP 1 @Prefix = PrPrefix, @StartVal = CAST(PrStart AS BIGINT)
+                FROM Code_Gen WITH (UPDLOCK, HOLDLOCK)
+                WHERE PrPrefix = 'SSI';
+
+                SET @NewSubscribeId = CONCAT(@Prefix, CAST(@StartVal AS NVARCHAR(50)));
+
+                -- Check if Subscribe_Id already exists in M_ServiceSubscriptiontrans or M_ServiceSubscription
+                IF EXISTS (SELECT 1 FROM M_ServiceSubscriptiontrans WITH (NOLOCK) WHERE Subscribe_Id = @NewSubscribeId)
+                   OR EXISTS (SELECT 1 FROM M_ServiceSubscription WITH (NOLOCK) WHERE Subscribe_Id = @NewSubscribeId)
+                BEGIN
+                    UPDATE Code_Gen
+                    SET PrStart = CAST((@StartVal + 1) AS NVARCHAR(50))
+                    WHERE PrPrefix = 'SSI';
+                END
+                ELSE
+                BEGIN
+                    BREAK;
+                END
+            END
+
+            -- Insert into M_ServiceSubscription replicating the last record of target product
+            INSERT INTO [dbo].[M_ServiceSubscription] (
+                [Subscribe_Id], [Service_ID], [Comp_ID], [Pro_ID], [Plan_ID], [PlanName],
+                [PlanMasterPeriod], [PlanSalePeriod], [PlanMasterPrice], [PlanSalePrice],
+                [DateFrom], [DateTo], [EntryDate], [IsActive], [IsDelete], [IsAdminVerify],
+                [TransType], [start_order], [start_series], [end_order], [end_series]
+            )
+            SELECT TOP 1
+                @NewSubscribeId, [Service_ID], [Comp_ID], [Pro_ID], [Plan_ID], [PlanName],
+                [PlanMasterPeriod], [PlanSalePeriod], [PlanMasterPrice], [PlanSalePrice],
+                [DateFrom], [DateTo], GETDATE(), [IsActive], [IsDelete], [IsAdminVerify],
+                [TransType], @SeriesOrder, @SerialFrom, @SeriesOrder, @SerialTo
+            FROM [dbo].[M_ServiceSubscription] WITH (NOLOCK)
+            WHERE Pro_ID = @TargetProId
+            ORDER BY EntryDate DESC, Subscribe_Id DESC;
+
+            -- Insert into M_ServiceSubscriptiontrans replicating the configuration of the last subscription
+            INSERT INTO [dbo].[M_ServiceSubscriptionTrans] (
+                [Subscribe_Id], [Points], [IsCashConvert], [IsCash], [DateFrom], [DateTo],
+                [Entry_Date], [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
+                [IsActive], [IsDelete], [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
+                [AmtType], [Minval], [Maxval], [totalamont]
+            )
+            SELECT TOP 1
+                @NewSubscribeId, @Point, [IsCashConvert], [IsCash], [DateFrom], [DateTo],
+                GETDATE(), [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
+                [IsActive], [IsDelete], [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
+                [AmtType], [Minval], [Maxval], [totalamont]
+            FROM [dbo].[M_ServiceSubscriptionTrans] WITH (NOLOCK)
+            WHERE Subscribe_Id = @LastSubscribeId
+            ORDER BY SST_Id DESC;
+
+            -- After creating record in this table, then +1 increment PrStart value
+            UPDATE Code_Gen
+            SET PrStart = CAST((CAST(PrStart AS BIGINT) + 1) AS NVARCHAR(50))
+            WHERE PrPrefix = 'SSI';
+        END
+
+        -- 6. Update Series_Limit summaries
+        EXEC [dbo].[UpdateM_codeByBatch_No] @Row_ID = @NewBatchRowId, @pro_id = @TargetProId;
+
+        DECLARE @BatchID NVARCHAR(50);
+        DECLARE @BatchProId NVARCHAR(50) = @OrigProId;
+        
+        DECLARE batch_cursor CURSOR FOR SELECT Batch_No FROM @OldBatchIDs WHERE Batch_No IS NOT NULL;
+        OPEN batch_cursor;
+        FETCH NEXT FROM batch_cursor INTO @BatchID;
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            EXEC [dbo].[UpdateM_codeByBatch_No] @Row_ID = @BatchID, @pro_id = @BatchProId;
+            FETCH NEXT FROM batch_cursor INTO @BatchID;
+        END
+        CLOSE batch_cursor;
+        DEALLOCATE batch_cursor;
 
         COMMIT TRANSACTION;
 
