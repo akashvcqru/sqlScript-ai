@@ -203,7 +203,7 @@ FROM
         MC.M_Consumerid
     FROM tbl_Vendorvisekycstatus VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
-	LEFT JOIN TempDealerMaster TD ON MC.employeeID=TD.DealerTechnicianId AND MC.distributorID=TD.DealerCode
+	LEFT JOIN #TempDealerMaster TD ON MC.employeeID=TD.DealerTechnicianId AND MC.distributorID=TD.DealerCode
     OUTER APPLY (
         SELECT TOP 1 *
         FROM M_BankAccount MB
