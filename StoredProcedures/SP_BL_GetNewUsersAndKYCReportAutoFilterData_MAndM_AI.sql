@@ -153,31 +153,11 @@ BEGIN
     SELECT
         MC.ConsumerName,
         MC.MobileNo,
-        MC.Email,
         MC.City,
-        MC.cin_number,
-        MC.ref_cin_number,
         MC.PinCode,
         MC.[State] AS state,
-        MC.Other_Role,
 
-        -- Determine User Type based on Vrkabel_User_Type
-        CASE
-            WHEN MC.Vrkabel_User_Type = ''1'' THEN ''Agent''
-            WHEN MC.Vrkabel_User_Type = ''2'' THEN ''Distributor''
-            WHEN MC.Vrkabel_User_Type = ''3'' THEN ''Mechanic''
-            ELSE ''Unknown''
-        END AS Vrkabel_User_Type,
-
-        -- Determine KYC Status
-        CASE 
-            WHEN VKS.VRKbl_KYC_status = 1 THEN ''Approved''
-            WHEN VKS.VRKbl_KYC_status = 2 THEN ''Rejected''
-            WHEN VKS.VRKbl_KYC_status = 3 THEN ''Send Request again''
-            ELSE ''Pending''
-        END AS VRKbl_KYC_status,
-
-        -- Legacy KYCStatus for compatibility
+        -- KYC Status
         CASE 
             WHEN VKS.VRKbl_KYC_status = 1 THEN ''KYC Approved''
             WHEN VKS.VRKbl_KYC_status = 2 THEN ''KYC Rejected''
@@ -189,18 +169,14 @@ BEGIN
         CASE WHEN MC.aadharkycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.aadharkycStatus, '''') END AS aadharkycStatus,
         CASE WHEN MC.bankekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
-        MC.dob,
-        MC.aadharNumber,
         MC.pancard_number,
-        MC.gst_number,
-        MC.gender,
-        MC.aadharFile,
-        MC.aadharback,
-        MC.pan_card_file,
-        MC.shop_file,
-        MC.AddressProof,
-        VKS.kycremark AS remark,
-        VKS.kycremark, -- Keep original name too
+        VKS.kycremark,
+
+        -- Mahindra Specific Fields
+        MC.employeeID AS techmasterID,
+        MC.MstarID,
+        MC.distributorID AS Dealercode,
+        MC.designation AS Designation,
 
         -- Bank Information (Latest Bank Record)
         MB.[Bank_Name] AS bankName,
@@ -208,18 +184,8 @@ BEGIN
         MB.Account_No,
         MB.Branch,
         MB.IFSC_Code,
-        MB.passbook_source AS passBook,
-        MB.chkPassbook,
-
-        -- Shop Information (Workplace Address)
-        MC.Shop_address AS Workplacestate,
 
         -- Additional Details
-        MC.UPIId,
-        MC.UpiidImage,
-        MC.Selfie_image,
-        MC.UPIKYCSTATUS,
-        MC.teslapayoutmode,
         VKS.Entry_Date,
         MC.M_Consumerid
     FROM tbl_Vendorvisekycstatus VKS
