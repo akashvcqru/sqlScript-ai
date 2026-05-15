@@ -118,6 +118,18 @@ BEGIN
         END
     END
 
+	IF OBJECT_ID('tempdb..#TempDealerMaster') IS NOT NULL
+    DROP TABLE #TempDealerMaster;
+	SELECT 
+    DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType
+INTO #TempDealerMaster
+FROM
+(
+    SELECT  DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType FROM m_dealermaster where Comp_id=@Comp_Id and DealerCode !='SBUTEAM'
+    UNION
+    SELECT  DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType FROM m_dealermaster_mahindra_emp where Comp_id=@Comp_Id
+) AS A;
+
 
     ------------------------------------------------------
     -- Base WHERE clause
@@ -149,14 +161,15 @@ BEGIN
     ------------------------------------------------------
     -- Data Query
     ------------------------------------------------------
+ 
     DECLARE @SQLData NVARCHAR(MAX) = N'
     SELECT
         MC.ConsumerName,
         MC.MobileNo,
         MC.City,
         MC.PinCode,
-        MC.[State] AS state,
-
+        TD.D_state AS state,
+		TD.DealerLocation, TD.DealerType,
         -- KYC Status
         CASE 
             WHEN VKS.VRKbl_KYC_status = 1 THEN ''KYC Approved''
@@ -190,6 +203,7 @@ BEGIN
         MC.M_Consumerid
     FROM tbl_Vendorvisekycstatus VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
+	LEFT JOIN TempDealerMaster TD ON MC.employeeID=TD.DealerTechnicianId AND MC.distributorID=TD.DealerCode
     OUTER APPLY (
         SELECT TOP 1 *
         FROM M_BankAccount MB
