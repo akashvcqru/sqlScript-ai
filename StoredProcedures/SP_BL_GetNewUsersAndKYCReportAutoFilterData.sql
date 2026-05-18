@@ -176,7 +176,6 @@ BEGIN
         CASE WHEN MC.panekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.panekycStatus, '''') END AS panekycStatus,
         CASE WHEN MC.bankekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
-        MC.dob,
         MC.pancard_number,
         MC.gst_number,
         MC.gender,
@@ -197,10 +196,7 @@ BEGIN
 
         -- Additional Details
         MC.UPIId,
-        MC.UpiidImage,
         MC.Selfie_image,
-        MC.UPIKYCSTATUS,
-        MC.teslapayoutmode,
         VKS.Entry_Date,
         MC.M_Consumerid
     FROM tbl_Vendorvisekycstatus VKS
