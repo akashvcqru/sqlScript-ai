@@ -1,4 +1,6 @@
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]    Script Date: 3/2/2026 12:27:18 PM ******/
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]    Script Date: 5/18/2026 2:19:50 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -28,6 +30,26 @@ BEGIN
     IF @IsExport IS NULL SET @IsExport = 0;
 
     DECLARE @Offset INT = (@Page - 1) * @Limit;
+
+    ------------------------------------------------------
+    -- Fetch Brand Settings for KYC Requirements
+    ------------------------------------------------------
+    DECLARE @AadharReq VARCHAR(10) = 'No';
+    DECLARE @PanReq VARCHAR(10) = 'No';
+    DECLARE @BankReq VARCHAR(10) = 'No';
+    DECLARE @UpiReq VARCHAR(10) = 'No';
+    DECLARE @kyc_Details NVARCHAR(MAX);
+
+    SELECT TOP 1 @kyc_Details = kyc_Details FROM BrandSettings_AI WHERE Comp_ID = @Comp_Id;
+
+    IF @kyc_Details IS NOT NULL AND ISJSON(@kyc_Details) > 0
+    BEGIN
+        SET @AadharReq = ISNULL(JSON_VALUE(@kyc_Details, '$.AadharCard'), 'No');
+        SET @PanReq = ISNULL(JSON_VALUE(@kyc_Details, '$.PANCard'), 'No');
+        SET @BankReq = ISNULL(JSON_VALUE(@kyc_Details, '$.AccountDetails'), 'No');
+        SET @UpiReq = ISNULL(JSON_VALUE(@kyc_Details, '$.UPI'), 'No');
+    END
+
 
     ------------------------------------------------------
     -- Date Range
@@ -127,9 +149,23 @@ BEGIN
     IF @KYCStatusFilter IS NOT NULL
         SET @BaseWhere += N'
         AND (
-            (@KYCStatusFilter = ''APPROVED'' AND VKS.VRKbl_KYC_status = 1) OR
             (@KYCStatusFilter = ''REJECTED'' AND VKS.VRKbl_KYC_status = 2) OR
-            (@KYCStatusFilter = ''PENDING'' AND (VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL))
+            (@KYCStatusFilter = ''PENDING'' AND (
+                VKS.VRKbl_KYC_status = 0 OR 
+                VKS.VRKbl_KYC_status IS NULL OR 
+                (VKS.VRKbl_KYC_status NOT IN (0,2) AND (
+                    (''' + @AadharReq + ''' = ''Yes'' AND ISNULL(MC.aadharkycStatus, ''0'') <> ''1'') OR
+                    (''' + @PanReq + ''' = ''Yes'' AND ISNULL(MC.panekycStatus, ''0'') <> ''1'') OR
+                    (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'') OR
+                    (''' + @UpiReq + ''' = ''Yes'' AND ISNULL(MC.UPIKYCSTATUS, ''0'') <> ''1'')
+                ))
+            )) OR
+            (@KYCStatusFilter = ''APPROVED'' AND VKS.VRKbl_KYC_status NOT IN (0,2) AND 
+                (''' + @AadharReq + ''' <> ''Yes'' OR ISNULL(MC.aadharkycStatus, ''0'') = ''1'') AND
+                (''' + @PanReq + ''' <> ''Yes'' OR ISNULL(MC.panekycStatus, ''0'') = ''1'') AND
+                (''' + @BankReq + ''' <> ''Yes'' OR ISNULL(MC.bankekycStatus, ''0'') = ''1'') AND
+                (''' + @UpiReq + ''' <> ''Yes'' OR ISNULL(MC.UPIKYCSTATUS, ''0'') = ''1'')
+            )
         )';
 
     IF @StateFilter IS NOT NULL AND LTRIM(RTRIM(@StateFilter)) <> ''
@@ -166,17 +202,24 @@ BEGIN
 
         -- Determine KYC Status
         CASE 
-            WHEN VKS.VRKbl_KYC_status = 1 THEN ''Approved''
             WHEN VKS.VRKbl_KYC_status = 2 THEN ''Rejected''
-            WHEN VKS.VRKbl_KYC_status = 3 THEN ''Send Request again''
-            ELSE ''Pending''
+            WHEN VKS.VRKbl_KYC_status = 0 THEN ''Pending''
+            WHEN (''' + @AadharReq + ''' = ''Yes'' AND ISNULL(MC.aadharkycStatus, ''0'') <> ''1'') THEN ''Pending''
+            WHEN (''' + @PanReq + ''' = ''Yes'' AND ISNULL(MC.panekycStatus, ''0'') <> ''1'') THEN ''Pending''
+            WHEN (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'') THEN ''Pending''
+            WHEN (''' + @UpiReq + ''' = ''Yes'' AND ISNULL(MC.UPIKYCSTATUS, ''0'') <> ''1'') THEN ''Pending''
+            ELSE ''Approved''
         END AS VRKbl_KYC_status,
 
         -- Legacy KYCStatus for compatibility
         CASE 
-            WHEN VKS.VRKbl_KYC_status = 1 THEN ''KYC Approved''
             WHEN VKS.VRKbl_KYC_status = 2 THEN ''KYC Rejected''
-            ELSE ''KYC Pending''
+            WHEN VKS.VRKbl_KYC_status = 0 THEN ''KYC Pending''
+            WHEN (''' + @AadharReq + ''' = ''Yes'' AND ISNULL(MC.aadharkycStatus, ''0'') <> ''1'') THEN ''KYC Pending''
+            WHEN (''' + @PanReq + ''' = ''Yes'' AND ISNULL(MC.panekycStatus, ''0'') <> ''1'') THEN ''KYC Pending''
+            WHEN (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'') THEN ''KYC Pending''
+            WHEN (''' + @UpiReq + ''' = ''Yes'' AND ISNULL(MC.UPIKYCSTATUS, ''0'') <> ''1'') THEN ''KYC Pending''
+            ELSE ''KYC Approved''
         END AS KYCStatus,
 
         -- KYC channel-wise statuses
@@ -306,4 +349,3 @@ BEGIN
             @Page;
     END
 END
-GO
