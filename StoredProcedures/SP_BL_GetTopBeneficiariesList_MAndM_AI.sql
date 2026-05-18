@@ -118,17 +118,15 @@ BEGIN
 
     SELECT 
         BLE.M_ConsumerId,
-        MAX(BLE.UpdateDate) AS LastActionDate,
+        MAX(BLE.Enq_Date) AS LastActionDate,
         SUM(CASE WHEN BLE.Points IS NULL OR BLE.Points = 0 THEN ISNULL(BLE.Cash, 0) ELSE BLE.Points END) AS Benefit
     INTO #Benefit
-    FROM BLoyaltyPointsEarned BLE WITH (NOLOCK)
-    LEFT JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BLE.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
-    LEFT JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    FROM dbo.ConsumerPointsCashDetails BLE WITH (NOLOCK)
     WHERE 
-        ISNULL(BLE.CompId, MC.Compid) = @ActualCompId
-        AND BLE.UpdateDate >= @CompRegDate
-        AND BLE.UpdateDate >= @StartDate
-        AND BLE.UpdateDate < DATEADD(DAY, 1, @EndDate)
+        BLE.Comp_id = @ActualCompId
+        AND BLE.Enq_Date >= @CompRegDate
+        AND BLE.Enq_Date >= @StartDate
+        AND BLE.Enq_Date < DATEADD(DAY, 1, @EndDate)
         AND BLE.M_ConsumerId IN (SELECT M_ConsumerId FROM #Users)
     GROUP BY BLE.M_ConsumerId; 
 

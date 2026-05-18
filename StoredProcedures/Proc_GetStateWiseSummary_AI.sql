@@ -105,13 +105,13 @@ BEGIN
           B.M_ConsumerId,
           B.Points,
           B.Cash,
-          B.UpdateDate
+          B.Enq_Date AS UpdateDate
       INTO #TempPoints
-      FROM BLoyaltyPointsEarned B WITH (NOLOCK)
-      WHERE B.Compid = @ActualCompId
-        AND B.UpdateDate >= @CompRegDate
-        AND B.UpdateDate >= @StartDate
-        AND B.UpdateDate < DATEADD(DAY, 1, @EndDate);
+      FROM dbo.ConsumerPointsCashDetails B WITH (NOLOCK)
+      WHERE B.Comp_id = @ActualCompId
+        AND B.Enq_Date >= @CompRegDate
+        AND B.Enq_Date >= @StartDate
+        AND B.Enq_Date < DATEADD(DAY, 1, @EndDate);
 
       -------------------------------------------------------------------
       -- RESULT 1: REGION SUMMARY + % SHARE (Cards at bottom)
