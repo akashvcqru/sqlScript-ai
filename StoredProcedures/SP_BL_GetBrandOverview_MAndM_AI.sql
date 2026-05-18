@@ -103,7 +103,7 @@ BEGIN
     SELECT MobileNo 
     INTO #SBUTeamMobile 
     FROM UserData_MHCroneJob WITH (NOLOCK) 
-    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = 'Comp-1152' AND IsDelete = 0;
+    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = @ActualCompId AND IsDelete = 0;
 
     CREATE UNIQUE CLUSTERED INDEX IX_SBUTeamMobile_MobileNo ON #SBUTeamMobile(MobileNo);
 
@@ -111,7 +111,7 @@ BEGIN
     SELECT M_ConsumerId
     INTO #SBUTeamConsumerIds
     FROM UserData_MHCroneJob WITH (NOLOCK) 
-    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = 'Comp-1152' AND IsDelete = 0;
+    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = @ActualCompId AND IsDelete = 0;
 
     CREATE UNIQUE CLUSTERED INDEX IX_SBUTeamConsumerIds_Id ON #SBUTeamConsumerIds(M_ConsumerId);
 
@@ -139,7 +139,7 @@ BEGIN
         @Cron_RejectKyc = ISNULL(Total_Reject_Kyc, 0),
         @Cron_PendingKyc = ISNULL(Total_pending_Kyc, 0)
     FROM BrandData_MHCroneJob WITH (NOLOCK)
-    WHERE Comp_ID = 'Comp-1152'
+    WHERE Comp_ID = @ActualCompId
     ORDER BY CreatedDate DESC;
 
     ---------------------------------------------------------
@@ -155,27 +155,42 @@ BEGIN
         @SBU_RegUsers_Current = COUNT(*),
         @SBU_RegUsers_Prev = SUM(CASE WHEN Entry_Date < @StartDate THEN 1 ELSE 0 END)
     FROM UserData_MHCroneJob WITH (NOLOCK)
-    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = 'Comp-1152' AND IsDelete = 0;
+    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = @ActualCompId AND IsDelete = 0;
 
     -- SBU Active
     SELECT @SBU_ActiveUsers_Current = COUNT(DISTINCT PE.MobileNo) 
-    FROM Pro_Enq PE WITH (NOLOCK)
-    WHERE PE.Comp_ID = 'Comp-1152' 
+    FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
+    WHERE PE.Comp_id = @ActualCompId 
       AND PE.Enq_Date >= @StartDate AND PE.Enq_Date < @EndDate
       AND PE.MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
 
     SELECT @SBU_ActiveUsers_Prev = COUNT(DISTINCT PE.MobileNo) 
-    FROM Pro_Enq PE WITH (NOLOCK)
-    WHERE PE.Comp_ID = 'Comp-1152' 
+    FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
+    WHERE PE.Comp_id = @ActualCompId 
       AND PE.Enq_Date >= @PrevStartDate AND PE.Enq_Date < @PrevEndDate
       AND PE.MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
+
+    -- Non-SBU Active
+    DECLARE @NonSBU_ActiveUsers_Current INT = 0, @NonSBU_ActiveUsers_Prev INT = 0;
+
+    SELECT @NonSBU_ActiveUsers_Current = COUNT(DISTINCT PE.MobileNo) 
+    FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
+    WHERE PE.Comp_id = @ActualCompId 
+      AND PE.Enq_Date >= @StartDate AND PE.Enq_Date < @EndDate
+      AND NOT EXISTS (SELECT 1 FROM #SBUTeamMobile S WHERE S.MobileNo = PE.MobileNo);
+
+    SELECT @NonSBU_ActiveUsers_Prev = COUNT(DISTINCT PE.MobileNo) 
+    FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
+    WHERE PE.Comp_id = @ActualCompId 
+      AND PE.Enq_Date >= @PrevStartDate AND PE.Enq_Date < @PrevEndDate
+      AND NOT EXISTS (SELECT 1 FROM #SBUTeamMobile S WHERE S.MobileNo = PE.MobileNo);
 
     -- SBU Qr Verified (Scans)
     SELECT 
         @SBU_QrVerified_Current = COUNT(*),
         @SBU_QrVerified_Prev = SUM(CASE WHEN PE.Enq_Date < @StartDate THEN 1 ELSE 0 END)
-    FROM Pro_Enq PE WITH (NOLOCK)
-    WHERE PE.Comp_ID = 'Comp-1152' 
+    FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
+    WHERE PE.Comp_id = @ActualCompId 
       AND PE.Enq_Date >= @CompRegDate
       AND PE.MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
 
@@ -184,7 +199,7 @@ BEGIN
         @SBU_CashUtilized_Current = SUM(ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0)),
         @SBU_CashUtilized_Prev = SUM(CASE WHEN ut.TransactionDate < @StartDate THEN ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0) ELSE 0 END)
     FROM Transactions ut WITH (NOLOCK)
-    WHERE ut.CompId = '1152'
+    WHERE ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
       AND ut.Issuccess = 1
       AND ut.M_CounserID IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
 
@@ -231,8 +246,8 @@ BEGIN
         SET @RegUsers_Current = @Cron_TotalUsers - @SBU_RegUsers_Current;
         SET @RegUsers_Prev = @Cron_TotalUsers - @SBU_RegUsers_Prev;
 
-        SET @ActiveUsers_Current = @Cron_ActiveUsers - @SBU_ActiveUsers_Current;
-        SET @ActiveUsers_Prev = @Cron_ActiveUsers - @SBU_ActiveUsers_Prev;
+        SET @ActiveUsers_Current = @NonSBU_ActiveUsers_Current;
+        SET @ActiveUsers_Prev = @NonSBU_ActiveUsers_Prev;
 
         SET @QrCreated_Current = @Cron_GenCodes;
         SET @QrCreated_Prev = @Cron_GenCodes;
@@ -330,7 +345,7 @@ BEGIN
         @SBU_RejectedKYC = SUM(CASE WHEN VRKbl_KYC_status = 2 THEN 1 ELSE 0 END),
         @SBU_PendingKYC = SUM(CASE WHEN VRKbl_KYC_status NOT IN (1, 2) OR VRKbl_KYC_status IS NULL THEN 1 ELSE 0 END)
     FROM UserData_MHCroneJob WITH (NOLOCK)
-    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = 'Comp-1152' AND IsDelete = 0;
+    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = @ActualCompId AND IsDelete = 0;
 
     IF @IsSBUTeam = 1
     BEGIN
