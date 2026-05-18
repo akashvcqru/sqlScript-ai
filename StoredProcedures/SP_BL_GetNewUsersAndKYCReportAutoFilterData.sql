@@ -162,27 +162,8 @@ BEGIN
         MC.MobileNo,
         MC.Email,
         MC.City,
-        MC.cin_number,
-        MC.ref_cin_number,
         MC.PinCode,
         MC.[State] AS state,
-        MC.Other_Role,
-
-        -- Determine User Type based on Vrkabel_User_Type
-        CASE
-            WHEN MC.Vrkabel_User_Type = ''1'' THEN ''Agent''
-            WHEN MC.Vrkabel_User_Type = ''2'' THEN ''Distributor''
-            WHEN MC.Vrkabel_User_Type = ''3'' THEN ''Mechanic''
-            ELSE ''Unknown''
-        END AS Vrkabel_User_Type,
-
-        -- Determine KYC Status
-        CASE 
-            WHEN VKS.VRKbl_KYC_status = 1 THEN ''Approved''
-            WHEN VKS.VRKbl_KYC_status = 2 THEN ''Rejected''
-            WHEN VKS.VRKbl_KYC_status = 3 THEN ''Send Request again''
-            ELSE ''Pending''
-        END AS VRKbl_KYC_status,
 
         -- Legacy KYCStatus for compatibility
         CASE 
@@ -193,17 +174,12 @@ BEGIN
 
         -- KYC channel-wise statuses
         CASE WHEN MC.panekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.panekycStatus, '''') END AS panekycStatus,
-        CASE WHEN MC.aadharkycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.aadharkycStatus, '''') END AS aadharkycStatus,
         CASE WHEN MC.bankekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
         MC.dob,
-        MC.aadharNumber,
         MC.pancard_number,
         MC.gst_number,
         MC.gender,
-        MC.aadharFile,
-        MC.aadharback,
-        MC.pan_card_file,
         MC.shop_file,
         MC.AddressProof,
         VKS.kycremark AS remark,
@@ -215,8 +191,6 @@ BEGIN
         MB.Account_No,
         MB.Branch,
         MB.IFSC_Code,
-        MB.passbook_source AS passBook,
-        MB.chkPassbook,
 
         -- Shop Information (Workplace Address)
         MC.Shop_address AS Workplacestate,
