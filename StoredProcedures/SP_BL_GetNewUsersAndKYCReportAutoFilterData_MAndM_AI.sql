@@ -166,6 +166,7 @@ FROM
     ------------------------------------------------------
     DECLARE @BaseWhere NVARCHAR(MAX) = N'
         WHERE VKS.Comp_ID = @Comp_Id
+          AND VKS.rn = 1
           AND MC.IsDelete = 0
           AND (
                 (' + CAST(@IsSBUTeam AS VARCHAR(1)) + ' = 0 AND (MC.distributorID != ''SBUTEAM'' OR MC.distributorID IS NULL)) OR
@@ -235,7 +236,10 @@ FROM
         -- Additional Details
         VKS.Entry_Date,
         MC.M_Consumerid
-    FROM tbl_Vendorvisekycstatus VKS
+    FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
+        FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+    ) VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
 	LEFT JOIN #TempDealerMaster TD ON MC.employeeID=TD.DealerTechnicianId AND MC.distributorID=TD.DealerCode
     OUTER APPLY (
@@ -263,7 +267,10 @@ FROM
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM tbl_Vendorvisekycstatus VKS
+        FROM (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
+            FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+        ) VKS
         INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
         ' + @BaseWhere;
     END

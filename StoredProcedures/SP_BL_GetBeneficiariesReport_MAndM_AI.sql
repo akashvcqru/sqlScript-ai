@@ -145,9 +145,14 @@ BEGIN
             ELSE 'Pending'
         END AS KYCStatus
     INTO #Users
-    FROM tbl_VendorViseKYCStatus V WITH (NOLOCK)
+    FROM
+    (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY M_ConsumerId ORDER BY Entry_date DESC) AS rn
+        FROM tbl_VendorViseKYCStatus WITH (NOLOCK)
+        WHERE Comp_Id = @ActualCompId
+    ) V
     INNER JOIN M_Consumer MC WITH (NOLOCK) ON V.M_ConsumerId = MC.M_ConsumerId
-    WHERE V.Comp_Id = @ActualCompId 
+    WHERE V.rn = 1
       AND MC.IsDelete = 0
       AND (
             (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
