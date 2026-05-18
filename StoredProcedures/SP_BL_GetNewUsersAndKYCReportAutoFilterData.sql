@@ -147,6 +147,9 @@ BEGIN
         SET @BaseWhere += N' AND CAST(VKS.Entry_Date AS DATE) BETWEEN @StartDate AND @EndDate';
 
     IF @KYCStatusFilter IS NOT NULL
+    BEGIN
+        SET @KYCStatusFilter = UPPER(LTRIM(RTRIM(@KYCStatusFilter)));
+        
         SET @BaseWhere += N'
         AND (
             (@KYCStatusFilter = ''REJECTED'' AND VKS.VRKbl_KYC_status = 2) OR
@@ -156,17 +159,18 @@ BEGIN
                 (VKS.VRKbl_KYC_status NOT IN (0,2) AND (
                     (''' + @AadharReq + ''' = ''Yes'' AND ISNULL(MC.aadharkycStatus, ''0'') <> ''1'') OR
                     (''' + @PanReq + ''' = ''Yes'' AND ISNULL(MC.panekycStatus, ''0'') <> ''1'') OR
-                    (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'') OR
+                    (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'' AND NOT EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) OR
                     (''' + @UpiReq + ''' = ''Yes'' AND ISNULL(MC.UPIKYCSTATUS, ''0'') <> ''1'')
                 ))
             )) OR
             (@KYCStatusFilter = ''APPROVED'' AND VKS.VRKbl_KYC_status NOT IN (0,2) AND 
                 (''' + @AadharReq + ''' <> ''Yes'' OR ISNULL(MC.aadharkycStatus, ''0'') = ''1'') AND
                 (''' + @PanReq + ''' <> ''Yes'' OR ISNULL(MC.panekycStatus, ''0'') = ''1'') AND
-                (''' + @BankReq + ''' <> ''Yes'' OR ISNULL(MC.bankekycStatus, ''0'') = ''1'') AND
+                (''' + @BankReq + ''' <> ''Yes'' OR ISNULL(MC.bankekycStatus, ''0'') = ''1'' OR EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) AND
                 (''' + @UpiReq + ''' <> ''Yes'' OR ISNULL(MC.UPIKYCSTATUS, ''0'') = ''1'')
             )
         )';
+    END
 
     IF @StateFilter IS NOT NULL AND LTRIM(RTRIM(@StateFilter)) <> ''
         SET @BaseWhere += N' AND MC.[State] = @StateFilter';
@@ -206,7 +210,7 @@ BEGIN
             WHEN VKS.VRKbl_KYC_status = 0 THEN ''Pending''
             WHEN (''' + @AadharReq + ''' = ''Yes'' AND ISNULL(MC.aadharkycStatus, ''0'') <> ''1'') THEN ''Pending''
             WHEN (''' + @PanReq + ''' = ''Yes'' AND ISNULL(MC.panekycStatus, ''0'') <> ''1'') THEN ''Pending''
-            WHEN (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'') THEN ''Pending''
+            WHEN (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'' AND NOT EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) THEN ''Pending''
             WHEN (''' + @UpiReq + ''' = ''Yes'' AND ISNULL(MC.UPIKYCSTATUS, ''0'') <> ''1'') THEN ''Pending''
             ELSE ''Approved''
         END AS VRKbl_KYC_status,
@@ -217,7 +221,7 @@ BEGIN
             WHEN VKS.VRKbl_KYC_status = 0 THEN ''KYC Pending''
             WHEN (''' + @AadharReq + ''' = ''Yes'' AND ISNULL(MC.aadharkycStatus, ''0'') <> ''1'') THEN ''KYC Pending''
             WHEN (''' + @PanReq + ''' = ''Yes'' AND ISNULL(MC.panekycStatus, ''0'') <> ''1'') THEN ''KYC Pending''
-            WHEN (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'') THEN ''KYC Pending''
+            WHEN (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'' AND NOT EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) THEN ''KYC Pending''
             WHEN (''' + @UpiReq + ''' = ''Yes'' AND ISNULL(MC.UPIKYCSTATUS, ''0'') <> ''1'') THEN ''KYC Pending''
             ELSE ''KYC Approved''
         END AS KYCStatus,
@@ -225,7 +229,7 @@ BEGIN
         -- KYC channel-wise statuses
         CASE WHEN MC.panekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.panekycStatus, '''') END AS panekycStatus,
         CASE WHEN MC.aadharkycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.aadharkycStatus, '''') END AS aadharkycStatus,
-        CASE WHEN MC.bankekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
+        CASE WHEN (MC.bankekycStatus IN (''1'', ''Online'') OR EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
         MC.dob,
         MC.aadharNumber,
