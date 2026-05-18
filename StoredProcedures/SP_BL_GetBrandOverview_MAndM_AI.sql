@@ -14,6 +14,18 @@ CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBrandOverview_MAndM_AI]
 AS  
 BEGIN  
     SET NOCOUNT ON;
+
+    ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(50) = @CompId;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
  
     DECLARE @StartDate DATE, @EndDate DATE;
     DECLARE @PrevStartDate DATE, @PrevEndDate DATE;
@@ -35,7 +47,7 @@ BEGIN
     DECLARE @CompRegDate DATE;
     SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
     FROM Comp_Reg WITH (NOLOCK) 
-    WHERE Comp_ID = @CompId AND Status = 1;
+    WHERE Comp_ID = @ActualCompId AND Status = 1;
 
     IF @CompRegDate IS NULL 
         SET @CompRegDate = '2000-01-01';
@@ -85,73 +97,139 @@ BEGIN
     END;
 
     ---------------------------------------------------------
+    -- SBU Team Temp Tables for Performance Optimization
+    ---------------------------------------------------------
+    IF OBJECT_ID('tempdb..#SBUTeamMobile') IS NOT NULL DROP TABLE #SBUTeamMobile;
+    SELECT MobileNo 
+    INTO #SBUTeamMobile 
+    FROM M_Consumer WITH (NOLOCK) 
+    WHERE distributorID = 'SBUTEAM' AND IsDelete = 0;
+
+    CREATE UNIQUE CLUSTERED INDEX IX_SBUTeamMobile_MobileNo ON #SBUTeamMobile(MobileNo);
+
+    IF OBJECT_ID('tempdb..#SBUTeamConsumerIds') IS NOT NULL DROP TABLE #SBUTeamConsumerIds;
+    SELECT CAST(M_Consumerid AS VARCHAR(50)) AS M_Consumerid
+    INTO #SBUTeamConsumerIds
+    FROM M_Consumer WITH (NOLOCK) 
+    WHERE distributorID = 'SBUTEAM' AND IsDelete = 0;
+
+    CREATE UNIQUE CLUSTERED INDEX IX_SBUTeamConsumerIds_Id ON #SBUTeamConsumerIds(M_Consumerid);
+
+    ---------------------------------------------------------
     -- 1. REGISTERED USERS (Total)
     ---------------------------------------------------------
     DECLARE @RegUsers_Current INT, @RegUsers_Prev INT;
     
-    SELECT @RegUsers_Current = COUNT(*) 
+    SELECT 
+        @RegUsers_Current = COUNT(*),
+        @RegUsers_Prev = SUM(CASE WHEN MC.Entry_Date < @StartDate THEN 1 ELSE 0 END)
     FROM M_Consumer AS MC WITH (NOLOCK)
     INNER JOIN tbl_Vendorvisekycstatus AS VC WITH (NOLOCK) ON VC.M_consumerId = MC.M_Consumerid
-    WHERE VC.Comp_ID = @CompId AND MC.IsDelete = 0 AND MC.Entry_Date >= @CompRegDate;
-
-    SELECT @RegUsers_Prev = COUNT(*) 
-    FROM M_Consumer AS MC WITH (NOLOCK)
-    INNER JOIN tbl_Vendorvisekycstatus AS VC WITH (NOLOCK) ON VC.M_consumerId = MC.M_Consumerid
-    WHERE VC.Comp_ID = @CompId AND MC.IsDelete = 0
-      AND MC.Entry_Date >= @CompRegDate AND MC.Entry_Date < @StartDate;
+    WHERE VC.Comp_ID = @ActualCompId 
+      AND MC.IsDelete = 0 
+      AND MC.Entry_Date >= @CompRegDate
+      AND (
+            (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
+            (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM')
+          );
 
     ---------------------------------------------------------
     -- 2. ACTIVE USERS (Users with activity in period)
     ---------------------------------------------------------
     DECLARE @ActiveUsers_Current INT, @ActiveUsers_Prev INT;
 
-    SELECT @ActiveUsers_Current = COUNT(DISTINCT MobileNo) 
-    FROM Pro_Enq WITH (NOLOCK)
-    WHERE Comp_ID = @CompId AND Enq_Date >= @StartDate AND Enq_Date < @EndDate;
+    IF @IsSBUTeam = 1
+    BEGIN
+        SELECT @ActiveUsers_Current = COUNT(DISTINCT PE.MobileNo) 
+        FROM Pro_Enq PE WITH (NOLOCK)
+        WHERE PE.Comp_ID = @ActualCompId 
+          AND PE.Enq_Date >= @StartDate AND PE.Enq_Date < @EndDate
+          AND PE.MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
 
-    SELECT @ActiveUsers_Prev = COUNT(DISTINCT MobileNo) 
-    FROM Pro_Enq WITH (NOLOCK)
-    WHERE Comp_ID = @CompId AND Enq_Date >= @PrevStartDate AND Enq_Date < @PrevEndDate;
+        SELECT @ActiveUsers_Prev = COUNT(DISTINCT PE.MobileNo) 
+        FROM Pro_Enq PE WITH (NOLOCK)
+        WHERE PE.Comp_ID = @ActualCompId 
+          AND PE.Enq_Date >= @PrevStartDate AND PE.Enq_Date < @PrevEndDate
+          AND PE.MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
+    END
+    ELSE
+    BEGIN
+        SELECT @ActiveUsers_Current = COUNT(DISTINCT PE.MobileNo) 
+        FROM Pro_Enq PE WITH (NOLOCK)
+        WHERE PE.Comp_ID = @ActualCompId 
+          AND PE.Enq_Date >= @StartDate AND PE.Enq_Date < @EndDate
+          AND PE.MobileNo NOT IN (SELECT MobileNo FROM #SBUTeamMobile);
+
+        SELECT @ActiveUsers_Prev = COUNT(DISTINCT PE.MobileNo) 
+        FROM Pro_Enq PE WITH (NOLOCK)
+        WHERE PE.Comp_ID = @ActualCompId 
+          AND PE.Enq_Date >= @PrevStartDate AND PE.Enq_Date < @PrevEndDate
+          AND PE.MobileNo NOT IN (SELECT MobileNo FROM #SBUTeamMobile);
+    END
 
     ---------------------------------------------------------
     -- 3. QR CODES CREATED (Total)
     ---------------------------------------------------------
     DECLARE @QrCreated_Current INT, @QrCreated_Prev INT;
 
-    SELECT @QrCreated_Current = COUNT(*) 
+    SELECT 
+        @QrCreated_Current = COUNT(*),
+        @QrCreated_Prev = SUM(CASE WHEN Allot_Date < @StartDate THEN 1 ELSE 0 END)
     FROM M_Code WITH (NOLOCK)
-    WHERE Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WHERE Comp_ID = @CompId) AND Allot_Date >= @CompRegDate;
-
-    SELECT @QrCreated_Prev = COUNT(*) 
-    FROM M_Code WITH (NOLOCK)
-    WHERE Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WHERE Comp_ID = @CompId)
-      AND Allot_Date >= @CompRegDate AND Allot_Date < @StartDate;
+    WHERE Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WHERE Comp_ID = @ActualCompId) 
+      AND Allot_Date >= @CompRegDate;
 
     ---------------------------------------------------------
     -- 4. QR CODES VERIFIED (Total)
     ---------------------------------------------------------
     DECLARE @QrVerified_Current INT, @QrVerified_Prev INT;
 
-    SELECT @QrVerified_Current = COUNT(*) 
-    FROM Pro_Enq WITH (NOLOCK)
-    WHERE Comp_ID = @CompId AND Enq_Date >= @CompRegDate;
-
-    SELECT @QrVerified_Prev = COUNT(*) 
-    FROM Pro_Enq WITH (NOLOCK)
-    WHERE Comp_ID = @CompId AND Enq_Date >= @CompRegDate AND Enq_Date < @StartDate;
+    IF @IsSBUTeam = 1
+    BEGIN
+        SELECT 
+            @QrVerified_Current = COUNT(*),
+            @QrVerified_Prev = SUM(CASE WHEN PE.Enq_Date < @StartDate THEN 1 ELSE 0 END)
+        FROM Pro_Enq PE WITH (NOLOCK)
+        WHERE PE.Comp_ID = @ActualCompId 
+          AND PE.Enq_Date >= @CompRegDate
+          AND PE.MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
+    END
+    ELSE
+    BEGIN
+        SELECT 
+            @QrVerified_Current = COUNT(*),
+            @QrVerified_Prev = SUM(CASE WHEN PE.Enq_Date < @StartDate THEN 1 ELSE 0 END)
+        FROM Pro_Enq PE WITH (NOLOCK)
+        WHERE PE.Comp_ID = @ActualCompId 
+          AND PE.Enq_Date >= @CompRegDate
+          AND PE.MobileNo NOT IN (SELECT MobileNo FROM #SBUTeamMobile);
+    END
 
     ---------------------------------------------------------
     -- 5. TOTAL CASH UTILIZED (Total Payouts)
     ---------------------------------------------------------
     DECLARE @CashUtilized_Current DECIMAL(18,2), @CashUtilized_Prev DECIMAL(18,2);
 
-    SELECT @CashUtilized_Current = SUM(ISNULL(Amount, 0)) 
-    FROM tblUPITransactionDetails WITH (NOLOCK)
-    WHERE Comp_Id = @CompId AND Status = 'Success';
-
-    SELECT @CashUtilized_Prev = SUM(ISNULL(Amount, 0)) 
-    FROM tblUPITransactionDetails WITH (NOLOCK)
-    WHERE Comp_Id = @CompId AND Status = 'Success' AND ReqDate < @StartDate;
+    IF @IsSBUTeam = 1
+    BEGIN
+        SELECT 
+            @CashUtilized_Current = SUM(ISNULL(ut.Amount, 0)),
+            @CashUtilized_Prev = SUM(CASE WHEN ut.ReqDate < @StartDate THEN ISNULL(ut.Amount, 0) ELSE 0 END)
+        FROM tblUPITransactionDetails ut WITH (NOLOCK)
+        WHERE ut.Comp_Id = @ActualCompId 
+          AND ut.Status = 'Success'
+          AND ut.M_Consumerid IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
+    END
+    ELSE
+    BEGIN
+        SELECT 
+            @CashUtilized_Current = SUM(ISNULL(ut.Amount, 0)),
+            @CashUtilized_Prev = SUM(CASE WHEN ut.ReqDate < @StartDate THEN ISNULL(ut.Amount, 0) ELSE 0 END)
+        FROM tblUPITransactionDetails ut WITH (NOLOCK)
+        WHERE ut.Comp_Id = @ActualCompId 
+          AND ut.Status = 'Success'
+          AND ut.M_Consumerid NOT IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
+    END
 
     ---------------------------------------------------------
     -- 6. CASH UTILIZATION %
@@ -159,7 +237,7 @@ BEGIN
     DECLARE @CurrentWalletBal DECIMAL(18,2) = 0;
     SELECT TOP 1 @CurrentWalletBal = ISNULL(NewBal, Amount) 
     FROM tblCashWalletBalance WITH (NOLOCK)
-    WHERE Comp_Id = @CompId ORDER BY Id DESC;
+    WHERE Comp_Id = @ActualCompId ORDER BY Id DESC;
 
     DECLARE @Util_Current DECIMAL(18,2) = 0;
     DECLARE @Util_Prev DECIMAL(18,2) = 0;
@@ -221,7 +299,12 @@ BEGIN
         COUNT(*) AS CurrentCount
     FROM M_Consumer AS MC WITH (NOLOCK)
     INNER JOIN tbl_Vendorvisekycstatus AS VC WITH (NOLOCK) ON VC.M_consumerId = MC.M_Consumerid
-    WHERE VC.Comp_ID = @CompId AND MC.IsDelete = 0
+    WHERE VC.Comp_ID = @ActualCompId 
+      AND MC.IsDelete = 0
+      AND (
+            (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
+            (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM')
+          )
     GROUP BY 
         CASE 
             WHEN VC.VRKbl_KYC_status = 1 THEN 'ActiveKYC'

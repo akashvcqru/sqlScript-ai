@@ -18,6 +18,18 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(50) = @CompId;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
+
     DECLARE 
         @StartDate DATE,
         @EndDate DATE,
@@ -39,7 +51,7 @@ BEGIN
     DECLARE @CompRegDate DATE;
     SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
     FROM Comp_Reg WITH (NOLOCK) 
-    WHERE Comp_ID = @CompId AND Status = 1;
+    WHERE Comp_ID = @ActualCompId AND Status = 1;
 
     IF @CompRegDate IS NULL 
         SET @CompRegDate = '2023-01-01'; -- Fallback
@@ -119,10 +131,15 @@ BEGIN
         CAST(ut.ReqDate AS DATE) AS BurnDate
     INTO #CashBurn
     FROM tblUPITransactionDetails ut WITH (NOLOCK) 
+    LEFT JOIN M_Consumer MC WITH (NOLOCK) ON CAST(MC.M_Consumerid AS VARCHAR(50)) = ut.M_Consumerid AND MC.IsDelete = 0
     WHERE ut.Status = 'Success' 
-      AND ut.Comp_Id = @CompId
+      AND ut.Comp_Id = @ActualCompId
       AND ut.ReqDate >= @StartDate
       AND ut.ReqDate < DATEADD(DAY, 1, @EndDate)
+      AND (
+            (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
+            (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM')
+          )
       -- Mahindra specific exclusions
       AND ut.Code1 NOT IN ('76106','28480','63762')
       AND ut.Code2 NOT IN ('53123003','81708028','45063737')
@@ -229,10 +246,15 @@ BEGIN
     SELECT 
         @PrevTotalBurn = SUM(ut.Amount + ISNULL(ut.tdsAmount, 0))
     FROM tblUPITransactionDetails ut WITH (NOLOCK) 
+    LEFT JOIN M_Consumer MC WITH (NOLOCK) ON CAST(MC.M_Consumerid AS VARCHAR(50)) = ut.M_Consumerid AND MC.IsDelete = 0
     WHERE ut.Status = 'Success' 
-      AND ut.Comp_Id = @CompId
+      AND ut.Comp_Id = @ActualCompId
       AND ut.ReqDate >= @PrevStartDate
       AND ut.ReqDate < DATEADD(DAY, 1, @PrevEndDate)
+      AND (
+            (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
+            (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM')
+          )
       AND ut.Code1 NOT IN ('76106','28480','63762')
       AND ut.Code2 NOT IN ('53123003','81708028','45063737');
 

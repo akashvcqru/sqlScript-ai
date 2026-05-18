@@ -8,7 +8,8 @@ GO
 
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_LiveScanActivity_MAndM_AI]
 (
-    @CompId NVARCHAR(50),
+    @Comp_Id NVARCHAR(50) = NULL,
+    @CompId NVARCHAR(50) = NULL,
     @datePreset NVARCHAR(20)=NULL,
     @FromDate NVARCHAR(20)=NULL,
     @ToDate NVARCHAR(20)=NULL,
@@ -17,6 +18,24 @@ CREATE OR ALTER PROCEDURE [dbo].[SP_BL_LiveScanActivity_MAndM_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    ---------------------------------------------------------
+    -- Dual Parameter Normalization & SBU Company Logic
+    ---------------------------------------------------------
+    DECLARE @InputCompId NVARCHAR(50);
+    IF @Comp_Id IS NULL AND @CompId IS NOT NULL
+        SET @InputCompId = @CompId;
+    ELSE
+        SET @InputCompId = @Comp_Id;
+
+    DECLARE @ActualCompId NVARCHAR(50) = @InputCompId;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @InputCompId AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @InputCompId AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
 
     DECLARE @StartDate DATE, @EndDate DATE;
 
@@ -32,7 +51,7 @@ BEGIN
     DECLARE @CompRegDate DATE;
     SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
     FROM Comp_Reg WITH (NOLOCK) 
-    WHERE Comp_ID = @CompId AND Status = 1;
+    WHERE Comp_ID = @ActualCompId AND Status = 1;
 
     IF @CompRegDate IS NULL 
         SET @CompRegDate = '2000-01-01';
@@ -77,44 +96,47 @@ BEGIN
         SET @EndDate = CAST(GETDATE() AS DATE);
     END
 
+    ---------------------------------------------------------
+    -- FETCH AND FILTER SCAN DATA (using pre-aggregated table)
+    ---------------------------------------------------------
     IF OBJECT_ID('tempdb..#Scans') IS NOT NULL DROP TABLE #Scans;
 
     SELECT
-        PE.MobileNo,
-        CAST(PE.Received_Code1 AS NVARCHAR(20)) AS Code1,
-        CAST(PE.Received_Code2 AS NVARCHAR(20)) AS Code2,
-        PE.Is_Success,
-        PE.Enq_Date
+        pc.MobileNo,
+        pc.Code1,
+        pc.Code2,
+        pc.Is_Success,
+        pc.Enq_Date,
+        pc.Pro_Name,
+        pc.Points,
+        pc.Cash,
+        pc.M_ConsumerId
     INTO #Scans
-    FROM Pro_Enq PE WITH (NOLOCK)
-    WHERE PE.Comp_ID = @CompId
-      AND PE.Is_Success IN (1,2,0)
-      AND PE.Enq_Date >= @CompRegDate
-      AND PE.Enq_Date >= @StartDate 
-      AND PE.Enq_Date < DATEADD(DAY,1,@EndDate);
+    FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
+    LEFT JOIN dbo.UserData_MHCroneJob mc WITH (NOLOCK) ON mc.m_consumerid = pc.m_consumerid
+    WHERE pc.Comp_ID = @ActualCompId
+      AND pc.Is_Success IN (1,2,0)
+      AND pc.Enq_Date >= @CompRegDate
+      AND pc.Enq_Date >= @StartDate 
+      AND pc.Enq_Date < DATEADD(DAY,1,@EndDate)
+      AND (
+            (@IsSBUTeam = 0 AND (pc.distributedid <> 'SBUTEAM' OR pc.distributedid IS NULL) AND (mc.DealerCode <> 'SBUTEAM' OR mc.DealerCode IS NULL)) OR
+            (@IsSBUTeam = 1 AND (pc.distributedid = 'SBUTEAM' OR mc.DealerCode = 'SBUTEAM'))
+          );
 
-    IF OBJECT_ID('tempdb..#Points') IS NOT NULL DROP TABLE #Points;
-
-    SELECT 
-        CAST(Code1 AS NVARCHAR(20)) AS Code1,
-        CAST(Code2 AS NVARCHAR(20)) AS Code2,
-        SUM(ISNULL(Points,0)) AS TotalPoints
-    INTO #Points
-    FROM BLoyaltyPointsEarned WITH (NOLOCK)
-    WHERE CompId = @CompId AND UpdateDate >= @CompRegDate
-    GROUP BY Code1, Code2;
-
-    -- RESULT 1: Latest Scan Records
+    ---------------------------------------------------------
+    -- RESULT 1: Latest Scan Records (Top 50)
+    ---------------------------------------------------------
     SELECT TOP 50
-        ISNULL(MC.ConsumerName, 'Not Registered') AS ConsumerName,
-        PR.Pro_Name,
+        ISNULL(mc.ConsumerName, 'Not Registered') AS ConsumerName,
+        S.Pro_Name,
         G.[State],
         G.City,
         G.Postcode AS PinCode,
         G.Latitude,
         G.Longitude,
         S.MobileNo,
-        ISNULL(P.TotalPoints,0) AS Points,
+        CASE WHEN S.Points IS NULL OR S.Points = 0 THEN CAST(S.Cash AS SQL_VARIANT) ELSE CAST(S.Points AS SQL_VARIANT) END AS Points,
         CASE 
             WHEN S.Is_Success = 1 THEN 'VERIFIED'
             WHEN S.Is_Success = 2 THEN 'DUPLICATE'
@@ -123,22 +145,17 @@ BEGIN
         (S.Code1 + S.Code2) AS UniqueCode,
         S.Enq_Date AS ScanDate
     FROM #Scans S
-    INNER JOIN M_Code MCd WITH (NOLOCK)
-            ON S.Code1 = CAST(MCd.Code1 AS NVARCHAR(20))
-           AND S.Code2 = CAST(MCd.Code2 AS NVARCHAR(20))
-    INNER JOIN Pro_Reg PR WITH (NOLOCK)
-            ON PR.Pro_ID = MCd.Pro_ID
-           AND PR.Comp_ID = @CompId
-    LEFT JOIN #Points P ON P.Code1 = S.Code1 AND P.Code2 = S.Code2
-    LEFT JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = S.MobileNo AND MC.IsDelete = 0 AND MC.Entry_Date >= @CompRegDate
-    LEFT JOIN GeoLocationData G WITH (NOLOCK) ON G.Code1 = S.Code1 AND G.Code2 = S.Code2 AND G.Comp_Id = @CompId AND G.Enq_Date >= @CompRegDate
+    LEFT JOIN dbo.UserData_MHCroneJob mc WITH (NOLOCK) ON mc.m_consumerid = S.M_ConsumerId
+    LEFT JOIN GeoLocationData G WITH (NOLOCK) ON G.Code1 = S.Code1 AND G.Code2 = S.Code2 AND G.Comp_Id = @ActualCompId AND G.Enq_Date >= @CompRegDate
     WHERE (@Filter IS NULL OR 
            (@Filter = 'VERIFIED' AND S.Is_Success = 1) OR
            (@Filter = 'DUPLICATE' AND S.Is_Success = 2) OR
            (@Filter = 'INVALID' AND S.Is_Success = 0))
     ORDER BY S.Enq_Date DESC;
 
+    ---------------------------------------------------------
     -- RESULT 2: Summary Counts
+    ---------------------------------------------------------
     SELECT 
         CASE 
             WHEN Is_Success = 1 THEN 'VERIFIED'
@@ -154,5 +171,6 @@ BEGIN
             ELSE 'INVALID'
         END
     ORDER BY TotalScans DESC;
+
 END
 GO

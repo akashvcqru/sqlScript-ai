@@ -15,6 +15,18 @@ AS
 BEGIN  
   SET NOCOUNT ON;
 
+  ---------------------------------------------------------
+  -- SBU Company Check Logic
+  ---------------------------------------------------------
+  DECLARE @ActualCompId NVARCHAR(50) = @CompId;
+  DECLARE @IsSBUTeam INT = 0;
+
+  IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM')
+  BEGIN
+      SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM';
+      SET @IsSBUTeam = 1;
+  END
+
   DECLARE @StartDate DATETIME, @EndDate DATETIME;
   SET @EndDate = CAST(GETDATE() AS DATETIME);
 
@@ -30,7 +42,7 @@ BEGIN
   DECLARE @CompRegDate DATE;
   SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
   FROM Comp_Reg WITH (NOLOCK) 
-  WHERE Comp_ID = @CompId AND Status = 1;
+  WHERE Comp_ID = @ActualCompId AND Status = 1;
 
   IF @CompRegDate IS NULL 
       SET @CompRegDate = '2000-01-01';
@@ -77,7 +89,13 @@ BEGIN
     INTO #Users
     FROM tbl_VendorViseKYCStatus V WITH (NOLOCK)
     JOIN M_Consumer MC WITH (NOLOCK) ON V.M_ConsumerId = MC.M_ConsumerId
-    WHERE V.Comp_Id = @CompId AND MC.IsDelete='0' AND MC.Entry_Date >= @CompRegDate;
+    WHERE V.Comp_Id = @ActualCompId 
+      AND MC.IsDelete='0' 
+      AND MC.Entry_Date >= @CompRegDate
+      AND (
+            (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
+            (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM')
+          );
 
     CREATE CLUSTERED INDEX IX_Users ON #Users (M_ConsumerId);
 
@@ -90,7 +108,7 @@ BEGIN
         ROW_NUMBER() OVER (PARTITION BY G.MobileNo ORDER BY G.Enq_Date DESC) AS rn
     INTO #State
     FROM GeoLocationData G WITH (NOLOCK)
-    WHERE G.Comp_Id = @CompId
+    WHERE G.Comp_Id = @ActualCompId
       AND G.Enq_Date >= @CompRegDate
       AND G.Enq_Date >= @StartDate
       AND G.Enq_Date < DATEADD(DAY, 1, @EndDate)
@@ -105,7 +123,7 @@ BEGIN
     INTO #Benefit
     FROM BLoyaltyPointsEarned BLE WITH (NOLOCK)
     WHERE 
-        BLE.CompId = @CompId
+        BLE.CompId = @ActualCompId
         AND BLE.UpdateDate >= @CompRegDate
         AND BLE.UpdateDate >= @StartDate
         AND BLE.UpdateDate < DATEADD(DAY, 1, @EndDate)
@@ -119,7 +137,7 @@ BEGIN
         SUM(ISNULL(CD.Amount, 0)) AS ClaimsAmount
     INTO #Claims
     FROM ClaimDetails CD WITH (NOLOCK)
-    WHERE CD.Comp_Id = @CompId AND CD.Isapproved = 1 AND PaymentStatus = 'Success'
+    WHERE CD.Comp_Id = @ActualCompId AND CD.Isapproved = 1 AND PaymentStatus = 'Success'
       AND CD.Claim_date >= @CompRegDate
       AND CD.Claim_date >= @StartDate AND CD.Claim_date < DATEADD(DAY, 1, @EndDate)
       AND EXISTS (SELECT 1 FROM #Users U WHERE U.MobileNo = CD.MobileNo)
@@ -132,7 +150,7 @@ BEGIN
         SUM(ISNULL(UPI.Amount, 0)) AS UPIAmount
     INTO #UPI
     FROM tblUPITransactionDetails UPI WITH (NOLOCK)
-    WHERE UPI.Comp_Id = @CompId AND UPI.Status = 'Success' AND LEN(UPI.Code1) > 3
+    WHERE UPI.Comp_Id = @ActualCompId AND UPI.Status = 'Success' AND LEN(UPI.Code1) > 3
       AND UPI.ReqDate >= @CompRegDate
       AND UPI.ReqDate >= @StartDate AND UPI.ReqDate < DATEADD(DAY, 1, @EndDate)
       AND EXISTS (SELECT 1 FROM #Users U WHERE U.M_ConsumerId = UPI.M_Consumerid)

@@ -26,6 +26,18 @@ BEGIN
    SET NOCOUNT ON;
 
     ------------------------------------------------------
+    -- SBU Company Check Logic
+    ------------------------------------------------------
+    DECLARE @ActualCompId VARCHAR(15) = @Comp_Id;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
+
+    ------------------------------------------------------
     -- Pagination Defaults
     ------------------------------------------------------
     IF @Page IS NULL OR @Page <= 0 SET @Page = 1;
@@ -38,7 +50,7 @@ BEGIN
     -- Date Range
     ------------------------------------------------------
     DECLARE @CompanyStartDate DATETIME;
-    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @ActualCompId AND Status = 1;
 
     DECLARE @StartDate DATE = NULL;
     DECLARE @EndDate   DATE = NULL;
@@ -125,9 +137,15 @@ BEGIN
 INTO #TempDealerMaster
 FROM
 (
-    SELECT  DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType FROM m_dealermaster where Comp_id=@Comp_Id and DealerCode !='SBUTEAM'
+    SELECT  DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType 
+    FROM m_dealermaster 
+    WHERE Comp_id = @ActualCompId 
+      AND (
+            (@IsSBUTeam = 0 AND DealerCode != 'SBUTEAM') OR
+            (@IsSBUTeam = 1 AND DealerCode = 'SBUTEAM')
+          )
     UNION
-    SELECT  DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType FROM m_dealermaster_mahindra_emp where Comp_id=@Comp_Id
+    SELECT  DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType FROM m_dealermaster_mahindra_emp where Comp_id = @ActualCompId
 ) AS A;
 
 
@@ -136,7 +154,11 @@ FROM
     ------------------------------------------------------
     DECLARE @BaseWhere NVARCHAR(MAX) = N'
         WHERE VKS.Comp_ID = @Comp_Id
-          AND MC.IsDelete = 0';
+          AND MC.IsDelete = 0
+          AND (
+                (' + CAST(@IsSBUTeam AS VARCHAR(1)) + ' = 0 AND (MC.distributorID != ''SBUTEAM'' OR MC.distributorID IS NULL)) OR
+                (' + CAST(@IsSBUTeam AS VARCHAR(1)) + ' = 1 AND MC.distributorID = ''SBUTEAM'')
+              )';
 
     IF @StartDate IS NOT NULL
         SET @BaseWhere += N' AND CAST(VKS.Entry_Date AS DATE) BETWEEN @StartDate AND @EndDate';
@@ -252,7 +274,7 @@ FROM
                 @Limit INT,
                 @Page INT
             ',
-            @Comp_Id,
+            @ActualCompId,
             @StartDate,
             @EndDate,
             @KYCStatusFilter,
@@ -280,7 +302,7 @@ FROM
                 @Limit INT,
                 @Page INT
             ',
-            @Comp_Id,
+            @ActualCompId,
             @StartDate,
             @EndDate,
             @KYCStatusFilter,

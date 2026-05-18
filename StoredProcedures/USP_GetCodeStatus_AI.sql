@@ -20,6 +20,16 @@ BEGIN
     SET NOCOUNT ON;
 
     ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(50) = @Comp_ID;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_ID)
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_ID;
+    END
+
+    ---------------------------------------------------------
     -- Normalize flags & pagination
     ---------------------------------------------------------
     SET @IsExport = ISNULL(@IsExport, 0);
@@ -50,7 +60,7 @@ BEGIN
         ON sst.Subscribe_Id = ss.Subscribe_Id
     INNER JOIN Pro_Reg pr 
         ON pr.Pro_id = ss.Pro_ID
-    WHERE pr.Comp_ID = @Comp_ID
+    WHERE pr.Comp_ID = @ActualCompId
       AND sst.IsActive = 1 AND sst.IsDelete = 0
       AND ss.IsActive = 1 AND ss.IsDelete = 0;
 
@@ -61,7 +71,7 @@ BEGIN
 
     SELECT
         CASE WHEN PE.Is_Success = 1 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
-        CAST(CASE WHEN PE.Is_Success = 1 THEN ISNULL(sd.Points, 0) ELSE 0 END AS DECIMAL(18,2)) AS Points,
+        CAST(CASE WHEN PE.Is_Success = 1 THEN CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
         ISNULL(sd.IsCash, 0) AS IsCash,
         PE.Enq_Date,
         ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS UniqueCode,
@@ -86,7 +96,7 @@ BEGIN
            CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     WHERE PE.Received_Code1 = @RecievedCode1
       AND PE.Received_Code2 = @RecievedCode2
-      AND pr.Comp_ID = @Comp_ID;
+      AND pr.Comp_ID = @ActualCompId;
 
     ---------------------------------------------------------
     -- DETAILS RESULT
@@ -138,7 +148,7 @@ BEGIN
             PE.Enq_Date,
             (SELECT COUNT(1) FROM Pro_Enq WHERE Received_Code1 = @RecievedCode1 AND Received_Code2 = @RecievedCode2) AS CodeCheckCount,
             CASE WHEN sst.IsActive = 1 AND ss.IsActive = 1 AND ss.IsDelete = 0 AND sst.IsDelete = 0 THEN 'Active' ELSE 'In Active' END AS CodeActiveStatus,
-            CASE WHEN sst.Points IS NULL THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points
+            CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points
         FROM Pro_Enq PE
         INNER JOIN M_Code mc 
             ON mc.Code1 = PE.Received_Code1
@@ -161,7 +171,7 @@ BEGIN
             ON MS.Service_ID = ss.Service_ID
         WHERE PE.Received_Code1 = @RecievedCode1
           AND PE.Received_Code2 = @RecievedCode2
-          AND pr.Comp_ID = @Comp_ID
+          AND pr.Comp_ID = @ActualCompId
         ORDER BY PE.Enq_Date DESC;
     END
 END

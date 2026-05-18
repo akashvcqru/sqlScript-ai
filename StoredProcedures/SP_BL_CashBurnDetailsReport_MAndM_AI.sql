@@ -10,7 +10,8 @@ GO
 -- exec [dbo].[SP_BL_CashBurnDetailsReport_MAndM_AI] 'Comp-1152',1,10,0
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_CashBurnDetailsReport_MAndM_AI]
 (
-    @CompId NVARCHAR(15),
+    @Comp_Id NVARCHAR(15) = NULL,
+    @CompId NVARCHAR(15) = NULL,
     @Page INT = NULL,
     @Limit INT = NULL,
     @IsExport BIT = NULL
@@ -19,13 +20,29 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    -- Normalize company ID parameter name
+    IF @Comp_Id IS NULL AND @CompId IS NOT NULL
+        SET @Comp_Id = @CompId;
+
     ---------------------------------------------------------
-    -- Validate CompId
+    -- Validate Comp_Id
     ---------------------------------------------------------
-    IF (@CompId IS NULL OR LTRIM(RTRIM(@CompId)) = '')
+    IF (@Comp_Id IS NULL OR LTRIM(RTRIM(@Comp_Id)) = '')
     BEGIN
-        RAISERROR('CompId is required', 16, 1);
+        RAISERROR('Comp_Id is required', 16, 1);
         RETURN;
+    END
+
+    ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(15) = @Comp_Id;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
     END
 
     ---------------------------------------------------------

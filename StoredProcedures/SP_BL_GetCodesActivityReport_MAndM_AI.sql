@@ -11,7 +11,8 @@ GO
 -- exec [dbo].[SP_BL_GetCodesActivityReport_MAndM_AI] 'Comp-1152','MONTH',null,null,null,null,1,10,0
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_MAndM_AI]
 (
-    @CompId NVARCHAR(15),
+    @Comp_Id NVARCHAR(15) = NULL,
+    @CompId NVARCHAR(15) = NULL,
     @datePreset NVARCHAR(20) = NULL,
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
@@ -27,6 +28,22 @@ CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_MAndM_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -- Normalize company ID parameter name
+    IF @Comp_Id IS NULL AND @CompId IS NOT NULL
+        SET @Comp_Id = @CompId;
+
+    ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(15) = @Comp_Id;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
 
     ---------------------------------------------------------
     -- Normalize
@@ -180,7 +197,11 @@ BEGIN
     LEFT JOIN dbo.UserData_MHCroneJob mc WITH (NOLOCK) ON mc.m_consumerid = pc.m_consumerid
     LEFT JOIN dbo.GeoLocationData gc WITH (NOLOCK) ON gc.Code1 = pc.Code1 AND gc.Code2 = pc.Code2
     WHERE
-        pc.Comp_Id = @CompId
+        pc.Comp_Id = @ActualCompId
+        AND (
+            (@IsSBUTeam = 0 AND (pc.distributedid <> 'SBUTEAM' OR pc.distributedid IS NULL) AND (mc.DealerCode <> 'SBUTEAM' OR mc.DealerCode IS NULL)) OR
+            (@IsSBUTeam = 1 AND (pc.distributedid = 'SBUTEAM' OR mc.DealerCode = 'SBUTEAM'))
+        )
         AND (@StartDate IS NULL OR pc.Enq_Date >= @StartDate)
         AND (@EndDate IS NULL OR pc.Enq_Date < DATEADD(DAY, 1, @EndDate))
         AND (@Scheme IS NULL OR pc.Pro_Name LIKE '%' + @Scheme + '%')

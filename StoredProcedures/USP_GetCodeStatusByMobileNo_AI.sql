@@ -19,6 +19,16 @@ BEGIN
     SET NOCOUNT ON;
 
     ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(50) = @Comp_ID;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_ID)
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_ID;
+    END
+
+    ---------------------------------------------------------
     -- Normalize flags & pagination
     ---------------------------------------------------------
     SET @IsExport = ISNULL(@IsExport, 0);
@@ -54,7 +64,7 @@ BEGIN
         ON sst.Subscribe_Id = ss.Subscribe_Id
     INNER JOIN Pro_Reg pr 
         ON pr.Pro_id = ss.Pro_ID
-    WHERE pr.Comp_ID = @Comp_ID
+    WHERE pr.Comp_ID = @ActualCompId
       AND sst.IsActive = 1 AND sst.IsDelete = 0
       AND ss.IsActive = 1 AND ss.IsDelete = 0;
 
@@ -65,7 +75,7 @@ BEGIN
 
     SELECT
         CASE WHEN PE.Is_Success = 1 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
-        CAST(CASE WHEN PE.Is_Success = 1 THEN ISNULL(sd.Points, 0) ELSE 0 END AS DECIMAL(18,2)) AS Points,
+        CAST(CASE WHEN PE.Is_Success = 1 THEN CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
         ISNULL(sd.IsCash, 0) AS IsCash,
         PE.Enq_Date,
         ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS UniqueCode,
@@ -90,7 +100,7 @@ BEGIN
            AND 
            CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
-      AND pr.Comp_ID = @Comp_ID;
+      AND pr.Comp_ID = @ActualCompId;
 
     ---------------------------------------------------------
     -- Calculate Summary Counts

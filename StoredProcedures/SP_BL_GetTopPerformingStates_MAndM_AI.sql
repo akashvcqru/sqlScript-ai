@@ -15,6 +15,18 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(50) = @CompId;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
+
    DECLARE @StartDate DATE;
 DECLARE @EndDate   DATE;
 
@@ -31,7 +43,7 @@ IF @Win = 'QUARTER(90DAYS)' SET @Win = 'QUARTER';
 DECLARE @CompRegDate DATE;
 SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
 FROM Comp_Reg WITH (NOLOCK) 
-WHERE Comp_ID = @CompId AND Status = 1;
+WHERE Comp_ID = @ActualCompId AND Status = 1;
 
 IF @CompRegDate IS NULL 
     SET @CompRegDate = '2000-01-01';
@@ -78,14 +90,19 @@ BEGIN
 END
 
 
-   ;WITH CTE_AllUsers AS (
+    ;WITH CTE_AllUsers AS (
     -- Base: Users linked with this company via KYC
     SELECT DISTINCT 
         V.M_ConsumerId,
         MC.MobileNo
     FROM tbl_VendorViseKYCStatus V
     LEFT JOIN M_Consumer MC ON MC.M_ConsumerId = V.M_ConsumerId
-    WHERE V.Comp_Id = @CompId AND (MC.Entry_Date IS NULL OR MC.Entry_Date >= @CompRegDate)
+    WHERE V.Comp_Id = @ActualCompId 
+      AND (MC.Entry_Date IS NULL OR MC.Entry_Date >= @CompRegDate)
+      AND (
+            (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
+            (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM')
+          )
 ),
 CTE_State AS (
     -- Get latest scanned state for each user
@@ -97,7 +114,7 @@ CTE_State AS (
     FROM CTE_AllUsers AU
     LEFT JOIN GeoLocationData G
         ON G.MobileNo = AU.MobileNo
-       AND G.Comp_Id = @CompId
+       AND G.Comp_Id = @ActualCompId
        AND G.Enq_Date >= @CompRegDate
        AND CAST(G.Enq_Date AS DATE) BETWEEN @StartDate AND @EndDate
 ),
@@ -113,7 +130,7 @@ CTE_BLE AS (
     FROM CTE_AllUsers AU
     LEFT JOIN BLoyaltyPointsEarned BLE
         ON BLE.M_ConsumerId = AU.M_ConsumerId
-       AND BLE.Compid = @CompId
+       AND BLE.Compid = @ActualCompId
        AND BLE.UpdateDate >= @CompRegDate
        AND CAST(BLE.UpdateDate AS DATE) BETWEEN @StartDate AND @EndDate
     LEFT JOIN CTE_UserState US
@@ -129,13 +146,13 @@ CTE_Redeem AS (
     FROM CTE_AllUsers AU
     LEFT JOIN ClaimDetails CD
         ON CD.MobileNo = AU.MobileNo
-       AND CD.Comp_id = @CompId
+       AND CD.Comp_id = @ActualCompId
        AND CD.Isapproved = 1
        AND CD.action_date >= @CompRegDate
        AND CAST(CD.action_date AS DATE) BETWEEN @StartDate AND @EndDate
     LEFT JOIN tblUPITransactionDetails UPI
         ON UPI.M_Consumerid = AU.M_ConsumerId
-       AND UPI.Comp_Id = @CompId
+       AND UPI.Comp_Id = @ActualCompId
        AND UPI.Status = 'Success'
 	   AND LEN(UPI.Code1)>2
        AND UPI.ReqDate >= @CompRegDate
