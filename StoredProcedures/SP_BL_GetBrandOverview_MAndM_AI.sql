@@ -100,20 +100,13 @@ BEGIN
     -- SBU Team Temp Tables from UserData_MHCroneJob (DealerCode = 'SBUTEAM')
     ---------------------------------------------------------
     IF OBJECT_ID('tempdb..#SBUTeamMobile') IS NOT NULL DROP TABLE #SBUTeamMobile;
-    SELECT MobileNo 
+    SELECT MobileNo, M_ConsumerId, Entry_Date, VRKbl_KYC_status
     INTO #SBUTeamMobile 
     FROM UserData_MHCroneJob WITH (NOLOCK) 
     WHERE DealerCode = 'SBUTEAM' AND Comp_ID = @ActualCompId AND IsDelete = 0;
 
     CREATE UNIQUE CLUSTERED INDEX IX_SBUTeamMobile_MobileNo ON #SBUTeamMobile(MobileNo);
-
-    IF OBJECT_ID('tempdb..#SBUTeamConsumerIds') IS NOT NULL DROP TABLE #SBUTeamConsumerIds;
-    SELECT M_ConsumerId
-    INTO #SBUTeamConsumerIds
-    FROM UserData_MHCroneJob WITH (NOLOCK) 
-    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = @ActualCompId AND IsDelete = 0;
-
-    CREATE UNIQUE CLUSTERED INDEX IX_SBUTeamConsumerIds_Id ON #SBUTeamConsumerIds(M_ConsumerId);
+    CREATE NONCLUSTERED INDEX IX_SBUTeamMobile_ConsumerId ON #SBUTeamMobile(M_ConsumerId);
 
     ---------------------------------------------------------
     -- Fetch High-Level Cron Data (Old Stored Procedure Logic)
@@ -154,54 +147,68 @@ BEGIN
     SELECT 
         @SBU_RegUsers_Current = COUNT(*),
         @SBU_RegUsers_Prev = SUM(CASE WHEN Entry_Date < @StartDate THEN 1 ELSE 0 END)
-    FROM UserData_MHCroneJob WITH (NOLOCK)
-    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = @ActualCompId AND IsDelete = 0;
+    FROM #SBUTeamMobile;
+
+    ---------------------------------------------------------
+    -- Consolidated Scan for Active Users (Period Bounded)
+    ---------------------------------------------------------
+    IF OBJECT_ID('tempdb..#ActiveScanData') IS NOT NULL DROP TABLE #ActiveScanData;
+
+    SELECT DISTINCT 
+        PE.MobileNo,
+        CASE WHEN PE.Enq_Date >= @StartDate AND PE.Enq_Date < @EndDate THEN 1 ELSE 0 END AS IsCurrent,
+        CASE WHEN PE.Enq_Date >= @PrevStartDate AND PE.Enq_Date < @PrevEndDate THEN 1 ELSE 0 END AS IsPrev
+    INTO #ActiveScanData
+    FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
+    WHERE PE.Comp_id = @ActualCompId
+      AND (
+          (PE.Enq_Date >= @StartDate AND PE.Enq_Date < @EndDate)
+          OR (PE.Enq_Date >= @PrevStartDate AND PE.Enq_Date < @PrevEndDate)
+      );
+
+    CREATE CLUSTERED INDEX IX_ActiveScanData_MobileNo ON #ActiveScanData(MobileNo);
 
     -- SBU Active
-    SELECT @SBU_ActiveUsers_Current = COUNT(DISTINCT PE.MobileNo) 
-    FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
-    WHERE PE.Comp_id = @ActualCompId 
-      AND PE.Enq_Date >= @StartDate AND PE.Enq_Date < @EndDate
-      AND PE.MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
+    SELECT @SBU_ActiveUsers_Current = COUNT(DISTINCT MobileNo)
+    FROM #ActiveScanData
+    WHERE IsCurrent = 1
+      AND MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
 
-    SELECT @SBU_ActiveUsers_Prev = COUNT(DISTINCT PE.MobileNo) 
-    FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
-    WHERE PE.Comp_id = @ActualCompId 
-      AND PE.Enq_Date >= @PrevStartDate AND PE.Enq_Date < @PrevEndDate
-      AND PE.MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
+    SELECT @SBU_ActiveUsers_Prev = COUNT(DISTINCT MobileNo)
+    FROM #ActiveScanData
+    WHERE IsPrev = 1
+      AND MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
 
     -- Non-SBU Active
     DECLARE @NonSBU_ActiveUsers_Current INT = 0, @NonSBU_ActiveUsers_Prev INT = 0;
 
-    SELECT @NonSBU_ActiveUsers_Current = COUNT(DISTINCT PE.MobileNo) 
-    FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
-    WHERE PE.Comp_id = @ActualCompId 
-      AND PE.Enq_Date >= @StartDate AND PE.Enq_Date < @EndDate
-      AND NOT EXISTS (SELECT 1 FROM #SBUTeamMobile S WHERE S.MobileNo = PE.MobileNo);
+    SELECT @NonSBU_ActiveUsers_Current = COUNT(DISTINCT MobileNo)
+    FROM #ActiveScanData
+    WHERE IsCurrent = 1
+      AND NOT EXISTS (SELECT 1 FROM #SBUTeamMobile S WHERE S.MobileNo = #ActiveScanData.MobileNo);
 
-    SELECT @NonSBU_ActiveUsers_Prev = COUNT(DISTINCT PE.MobileNo) 
-    FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
-    WHERE PE.Comp_id = @ActualCompId 
-      AND PE.Enq_Date >= @PrevStartDate AND PE.Enq_Date < @PrevEndDate
-      AND NOT EXISTS (SELECT 1 FROM #SBUTeamMobile S WHERE S.MobileNo = PE.MobileNo);
+    SELECT @NonSBU_ActiveUsers_Prev = COUNT(DISTINCT MobileNo)
+    FROM #ActiveScanData
+    WHERE IsPrev = 1
+      AND NOT EXISTS (SELECT 1 FROM #SBUTeamMobile S WHERE S.MobileNo = #ActiveScanData.MobileNo);
 
     -- SBU Qr Verified (Scans)
     SELECT 
         @SBU_QrVerified_Current = COUNT(*),
         @SBU_QrVerified_Prev = SUM(CASE WHEN PE.Enq_Date < @StartDate THEN 1 ELSE 0 END)
     FROM ConsumerPointsCashDetails PE WITH (NOLOCK)
+    INNER JOIN #SBUTeamMobile S ON S.MobileNo = PE.MobileNo
     WHERE PE.Comp_id = @ActualCompId 
-      AND PE.Enq_Date >= @CompRegDate
-      AND PE.MobileNo IN (SELECT MobileNo FROM #SBUTeamMobile);
+      AND PE.Enq_Date >= @CompRegDate;
 
     -- SBU Cash Utilized (Payouts)
     SELECT 
         @SBU_CashUtilized_Current = SUM(ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0)),
         @SBU_CashUtilized_Prev = SUM(CASE WHEN ut.TransactionDate < @StartDate THEN ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0) ELSE 0 END)
     FROM Transactions ut WITH (NOLOCK)
+    INNER JOIN #SBUTeamMobile S ON S.M_ConsumerId = ut.M_CounserID
     WHERE ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
-      AND ut.Issuccess = 1
-      AND ut.M_CounserID IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
+      AND ut.Issuccess = 1;
 
     ---------------------------------------------------------
     -- Separate SBU and Non-SBU Values
@@ -344,8 +351,7 @@ BEGIN
         @SBU_ActiveKYC = SUM(CASE WHEN VRKbl_KYC_status = 1 THEN 1 ELSE 0 END),
         @SBU_RejectedKYC = SUM(CASE WHEN VRKbl_KYC_status = 2 THEN 1 ELSE 0 END),
         @SBU_PendingKYC = SUM(CASE WHEN VRKbl_KYC_status NOT IN (1, 2) OR VRKbl_KYC_status IS NULL THEN 1 ELSE 0 END)
-    FROM UserData_MHCroneJob WITH (NOLOCK)
-    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = @ActualCompId AND IsDelete = 0;
+    FROM #SBUTeamMobile;
 
     IF @IsSBUTeam = 1
     BEGIN
