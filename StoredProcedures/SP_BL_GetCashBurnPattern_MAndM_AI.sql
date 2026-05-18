@@ -149,7 +149,7 @@ BEGIN
             CAST(ut.TransactionDate AS DATE)
         FROM Transactions ut WITH (NOLOCK) 
         WHERE ut.Issuccess = 1 
-          AND ut.CompId = @ActualCompId
+          AND ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
           AND ut.TransactionDate >= @StartDate
           AND ut.TransactionDate < DATEADD(DAY, 1, @EndDate)
           AND ut.M_CounserID IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds)
@@ -163,7 +163,7 @@ BEGIN
             CAST(ut.TransactionDate AS DATE)
         FROM Transactions ut WITH (NOLOCK) 
         WHERE ut.Issuccess = 1 
-          AND ut.CompId = @ActualCompId
+          AND ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
           AND ut.TransactionDate >= @StartDate
           AND ut.TransactionDate < DATEADD(DAY, 1, @EndDate)
           AND ut.M_CounserID NOT IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds)
@@ -274,7 +274,7 @@ BEGIN
             @PrevTotalBurn = SUM(CAST(ut.Amount AS DECIMAL(18,2)))
         FROM Transactions ut WITH (NOLOCK) 
         WHERE ut.Issuccess = 1 
-          AND ut.CompId = @ActualCompId
+          AND ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
           AND ut.TransactionDate >= @PrevStartDate
           AND ut.TransactionDate < DATEADD(DAY, 1, @PrevEndDate)
           AND ut.M_CounserID IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
@@ -285,7 +285,7 @@ BEGIN
             @PrevTotalBurn = SUM(CAST(ut.Amount AS DECIMAL(18,2)))
         FROM Transactions ut WITH (NOLOCK) 
         WHERE ut.Issuccess = 1 
-          AND ut.CompId = @ActualCompId
+          AND ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
           AND ut.TransactionDate >= @PrevStartDate
           AND ut.TransactionDate < DATEADD(DAY, 1, @PrevEndDate)
           AND ut.M_CounserID NOT IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);

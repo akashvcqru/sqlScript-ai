@@ -185,13 +185,16 @@ BEGIN
     ---------------------------------------------------------
     SELECT
         BL.M_ConsumerId,
-        SUM(ISNULL(BL.Points, 0)) AS Benefit,
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS Benefit,
         MAX(BL.UpdateDate) AS LastScan
     INTO #Benefit
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-    WHERE BL.compid = @ActualCompId
+    LEFT JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    LEFT JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    WHERE ISNULL(BL.compid, MC.Compid) = @ActualCompId
       AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
       AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
+      AND BL.M_ConsumerId IN (SELECT M_ConsumerId FROM #Users)
     GROUP BY BL.M_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_Benefit_ConsumerId ON #Benefit(M_ConsumerId);
@@ -220,7 +223,7 @@ BEGIN
         SUM(ISNULL(CAST(Amount AS DECIMAL(18,2)),0)) AS UPIAmount
     INTO #UPI
     FROM Transactions WITH (NOLOCK)
-    WHERE CompId = @ActualCompId
+    WHERE CompId = REPLACE(@ActualCompId, 'Comp-', '')
       AND Issuccess = 1
       AND (@StartDate IS NULL OR TransactionDate >= @StartDate)
       AND (@EndDate   IS NULL OR TransactionDate <  @EndDate)

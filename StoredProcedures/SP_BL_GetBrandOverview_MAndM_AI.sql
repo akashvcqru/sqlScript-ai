@@ -216,7 +216,7 @@ BEGIN
             @CashUtilized_Current = SUM(ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0)),
             @CashUtilized_Prev = SUM(CASE WHEN ut.TransactionDate < @StartDate THEN ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0) ELSE 0 END)
         FROM Transactions ut WITH (NOLOCK)
-        WHERE ut.CompId = @ActualCompId 
+        WHERE ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
           AND ut.Issuccess = 1
           AND ut.M_CounserID IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
     END
@@ -226,7 +226,7 @@ BEGIN
             @CashUtilized_Current = SUM(ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0)),
             @CashUtilized_Prev = SUM(CASE WHEN ut.TransactionDate < @StartDate THEN ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0) ELSE 0 END)
         FROM Transactions ut WITH (NOLOCK)
-        WHERE ut.CompId = @ActualCompId 
+        WHERE ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
           AND ut.Issuccess = 1
           AND ut.M_CounserID NOT IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
     END

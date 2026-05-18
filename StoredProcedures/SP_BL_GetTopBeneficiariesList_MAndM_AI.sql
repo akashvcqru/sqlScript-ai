@@ -119,15 +119,17 @@ BEGIN
     SELECT 
         BLE.M_ConsumerId,
         MAX(BLE.UpdateDate) AS LastActionDate,
-        SUM(ISNULL(BLE.Points, 0)) AS Benefit
+        SUM(CASE WHEN BLE.Points IS NULL OR BLE.Points = 0 THEN ISNULL(BLE.Cash, 0) ELSE BLE.Points END) AS Benefit
     INTO #Benefit
     FROM BLoyaltyPointsEarned BLE WITH (NOLOCK)
+    LEFT JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BLE.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    LEFT JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
     WHERE 
-        BLE.CompId = @ActualCompId
+        ISNULL(BLE.CompId, MC.Compid) = @ActualCompId
         AND BLE.UpdateDate >= @CompRegDate
         AND BLE.UpdateDate >= @StartDate
         AND BLE.UpdateDate < DATEADD(DAY, 1, @EndDate)
-        AND EXISTS (SELECT 1 FROM #Users U WHERE U.M_ConsumerId = BLE.M_ConsumerId)
+        AND BLE.M_ConsumerId IN (SELECT M_ConsumerId FROM #Users)
     GROUP BY BLE.M_ConsumerId; 
 
     IF OBJECT_ID('tempdb..#Claims') IS NOT NULL DROP TABLE #Claims;
@@ -150,7 +152,7 @@ BEGIN
         SUM(ISNULL(CAST(UPI.Amount AS DECIMAL(18,2)), 0)) AS UPIAmount
     INTO #UPI
     FROM Transactions UPI WITH (NOLOCK)
-    WHERE UPI.CompId = @ActualCompId AND UPI.Issuccess = 1
+    WHERE UPI.CompId = REPLACE(@ActualCompId, 'Comp-', '') AND UPI.Issuccess = 1
       AND UPI.TransactionDate >= @CompRegDate
       AND UPI.TransactionDate >= @StartDate AND UPI.TransactionDate < DATEADD(DAY, 1, @EndDate)
       AND EXISTS (SELECT 1 FROM #Users U WHERE U.M_ConsumerId = UPI.M_CounserID)

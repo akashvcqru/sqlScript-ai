@@ -152,7 +152,7 @@ CTE_Redeem AS (
        AND CAST(CD.action_date AS DATE) BETWEEN @StartDate AND @EndDate
     LEFT JOIN Transactions UPI
         ON UPI.M_CounserID = AU.M_ConsumerId
-       AND UPI.CompId = @ActualCompId
+       AND UPI.CompId = REPLACE(@ActualCompId, 'Comp-', '')
        AND UPI.Issuccess = 1
        AND UPI.TransactionDate >= @CompRegDate
        AND CAST(UPI.TransactionDate AS DATE) BETWEEN @StartDate AND @EndDate
