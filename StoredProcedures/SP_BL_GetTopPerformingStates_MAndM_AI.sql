@@ -150,13 +150,12 @@ CTE_Redeem AS (
        AND CD.Isapproved = 1
        AND CD.action_date >= @CompRegDate
        AND CAST(CD.action_date AS DATE) BETWEEN @StartDate AND @EndDate
-    LEFT JOIN tblUPITransactionDetails UPI
-        ON UPI.M_Consumerid = AU.M_ConsumerId
-       AND UPI.Comp_Id = @ActualCompId
-       AND UPI.Status = 'Success'
-	   AND LEN(UPI.Code1)>2
-       AND UPI.ReqDate >= @CompRegDate
-       AND CAST(UPI.ReqDate AS DATE) BETWEEN @StartDate AND @EndDate
+    LEFT JOIN Transactions UPI
+        ON UPI.M_CounserID = AU.M_ConsumerId
+       AND UPI.CompId = @ActualCompId
+       AND UPI.Issuccess = 1
+       AND UPI.TransactionDate >= @CompRegDate
+       AND CAST(UPI.TransactionDate AS DATE) BETWEEN @StartDate AND @EndDate
     LEFT JOIN CTE_UserState US
         ON US.M_ConsumerId = AU.M_ConsumerId
     GROUP BY US.[State]

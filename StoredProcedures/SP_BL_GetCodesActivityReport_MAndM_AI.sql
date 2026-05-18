@@ -91,7 +91,7 @@ BEGIN
         IF (@Win = 'TODAY')
             SET @StartDate = @EndDate;
 
-        ELSE IF (@Win = 'YESTERDAY')
+        ELSE IF (@Win = 'YESTERDAY' OR @Win = 'LASTDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, @EndDate);
             SET @EndDate   = DATEADD(DAY, -1, @EndDate);

@@ -146,15 +146,15 @@ BEGIN
     IF OBJECT_ID('tempdb..#UPI') IS NOT NULL DROP TABLE #UPI;
 
     SELECT 
-        UPI.M_Consumerid,
-        SUM(ISNULL(UPI.Amount, 0)) AS UPIAmount
+        UPI.M_CounserID AS M_Consumerid,
+        SUM(ISNULL(CAST(UPI.Amount AS DECIMAL(18,2)), 0)) AS UPIAmount
     INTO #UPI
-    FROM tblUPITransactionDetails UPI WITH (NOLOCK)
-    WHERE UPI.Comp_Id = @ActualCompId AND UPI.Status = 'Success' AND LEN(UPI.Code1) > 3
-      AND UPI.ReqDate >= @CompRegDate
-      AND UPI.ReqDate >= @StartDate AND UPI.ReqDate < DATEADD(DAY, 1, @EndDate)
-      AND EXISTS (SELECT 1 FROM #Users U WHERE U.M_ConsumerId = UPI.M_Consumerid)
-    GROUP BY UPI.M_Consumerid;
+    FROM Transactions UPI WITH (NOLOCK)
+    WHERE UPI.CompId = @ActualCompId AND UPI.Issuccess = 1
+      AND UPI.TransactionDate >= @CompRegDate
+      AND UPI.TransactionDate >= @StartDate AND UPI.TransactionDate < DATEADD(DAY, 1, @EndDate)
+      AND EXISTS (SELECT 1 FROM #Users U WHERE U.M_ConsumerId = UPI.M_CounserID)
+    GROUP BY UPI.M_CounserID;
 
     SELECT TOP 30
         U.ConsumerName,

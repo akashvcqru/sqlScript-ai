@@ -216,16 +216,15 @@ BEGIN
     -- UPI
     ---------------------------------------------------------
     SELECT
-        M_Consumerid,
-        SUM(ISNULL(Amount,0)) AS UPIAmount
+        M_CounserID AS M_Consumerid,
+        SUM(ISNULL(CAST(Amount AS DECIMAL(18,2)),0)) AS UPIAmount
     INTO #UPI
-    FROM tblUPITransactionDetails WITH (NOLOCK)
-    WHERE Comp_Id = @ActualCompId
-      AND Status = 'Success'
-      AND LEN(Code1) > 3
-      AND (@StartDate IS NULL OR ReqDate >= @StartDate)
-      AND (@EndDate   IS NULL OR ReqDate <  @EndDate)
-    GROUP BY M_Consumerid;
+    FROM Transactions WITH (NOLOCK)
+    WHERE CompId = @ActualCompId
+      AND Issuccess = 1
+      AND (@StartDate IS NULL OR TransactionDate >= @StartDate)
+      AND (@EndDate   IS NULL OR TransactionDate <  @EndDate)
+    GROUP BY M_CounserID;
 
     CREATE CLUSTERED INDEX IX_UPI_ConsumerId ON #UPI(M_Consumerid);
 

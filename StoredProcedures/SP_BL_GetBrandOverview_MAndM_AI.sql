@@ -108,7 +108,7 @@ BEGIN
     CREATE UNIQUE CLUSTERED INDEX IX_SBUTeamMobile_MobileNo ON #SBUTeamMobile(MobileNo);
 
     IF OBJECT_ID('tempdb..#SBUTeamConsumerIds') IS NOT NULL DROP TABLE #SBUTeamConsumerIds;
-    SELECT CAST(M_Consumerid AS VARCHAR(50)) AS M_Consumerid
+    SELECT M_Consumerid
     INTO #SBUTeamConsumerIds
     FROM M_Consumer WITH (NOLOCK) 
     WHERE distributorID = 'SBUTEAM' AND IsDelete = 0;
@@ -213,22 +213,22 @@ BEGIN
     IF @IsSBUTeam = 1
     BEGIN
         SELECT 
-            @CashUtilized_Current = SUM(ISNULL(ut.Amount, 0)),
-            @CashUtilized_Prev = SUM(CASE WHEN ut.ReqDate < @StartDate THEN ISNULL(ut.Amount, 0) ELSE 0 END)
-        FROM tblUPITransactionDetails ut WITH (NOLOCK)
-        WHERE ut.Comp_Id = @ActualCompId 
-          AND ut.Status = 'Success'
-          AND ut.M_Consumerid IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
+            @CashUtilized_Current = SUM(ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0)),
+            @CashUtilized_Prev = SUM(CASE WHEN ut.TransactionDate < @StartDate THEN ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0) ELSE 0 END)
+        FROM Transactions ut WITH (NOLOCK)
+        WHERE ut.CompId = @ActualCompId 
+          AND ut.Issuccess = 1
+          AND ut.M_CounserID IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
     END
     ELSE
     BEGIN
         SELECT 
-            @CashUtilized_Current = SUM(ISNULL(ut.Amount, 0)),
-            @CashUtilized_Prev = SUM(CASE WHEN ut.ReqDate < @StartDate THEN ISNULL(ut.Amount, 0) ELSE 0 END)
-        FROM tblUPITransactionDetails ut WITH (NOLOCK)
-        WHERE ut.Comp_Id = @ActualCompId 
-          AND ut.Status = 'Success'
-          AND ut.M_Consumerid NOT IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
+            @CashUtilized_Current = SUM(ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0)),
+            @CashUtilized_Prev = SUM(CASE WHEN ut.TransactionDate < @StartDate THEN ISNULL(CAST(ut.Amount AS DECIMAL(18,2)), 0) ELSE 0 END)
+        FROM Transactions ut WITH (NOLOCK)
+        WHERE ut.CompId = @ActualCompId 
+          AND ut.Issuccess = 1
+          AND ut.M_CounserID NOT IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
     END
 
     ---------------------------------------------------------
