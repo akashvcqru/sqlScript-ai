@@ -48,6 +48,18 @@ BEGIN
     ELSE
         SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
 
+    -- Normalize KYCStatusFilter
+    IF @KYCStatusFilter IS NOT NULL
+    BEGIN
+        SET @KYCStatusFilter = UPPER(LTRIM(RTRIM(@KYCStatusFilter)));
+        IF @KYCStatusFilter IN ('1', 'APPROVED', 'APPROVE')
+            SET @KYCStatusFilter = 'APPROVED';
+        ELSE IF @KYCStatusFilter IN ('2', 'REJECTED', 'REJECT')
+            SET @KYCStatusFilter = 'REJECTED';
+        ELSE IF @KYCStatusFilter IN ('0', 'PENDING', '3')
+            SET @KYCStatusFilter = 'PENDING';
+    END
+
     -- Explicit date range overrides datePreset
     IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
     BEGIN
