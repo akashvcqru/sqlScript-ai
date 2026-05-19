@@ -311,6 +311,25 @@ BEGIN
             END
         END
 
+        -- Update DateTo if TargetExpDate is provided and greater than existing DateTo
+        IF @TargetExpDate IS NOT NULL AND CAST(@TargetExpDate AS DATE) >= CAST(GETDATE() AS DATE)
+        BEGIN
+            DECLARE @ActiveSubs TABLE (Subscribe_Id NVARCHAR(50));
+            INSERT INTO @ActiveSubs
+            SELECT Subscribe_Id FROM M_ServiceSubscription WITH(NOLOCK)
+            WHERE Pro_ID = @TargetProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0;
+
+            UPDATE M_ServiceSubscription
+            SET DateTo = @TargetExpDate
+            WHERE Subscribe_Id IN (SELECT Subscribe_Id FROM @ActiveSubs)
+              AND @TargetExpDate > ISNULL(DateTo, '1900-01-01');
+
+            UPDATE M_ServiceSubscriptionTrans
+            SET DateTo = @TargetExpDate
+            WHERE Subscribe_Id IN (SELECT Subscribe_Id FROM @ActiveSubs)
+              AND @TargetExpDate > ISNULL(DateTo, '1900-01-01');
+        END
+
         COMMIT TRANSACTION;
 
         IF @NewBatchRowId IS NOT NULL
