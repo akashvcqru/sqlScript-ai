@@ -1,4 +1,6 @@
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData_MAndM_AI]    Script Date: 3/2/2026 12:27:18 PM ******/
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData_MAndM_AI]    Script Date: 5/19/2026 2:46:37 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -168,6 +170,7 @@ FROM
         WHERE VKS.Comp_ID = @Comp_Id
           AND VKS.rn = 1
           AND MC.IsDelete = 0
+		  AND MC.distributorID is not null
           AND (
                 (' + CAST(@IsSBUTeam AS VARCHAR(1)) + ' = 0 AND (MC.distributorID != ''SBUTEAM'' OR MC.distributorID IS NULL)) OR
                 (' + CAST(@IsSBUTeam AS VARCHAR(1)) + ' = 1 AND MC.distributorID = ''SBUTEAM'')
@@ -332,4 +335,3 @@ FROM
             @Page;
     END
 END
-GO
