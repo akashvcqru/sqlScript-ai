@@ -89,6 +89,13 @@ BEGIN
             RETURN;
         END
 
+        -- Validation: Original product and Target product cannot be the same
+        IF @OrigProId = @TargetProId
+        BEGIN
+            SELECT 0 AS success, 'Original product and Target product cannot be the same.' AS message;
+            RETURN;
+        END
+
         -- Company validation: Ensure products belong to the company
         IF NOT EXISTS (SELECT 1 FROM Pro_Reg WITH (NOLOCK) WHERE Pro_ID = @OrigProId AND Comp_ID = @Comp_ID)
         BEGIN
@@ -106,6 +113,63 @@ BEGIN
         DECLARE @TotalRequested INT = @SerialTo - @SerialFrom + 1;
         DECLARE @AvailableCount INT = 0;
 
+        -- Check if any code in the requested range has already been reassigned to @OrigProId in T_ReassignCode
+        DECLARE @ConflictingOldProId NVARCHAR(50) = NULL;
+        DECLARE @ConflictingSerial INT = NULL;
+
+        ;WITH ReassignedRanges AS (
+            SELECT 
+                OldProductId,
+                ReassignCodeProId,
+                -- Parse Series Order
+                CAST(REVERSE(SUBSTRING(REVERSE(FromSeries), 
+                    CHARINDEX('-', REVERSE(FromSeries)) + 1, 
+                    CHARINDEX('-', REVERSE(FromSeries), CHARINDEX('-', REVERSE(FromSeries)) + 1) - CHARINDEX('-', REVERSE(FromSeries)) - 1
+                )) AS INT) AS SeriesOrder,
+                -- Parse Serial From
+                CAST(REVERSE(SUBSTRING(REVERSE(FromSeries), 1, CHARINDEX('-', REVERSE(FromSeries)) - 1)) AS INT) AS SerialFrom,
+                -- Parse Serial To
+                CAST(REVERSE(SUBSTRING(REVERSE(ToSeries), 1, CHARINDEX('-', REVERSE(ToSeries)) - 1)) AS INT) AS SerialTo
+            FROM T_ReassignCode WITH (NOLOCK)
+            WHERE ReassignCodeProId = @OrigProId
+              AND FromSeries LIKE '%-%-%%' -- Ensure it has the correct format
+        )
+        SELECT TOP 1
+            @ConflictingOldProId = r.OldProductId,
+            @ConflictingSerial = Seq.SerialNum
+        FROM (
+            -- Generate sequence of serial numbers in the requested range
+            SELECT @SerialFrom + RowNum - 1 AS SerialNum
+            FROM (
+                SELECT ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) AS RowNum
+                FROM (
+                    SELECT 1 AS c UNION ALL SELECT 1
+                ) AS L0
+                CROSS JOIN (SELECT 1 AS c UNION ALL SELECT 1) AS L1
+                CROSS JOIN (SELECT 1 AS c UNION ALL SELECT 1) AS L2
+                CROSS JOIN (SELECT 1 AS c UNION ALL SELECT 1) AS L3
+                CROSS JOIN (SELECT 1 AS c UNION ALL SELECT 1) AS L4
+                CROSS JOIN (SELECT 1 AS c UNION ALL SELECT 1) AS L5
+            ) AS Nums
+            WHERE RowNum <= @TotalRequested
+        ) AS Seq
+        INNER JOIN ReassignedRanges AS r
+            ON r.SeriesOrder = @SeriesOrder
+            AND r.SerialFrom <= Seq.SerialNum
+            AND r.SerialTo >= Seq.SerialNum
+        ORDER BY Seq.SerialNum ASC;
+
+        IF @ConflictingSerial IS NOT NULL AND @ConflictingOldProId IS NOT NULL
+        BEGIN
+            DECLARE @ConflictingCodeSeries NVARCHAR(100);
+            DECLARE @OrderPart NVARCHAR(20) = SUBSTRING(@FromSeriesSerial, LEN(@FromSeriesSerial) - @SecondLastHyphenFrom + 2, @SecondLastHyphenFrom - @LastHyphenFrom - 1);
+            DECLARE @ConflictingPaddedSerial NVARCHAR(20) = RIGHT('0000000000' + CAST(@ConflictingSerial AS VARCHAR(10)), @LastHyphenFrom - 1);
+            SET @ConflictingCodeSeries = @ConflictingOldProId + '-' + @OrderPart + '-' + @ConflictingPaddedSerial;
+
+            SELECT 0 AS success, 'Code ' + @ConflictingCodeSeries + ' is already assigned to another product.' AS message;
+            RETURN;
+        END
+
         SELECT @AvailableCount = COUNT(*) 
         FROM M_Code WITH (NOLOCK) 
         WHERE Pro_ID = @OrigProId 
@@ -113,13 +177,50 @@ BEGIN
           AND Series_Serial >= @SerialFrom 
           AND Series_Serial <= @SerialTo;
 
-        DECLARE @AlreadyAssignedCount INT = @TotalRequested - @AvailableCount;
-
-        IF @AlreadyAssignedCount > 0
+        IF @AvailableCount < @TotalRequested
         BEGIN
-            SELECT 0 AS success, 
-                   CAST(@AlreadyAssignedCount AS NVARCHAR(20)) + ' codes are already assigned to other Serial Number. Please enter valid From, To Series' AS message;
-            RETURN;
+            -- Find the first serial number in the range that is not available or has different Pro_ID
+            DECLARE @FailedSerial INT = NULL;
+            
+            ;WITH 
+            L0 AS (SELECT 1 AS c UNION ALL SELECT 1),
+            L1 AS (SELECT 1 AS c FROM L0 AS a CROSS JOIN L0 AS b),
+            L2 AS (SELECT 1 AS c FROM L1 AS a CROSS JOIN L1 AS b),
+            L3 AS (SELECT 1 AS c FROM L2 AS a CROSS JOIN L2 AS b),
+            L4 AS (SELECT 1 AS c FROM L3 AS a CROSS JOIN L3 AS b),
+            L5 AS (SELECT 1 AS c FROM L4 AS a CROSS JOIN L4 AS b),
+            Nums AS (SELECT ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) AS RowNum FROM L5),
+            Seq AS (
+                SELECT @SerialFrom + RowNum - 1 AS SerialNum 
+                FROM Nums 
+                WHERE RowNum <= @TotalRequested
+            )
+            SELECT TOP 1 @FailedSerial = Seq.SerialNum
+            FROM Seq
+            LEFT JOIN M_Code WITH (NOLOCK) 
+                ON M_Code.Series_Serial = Seq.SerialNum 
+                AND M_Code.Series_Order = @SeriesOrder 
+                AND M_Code.Pro_ID = @OrigProId
+            WHERE M_Code.Row_ID IS NULL
+            ORDER BY Seq.SerialNum ASC;
+
+            IF @FailedSerial IS NOT NULL
+            BEGIN
+                DECLARE @FailedCodeSeries NVARCHAR(100);
+                DECLARE @SeriesPrefix NVARCHAR(100) = SUBSTRING(@FromSeriesSerial, 1, LEN(@FromSeriesSerial) - @LastHyphenFrom);
+                DECLARE @PaddedSerial NVARCHAR(20) = RIGHT('0000000000' + CAST(@FailedSerial AS VARCHAR(10)), @LastHyphenFrom - 1);
+                SET @FailedCodeSeries = @SeriesPrefix + '-' + @PaddedSerial;
+
+                SELECT 0 AS success, 'Code ' + @FailedCodeSeries + ' is already assigned to another product/series. Reassignment stopped.' AS message;
+                RETURN;
+            END
+            ELSE
+            BEGIN
+                -- Fallback in case of unexpected count mismatch
+                DECLARE @AlreadyAssignedCount INT = @TotalRequested - @AvailableCount;
+                SELECT 0 AS success, CAST(@AlreadyAssignedCount AS NVARCHAR(20)) + ' codes are already assigned to other Serial Number. Please enter valid From, To Series' AS message;
+                RETURN;
+            END
         END
 
         -- Lookup active ServiceId for the target product
