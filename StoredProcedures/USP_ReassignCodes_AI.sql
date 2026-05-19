@@ -123,6 +123,32 @@ BEGIN
             RETURN;
         END
 
+        -- Validate TargetExpDate against Subscription DateTo and current date
+        IF @TargetExpDate IS NOT NULL
+        BEGIN
+            IF CAST(@TargetExpDate AS DATE) < CAST(GETDATE() AS DATE)
+            BEGIN
+                SELECT 0 AS success, 'TargetExpDate cannot be less than current date.' AS message;
+                RETURN;
+            END
+
+            DECLARE @SubscriptionDateTo DATETIME;
+            SELECT TOP 1 @SubscriptionDateTo = DateTo 
+            FROM M_ServiceSubscription WITH(NOLOCK) 
+            WHERE Pro_ID = @TargetProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
+            ORDER BY EntryDate DESC, Subscribe_Id DESC;
+
+            IF @SubscriptionDateTo IS NULL
+            BEGIN
+                SELECT TOP 1 @SubscriptionDateTo = DateTo 
+                FROM M_ServiceSubscription WITH(NOLOCK) 
+                WHERE Pro_ID = @OrigProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
+                ORDER BY EntryDate DESC, Subscribe_Id DESC;
+            END
+
+           
+        END
+
         BEGIN TRANSACTION;
 
         -- Store the old batch IDs before updating to update their series limits later
