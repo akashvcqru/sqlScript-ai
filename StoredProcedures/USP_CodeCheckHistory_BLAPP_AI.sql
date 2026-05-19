@@ -7,7 +7,9 @@ GO
 ALTER PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]  
     @MobileNo VARCHAR(15),  
     @Comp_ID VARCHAR(100),  
-    @M_Consumer_id INT  
+    @M_Consumer_id INT,
+    @Year INT = NULL,
+    @Month INT = NULL
 AS  
 BEGIN  
     IF @Comp_ID = 'comp-1152' OR @Comp_ID = 'Comp-1152'
@@ -20,15 +22,15 @@ BEGIN
                 ELSE 'Unsuccess'   
             END AS Status,  
             bl.Service_ID,
-            FORMAT(bl.UpdateDate, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
-            'VCQRU' AS Comp_Name,  
-            'Points' AS Pro_Name,  
+            FORMAT(bl.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+            'MAHINDRA AND MAHINDRA LTD' AS Comp_Name,  
+            Pro_Name AS Pro_Name,  
             CONCAT(bl.Code1, bl.Code2) AS [Code],  
             bl.Code1,  
             bl.Code2,  
             bl.MobileNo,
             @M_Consumer_id AS M_Consumerid,
-            CONCAT('+', bl.points) AS Points,  
+            CONCAT('+', bl.cash) AS Points,  
             ms.ServiceName,  
             ms.ServiceName AS ServiceNameNew,
             CASE  
@@ -39,7 +41,9 @@ BEGIN
         FROM [dbo].[ConsumerPointsCashDetails] bl
         LEFT JOIN M_Service ms ON ms.Service_ID = bl.Service_ID
         WHERE bl.MobileNo = @MobileNo
-        ORDER BY bl.UpdateDate DESC;
+          AND (@Year IS NULL OR YEAR(bl.Enq_Date) = @Year)
+          AND (@Month IS NULL OR MONTH(bl.Enq_Date) = @Month)
+        ORDER BY bl.Enq_Date DESC;
         RETURN;
     END
 
