@@ -47,6 +47,59 @@ BEGIN
         RETURN;
     END
 
+    IF @Comp_ID = 'comp-1274' OR @Comp_ID = 'Comp-1274'
+    BEGIN
+        SELECT   
+            CASE   
+                WHEN pe.Is_Success = 1 THEN 'Success'   
+                WHEN pe.Is_Success = 0 THEN 'Invalid'   
+                WHEN pe.Is_Success = 2 THEN 'Unsuccess'
+                ELSE 'Unsuccess'   
+            END AS Status,  
+            ss.Service_ID,
+            FORMAT(pe.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+            ISNULL(cr.Comp_Name, 'N/A') AS Comp_Name,  
+            ISNULL(pr.Pro_Name, 'N/A') AS Pro_Name,  
+            CONCAT(pe.Received_Code1, pe.Received_Code2) AS [Code],  
+            pe.Received_Code1 AS Code1,  
+            pe.Received_Code2 AS Code2,  
+            pe.MobileNo,
+            @M_Consumer_id AS M_Consumerid,
+            CONCAT('+', CASE WHEN pe.Is_Success = 1 THEN CAST(CAST(ISNULL(sst.IsCash, 0) * 1.10 AS INT) AS VARCHAR(50)) ELSE '0' END) AS Points,  
+            s.ServiceName,  
+            s.ServiceName AS ServiceNameNew,
+            CASE  
+                WHEN pe.Is_Success = 1 THEN 'Green'  
+                WHEN pe.Is_Success = 0 THEN 'Red'  
+                ELSE 'Red'  
+            END AS ColourCode  
+        FROM Pro_Enq pe
+        INNER JOIN M_Code m 
+            ON TRY_CAST(pe.Received_Code1 AS INT) = m.Code1
+            AND TRY_CAST(pe.Received_Code2 AS INT) = m.Code2
+        INNER JOIN M_ServiceSubscription ss 
+            ON m.Pro_id = ss.Pro_id 
+            AND ss.IsActive = 1 AND ss.IsDelete = 0
+            AND CONCAT(FORMAT(m.Series_Order, '000#'), FORMAT(m.Series_Serial, '000#')) 
+                BETWEEN CONCAT(FORMAT(ss.start_order, '000#'), FORMAT(ss.start_series, '000#')) 
+                    AND CONCAT(FORMAT(ss.end_order, '000#'), FORMAT(ss.end_series, '000#'))
+        INNER JOIN M_ServiceSubscriptionTrans sst 
+            ON sst.Subscribe_Id = ss.Subscribe_Id
+            AND sst.IsActive = 1 AND sst.IsDelete = 0
+        INNER JOIN M_Service s 
+            ON ss.Service_ID = s.Service_ID
+        LEFT JOIN Pro_Reg pr 
+            ON pr.Pro_ID = m.Pro_ID
+        LEFT JOIN Comp_Reg cr 
+            ON cr.Comp_ID = pr.Comp_ID
+        WHERE pe.MobileNo = @MobileNo
+          AND pe.Comp_ID = @Comp_ID
+          AND (@Year IS NULL OR YEAR(pe.Enq_Date) = @Year)
+          AND (@Month IS NULL OR MONTH(pe.Enq_Date) = @Month)
+        ORDER BY pe.Enq_Date DESC;
+        RETURN;
+    END
+
     ;WITH EnquiryData AS (  
         SELECT   
             CASE   
