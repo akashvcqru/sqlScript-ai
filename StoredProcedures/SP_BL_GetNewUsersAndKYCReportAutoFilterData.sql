@@ -177,10 +177,8 @@ BEGIN
         CASE WHEN MC.bankekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
         MC.pancard_number,
-        MC.gst_number,
         MC.gender,
         MC.shop_file,
-        MC.AddressProof,
         VKS.kycremark AS remark,
         VKS.kycremark, -- Keep original name too
 
