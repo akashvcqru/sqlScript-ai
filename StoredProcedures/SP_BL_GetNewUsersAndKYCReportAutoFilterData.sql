@@ -141,7 +141,7 @@ BEGIN
         AND (
             (@KYCStatusFilter = ''APPROVED'' AND VKS.VRKbl_KYC_status = 1) OR
             (@KYCStatusFilter = ''REJECTED'' AND VKS.VRKbl_KYC_status = 2) OR
-            (@KYCStatusFilter = ''PENDING'' AND (VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL))
+            (@KYCStatusFilter = ''PENDING'' AND (VKS.VRKbl_KYC_status NOT IN (1, 2) OR VKS.VRKbl_KYC_status IS NULL))
         )';
 
     IF @StateFilter IS NOT NULL AND LTRIM(RTRIM(@StateFilter)) <> ''
