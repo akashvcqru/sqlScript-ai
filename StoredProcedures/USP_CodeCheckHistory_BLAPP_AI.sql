@@ -80,9 +80,14 @@ BEGIN
         INNER JOIN M_ServiceSubscription ss 
             ON m.Pro_id = ss.Pro_id 
             AND ss.IsActive = 1 AND ss.IsDelete = 0
-            AND CONCAT(FORMAT(m.Series_Order, '000#'), FORMAT(m.Series_Serial, '000#')) 
-                BETWEEN CONCAT(FORMAT(ss.start_order, '000#'), FORMAT(ss.start_series, '000#')) 
-                    AND CONCAT(FORMAT(ss.end_order, '000#'), FORMAT(ss.end_series, '000#'))
+            AND (
+                m.Series_Order > ss.start_order 
+                OR (m.Series_Order = ss.start_order AND m.Series_Serial >= ss.start_series)
+            )
+            AND (
+                m.Series_Order < ss.end_order 
+                OR (m.Series_Order = ss.end_order AND m.Series_Serial <= ss.end_series)
+            )
         INNER JOIN M_ServiceSubscriptionTrans sst 
             ON sst.Subscribe_Id = ss.Subscribe_Id
             AND sst.IsActive = 1 AND sst.IsDelete = 0
