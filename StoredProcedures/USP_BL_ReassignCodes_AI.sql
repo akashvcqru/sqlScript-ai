@@ -1,3 +1,7 @@
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 -- ============================================================================
 -- Author:      AI Assistant
 -- Create date: 2026-05-13
@@ -17,7 +21,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
     
-    -- Ensure T_ReassignCode table exists
+    -- Ensure T_ReassignCode table exists and has Comments column
     IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[T_ReassignCode]') AND type in (N'U'))
     BEGIN
         CREATE TABLE [dbo].[T_ReassignCode] (
@@ -33,8 +37,16 @@ BEGIN
             [Entry_Date] DATETIME,
             [T_Pro_Row_ID] BIGINT,
             [FromSeries] NVARCHAR(100),
-            [ToSeries] NVARCHAR(100)
+            [ToSeries] NVARCHAR(100),
+            [Comments] NVARCHAR(250) NULL
         );
+    END
+    ELSE
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[T_ReassignCode]') AND name = 'Comments')
+        BEGIN
+            ALTER TABLE [dbo].[T_ReassignCode] ADD [Comments] NVARCHAR(250) NULL;
+        END
     END
 
     DECLARE @OrigProId NVARCHAR(50);
@@ -106,6 +118,32 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM Pro_Reg WITH (NOLOCK) WHERE Pro_ID = @TargetProId AND Comp_ID = @Comp_ID)
         BEGIN
             SELECT 0 AS success, 'Target product does not belong to this company.' AS message;
+            RETURN;
+        END
+
+        -- Validate if target product already has an active entry relevant to given series range
+        DECLARE @ReqStart BIGINT = CAST(@SeriesOrder AS BIGINT) * 10000 + @SerialFrom;
+        DECLARE @ReqEnd BIGINT = CAST(@SeriesOrderTo AS BIGINT) * 10000 + @SerialTo;
+
+        IF EXISTS (
+            SELECT 1 
+            FROM M_ServiceSubscription sub WITH (NOLOCK)
+            INNER JOIN M_ServiceSubscriptionTrans trans WITH (NOLOCK)
+                ON sub.Subscribe_Id = trans.Subscribe_Id
+            WHERE sub.Pro_ID = @TargetProId
+              AND sub.IsActive = 1 
+              AND ISNULL(sub.IsDelete, 0) = 0
+              AND trans.IsActive = 1 
+              AND ISNULL(trans.IsDelete, 0) = 0
+              AND sub.start_order IS NOT NULL
+              AND sub.start_series IS NOT NULL
+              AND sub.end_order IS NOT NULL
+              AND sub.end_series IS NOT NULL
+              AND (CAST(sub.start_order AS BIGINT) * 10000 + sub.start_series) <= @ReqEnd
+              AND @ReqStart <= (CAST(sub.end_order AS BIGINT) * 10000 + sub.end_series)
+        )
+        BEGIN
+            SELECT 0 AS success, 'already assign to another active seriease' AS message;
             RETURN;
         END
 
@@ -289,7 +327,8 @@ BEGIN
             [Entry_Date],
             [T_Pro_Row_ID],
             [FromSeries],
-            [ToSeries]
+            [ToSeries],
+            [Comments]
         )
         VALUES (
             @Comp_ID,
@@ -303,15 +342,24 @@ BEGIN
             GETDATE(),
             @NewBatchRowId,
             @FromSeriesSerial,
-            @ToSeriesSerial
+            @ToSeriesSerial,
+            'BL Reassigned from ' + @OrigProId
         );
 
-        -- 5b. Create entries in M_ServiceSubscription and M_ServiceSubscriptionTrans if target product has a subscription
-        DECLARE @LastSubscribeId NVARCHAR(50);
+        -- 5b. Create entries in M_ServiceSubscription and M_ServiceSubscriptionTrans
+        DECLARE @LastSubscribeId NVARCHAR(50) = NULL;
         SELECT TOP 1 @LastSubscribeId = Subscribe_Id
         FROM M_ServiceSubscription WITH (NOLOCK)
-        WHERE Pro_ID = @TargetProId
+        WHERE Pro_ID = @TargetProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
         ORDER BY EntryDate DESC, Subscribe_Id DESC;
+
+        IF @LastSubscribeId IS NULL
+        BEGIN
+            SELECT TOP 1 @LastSubscribeId = Subscribe_Id
+            FROM M_ServiceSubscription WITH (NOLOCK)
+            WHERE Pro_ID = @OrigProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
+            ORDER BY EntryDate DESC, Subscribe_Id DESC;
+        END
 
         IF @LastSubscribeId IS NOT NULL
         BEGIN
@@ -341,7 +389,7 @@ BEGIN
                 END
             END
 
-            -- Insert into M_ServiceSubscription replicating the last record of target product
+            -- Insert into M_ServiceSubscription replicating the subscription details (and setting IsActive=1, IsDelete=0)
             INSERT INTO [dbo].[M_ServiceSubscription] (
                 [Subscribe_Id], [Service_ID], [Comp_ID], [Pro_ID], [Plan_ID], [PlanName],
                 [PlanMasterPeriod], [PlanSalePeriod], [PlanMasterPrice], [PlanSalePrice],
@@ -349,13 +397,12 @@ BEGIN
                 [TransType], [start_order], [start_series], [end_order], [end_series]
             )
             SELECT TOP 1
-                @NewSubscribeId, [Service_ID], [Comp_ID], [Pro_ID], [Plan_ID], [PlanName],
+                @NewSubscribeId, [Service_ID], [Comp_ID], @TargetProId, [Plan_ID], [PlanName],
                 [PlanMasterPeriod], [PlanSalePeriod], [PlanMasterPrice], [PlanSalePrice],
-                [DateFrom], [DateTo], GETDATE(), [IsActive], [IsDelete], [IsAdminVerify],
+                [DateFrom], ISNULL(@TargetExpDate, [DateTo]), GETDATE(), 1, 0, [IsAdminVerify],
                 [TransType], @SeriesOrder, @SerialFrom, @SeriesOrder, @SerialTo
             FROM [dbo].[M_ServiceSubscription] WITH (NOLOCK)
-            WHERE Pro_ID = @TargetProId
-            ORDER BY EntryDate DESC, Subscribe_Id DESC;
+            WHERE Subscribe_Id = @LastSubscribeId;
 
             -- Insert into M_ServiceSubscriptiontrans replicating the configuration of the last subscription
             INSERT INTO [dbo].[M_ServiceSubscriptionTrans] (
@@ -365,9 +412,9 @@ BEGIN
                 [AmtType], [Minval], [Maxval], [totalamont]
             )
             SELECT TOP 1
-                @NewSubscribeId, @Point, [IsCashConvert], [IsCash], [DateFrom], [DateTo],
+                @NewSubscribeId, @Point, [IsCashConvert], [IsCash], [DateFrom], ISNULL(@TargetExpDate, [DateTo]),
                 GETDATE(), [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
-                [IsActive], [IsDelete], [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
+                1, 0, [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
                 [AmtType], [Minval], [Maxval], [totalamont]
             FROM [dbo].[M_ServiceSubscriptionTrans] WITH (NOLOCK)
             WHERE Subscribe_Id = @LastSubscribeId

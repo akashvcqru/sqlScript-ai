@@ -1,3 +1,7 @@
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 -- =============================================
 -- Author:      AI
 -- Create date: 2026-05-04
@@ -24,6 +28,34 @@ BEGIN
     DECLARE @NewBatchRowId NUMERIC(20, 0) = NULL;
 
     BEGIN TRY
+        -- Ensure T_ReassignCode table exists and has Comments column
+        IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[T_ReassignCode]') AND type in (N'U'))
+        BEGIN
+            CREATE TABLE [dbo].[T_ReassignCode] (
+                [ReassignCodeId] BIGINT IDENTITY(1,1) PRIMARY KEY,
+                [Comp_ID] NVARCHAR(50),
+                [OldProductId] NVARCHAR(50),
+                [ReassignCodeProId] NVARCHAR(50),
+                [Points] DECIMAL(18,2),
+                [BatchNumber] NVARCHAR(50),
+                [AssignDate] DATETIME NULL,
+                [ExpiryDate] DATETIME NULL,
+                [ServiceId] NVARCHAR(50),
+                [Entry_Date] DATETIME,
+                [T_Pro_Row_ID] BIGINT,
+                [FromSeries] NVARCHAR(100),
+                [ToSeries] NVARCHAR(100),
+                [Comments] NVARCHAR(250) NULL
+            );
+        END
+        ELSE
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[T_ReassignCode]') AND name = 'Comments')
+            BEGIN
+                ALTER TABLE [dbo].[T_ReassignCode] ADD [Comments] NVARCHAR(250) NULL;
+            END
+        END
+
         -- 1. Parse Serial Codes
         -- Expected format: PROID-ORDER-SERIAL (e.g., BJ46-0000-0000)
         
@@ -92,6 +124,32 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM Pro_Reg WITH(NOLOCK) WHERE Pro_ID = @TargetProId AND Comp_ID = @Comp_ID)
         BEGIN
             SELECT 0 AS success, 'Target product does not belong to this company.' AS message;
+            RETURN;
+        END
+
+        -- Validate if target product already has an active entry relevant to given series range
+        DECLARE @ReqStart BIGINT = CAST(@SeriesOrderFrom AS BIGINT) * 10000 + @SerialFrom;
+        DECLARE @ReqEnd BIGINT = CAST(@SeriesOrderTo AS BIGINT) * 10000 + @SerialTo;
+
+        IF EXISTS (
+            SELECT 1 
+            FROM M_ServiceSubscription sub WITH (NOLOCK)
+            INNER JOIN M_ServiceSubscriptionTrans trans WITH (NOLOCK)
+                ON sub.Subscribe_Id = trans.Subscribe_Id
+            WHERE sub.Pro_ID = @TargetProId
+              AND sub.IsActive = 1 
+              AND ISNULL(sub.IsDelete, 0) = 0
+              AND trans.IsActive = 1 
+              AND ISNULL(trans.IsDelete, 0) = 0
+              AND sub.start_order IS NOT NULL
+              AND sub.start_series IS NOT NULL
+              AND sub.end_order IS NOT NULL
+              AND sub.end_series IS NOT NULL
+              AND (CAST(sub.start_order AS BIGINT) * 10000 + sub.start_series) <= @ReqEnd
+              AND @ReqStart <= (CAST(sub.end_order AS BIGINT) * 10000 + sub.end_series)
+        )
+        BEGIN
+            SELECT 0 AS success, 'already assign to another active seriease' AS message;
             RETURN;
         END
 
@@ -214,6 +272,43 @@ BEGIN
             RETURN;
         END
 
+        -- Insert record into T_ReassignCode for tracking
+        DECLARE @ServiceId NVARCHAR(50) = '';
+        SELECT TOP 1 @ServiceId = Service_ID 
+        FROM M_ServiceSubscription WITH (NOLOCK)
+        WHERE Pro_ID = @TargetProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0;
+
+        INSERT INTO [dbo].[T_ReassignCode] (
+            [Comp_ID],
+            [OldProductId],
+            [ReassignCodeProId],
+            [Points],
+            [BatchNumber],
+            [AssignDate],
+            [ExpiryDate],
+            [ServiceId],
+            [Entry_Date],
+            [T_Pro_Row_ID],
+            [FromSeries],
+            [ToSeries],
+            [Comments]
+        )
+        VALUES (
+            @Comp_ID,
+            @OrigProId,
+            @TargetProId,
+            0.00,
+            @TargetBatchNo,
+            @TargetMfdDate,
+            @TargetExpDate,
+            @ServiceId,
+            GETDATE(),
+            @NewBatchRowId,
+            @FromSerialCode,
+            @ToSerialCode,
+            'Reassigned from ' + @OrigProId
+        );
+
         -- Update Series_Limit for the New Batch if created
         IF @NewBatchRowId IS NOT NULL
         BEGIN
@@ -235,80 +330,84 @@ BEGIN
         DEALLOCATE batch_cursor;
 
         -- Point 3 & 6: M_ServiceSubscription Handling
-        -- Check if TargetProId exists in M_ServiceSubscription
-        IF NOT EXISTS (SELECT 1 FROM M_ServiceSubscription WITH(NOLOCK) WHERE Pro_ID = @TargetProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0)
+        -- Find subscription to replicate (first check target product, then fallback to original product)
+        DECLARE @OldSubscribeId NVARCHAR(50) = NULL;
+        SELECT TOP 1 @OldSubscribeId = Subscribe_Id
+        FROM M_ServiceSubscription WITH(NOLOCK)
+        WHERE Pro_ID = @TargetProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
+        ORDER BY EntryDate DESC, Subscribe_Id DESC;
+
+        IF @OldSubscribeId IS NULL
         BEGIN
-            -- If it doesn't exist, check if OrigProId has one
-            DECLARE @OldSubscribeId NVARCHAR(50) = NULL;
             SELECT TOP 1 @OldSubscribeId = Subscribe_Id
             FROM M_ServiceSubscription WITH(NOLOCK)
             WHERE Pro_ID = @OrigProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
             ORDER BY EntryDate DESC, Subscribe_Id DESC;
+        END
 
-            IF @OldSubscribeId IS NOT NULL
+        IF @OldSubscribeId IS NOT NULL
+        BEGIN
+            -- Generate new Subscribe_Id
+            DECLARE @NewSubscribeId NVARCHAR(50);
+            DECLARE @Prefix NVARCHAR(10);
+            DECLARE @StartVal BIGINT;
+
+            WHILE 1 = 1
             BEGIN
-                -- Generate new Subscribe_Id
-                DECLARE @NewSubscribeId NVARCHAR(50);
-                DECLARE @Prefix NVARCHAR(10);
-                DECLARE @StartVal BIGINT;
-
-                WHILE 1 = 1
-                BEGIN
-                    SELECT TOP 1 @Prefix = PrPrefix, @StartVal = CAST(PrStart AS BIGINT)
-                    FROM Code_Gen WITH (UPDLOCK, HOLDLOCK)
-                    WHERE PrPrefix = 'SSI';
-
-                    SET @NewSubscribeId = CONCAT(@Prefix, CAST(@StartVal AS NVARCHAR(50)));
-
-                    -- Check if Subscribe_Id already exists
-                    IF EXISTS (SELECT 1 FROM M_ServiceSubscriptiontrans WITH (NOLOCK) WHERE Subscribe_Id = @NewSubscribeId)
-                       OR EXISTS (SELECT 1 FROM M_ServiceSubscription WITH (NOLOCK) WHERE Subscribe_Id = @NewSubscribeId)
-                    BEGIN
-                        UPDATE Code_Gen
-                        SET PrStart = CAST((@StartVal + 1) AS NVARCHAR(50))
-                        WHERE PrPrefix = 'SSI';
-                    END
-                    ELSE
-                    BEGIN
-                        BREAK;
-                    END
-                END
-
-                -- Insert into M_ServiceSubscription replicating the last record of original product
-                INSERT INTO [dbo].[M_ServiceSubscription] (
-                    [Subscribe_Id], [Service_ID], [Comp_ID], [Pro_ID], [Plan_ID], [PlanName],
-                    [PlanMasterPeriod], [PlanSalePeriod], [PlanMasterPrice], [PlanSalePrice],
-                    [DateFrom], [DateTo], [EntryDate], [IsActive], [IsDelete], [IsAdminVerify],
-                    [TransType], [start_order], [start_series], [end_order], [end_series]
-                )
-                SELECT TOP 1
-                    @NewSubscribeId, [Service_ID], [Comp_ID], @TargetProId, [Plan_ID], [PlanName],
-                    [PlanMasterPeriod], [PlanSalePeriod], [PlanMasterPrice], [PlanSalePrice],
-                    [DateFrom], [DateTo], GETDATE(), [IsActive], [IsDelete], [IsAdminVerify],
-                    [TransType], @SeriesOrderFrom, @SerialFrom, @SeriesOrderTo, @SerialTo
-                FROM [dbo].[M_ServiceSubscription] WITH (NOLOCK)
-                WHERE Subscribe_Id = @OldSubscribeId;
-
-                -- Insert into M_ServiceSubscriptiontrans
-                INSERT INTO [dbo].[M_ServiceSubscriptionTrans] (
-                    [Subscribe_Id], [Points], [IsCashConvert], [IsCash], [DateFrom], [DateTo],
-                    [Entry_Date], [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
-                    [IsActive], [IsDelete], [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
-                    [AmtType], [Minval], [Maxval], [totalamont]
-                )
-                SELECT 
-                    @NewSubscribeId, [Points], [IsCashConvert], [IsCash], [DateFrom], [DateTo],
-                    GETDATE(), [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
-                    [IsActive], [IsDelete], [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
-                    [AmtType], [Minval], [Maxval], [totalamont]
-                FROM [dbo].[M_ServiceSubscriptionTrans] WITH (NOLOCK)
-                WHERE Subscribe_Id = @OldSubscribeId;
-
-                -- Update Code_Gen PrStart
-                UPDATE Code_Gen
-                SET PrStart = CAST((CAST(PrStart AS BIGINT) + 1) AS NVARCHAR(50))
+                SELECT TOP 1 @Prefix = PrPrefix, @StartVal = CAST(PrStart AS BIGINT)
+                FROM Code_Gen WITH (UPDLOCK, HOLDLOCK)
                 WHERE PrPrefix = 'SSI';
+
+                SET @NewSubscribeId = CONCAT(@Prefix, CAST(@StartVal AS NVARCHAR(50)));
+
+                -- Check if Subscribe_Id already exists
+                IF EXISTS (SELECT 1 FROM M_ServiceSubscriptiontrans WITH (NOLOCK) WHERE Subscribe_Id = @NewSubscribeId)
+                   OR EXISTS (SELECT 1 FROM M_ServiceSubscription WITH (NOLOCK) WHERE Subscribe_Id = @NewSubscribeId)
+                BEGIN
+                    UPDATE Code_Gen
+                    SET PrStart = CAST((@StartVal + 1) AS NVARCHAR(50))
+                    WHERE PrPrefix = 'SSI';
+                END
+                ELSE
+                BEGIN
+                    BREAK;
+                END
             END
+
+            -- Insert into M_ServiceSubscription replicating the subscription details (and setting IsActive=1, IsDelete=0)
+            INSERT INTO [dbo].[M_ServiceSubscription] (
+                [Subscribe_Id], [Service_ID], [Comp_ID], [Pro_ID], [Plan_ID], [PlanName],
+                [PlanMasterPeriod], [PlanSalePeriod], [PlanMasterPrice], [PlanSalePrice],
+                [DateFrom], [DateTo], [EntryDate], [IsActive], [IsDelete], [IsAdminVerify],
+                [TransType], [start_order], [start_series], [end_order], [end_series]
+            )
+            SELECT TOP 1
+                @NewSubscribeId, [Service_ID], [Comp_ID], @TargetProId, [Plan_ID], [PlanName],
+                [PlanMasterPeriod], [PlanSalePeriod], [PlanMasterPrice], [PlanSalePrice],
+                [DateFrom], ISNULL(@TargetExpDate, [DateTo]), GETDATE(), 1, 0, [IsAdminVerify],
+                [TransType], @SeriesOrderFrom, @SerialFrom, @SeriesOrderTo, @SerialTo
+            FROM [dbo].[M_ServiceSubscription] WITH (NOLOCK)
+            WHERE Subscribe_Id = @OldSubscribeId;
+
+            -- Insert into M_ServiceSubscriptiontrans (and setting IsActive=1, IsDelete=0)
+            INSERT INTO [dbo].[M_ServiceSubscriptionTrans] (
+                [Subscribe_Id], [Points], [IsCashConvert], [IsCash], [DateFrom], [DateTo],
+                [Entry_Date], [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
+                [IsActive], [IsDelete], [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
+                [AmtType], [Minval], [Maxval], [totalamont]
+            )
+            SELECT 
+                @NewSubscribeId, [Points], [IsCashConvert], [IsCash], [DateFrom], ISNULL(@TargetExpDate, [DateTo]),
+                GETDATE(), [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
+                1, 0, [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
+                [AmtType], [Minval], [Maxval], [totalamont]
+            FROM [dbo].[M_ServiceSubscriptionTrans] WITH (NOLOCK)
+            WHERE Subscribe_Id = @OldSubscribeId;
+
+            -- Update Code_Gen PrStart
+            UPDATE Code_Gen
+            SET PrStart = CAST((CAST(PrStart AS BIGINT) + 1) AS NVARCHAR(50))
+            WHERE PrPrefix = 'SSI';
         END
 
         -- Update DateTo if TargetExpDate is provided and greater than existing DateTo
