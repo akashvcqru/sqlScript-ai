@@ -31,7 +31,7 @@ BEGIN
     WHERE Row_ID = @Row_ID;
 
     -- 2. Get Label Name
-    SELECT @Label_Name = Label_Name 
+    SELECT @Label_Name = CONCAT(Label_Name, ' ( ', Label_Size, ' )')
     FROM [dbo].[M_Label] 
     WHERE Label_Code = @Label_Code;
 
@@ -60,36 +60,30 @@ BEGIN
             @Label_Name,
             -- Format Series_From
             CONVERT(NVARCHAR, @Pro_ID) + '-' + 
-            (CASE WHEN LEN(CONVERT(NUMERIC, SeriesOrder)) = 1 THEN '0' + CONVERT(NVARCHAR, SeriesOrder) ELSE CONVERT(NVARCHAR, SeriesOrder) END) + '-' + 
-            (CASE WHEN LEN(CONVERT(NUMERIC, MinSerial)) = 1 THEN '000' + CONVERT(NVARCHAR, MinSerial)
-                  WHEN LEN(CONVERT(NUMERIC, MinSerial)) = 2 THEN '00' + CONVERT(NVARCHAR, MinSerial)
-                  WHEN LEN(CONVERT(NUMERIC, MinSerial)) = 3 THEN '0' + CONVERT(NVARCHAR, MinSerial)
-                  ELSE CONVERT(NVARCHAR, MinSerial) END),
+            RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(SeriesOrder, 0)), 4) + '-' + 
+            RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(MinSerial, 0)), 4),
             -- Format Series_To
             CONVERT(NVARCHAR, @Pro_ID) + '-' + 
-            (CASE WHEN LEN(CONVERT(NUMERIC, SeriesOrder)) = 1 THEN '0' + CONVERT(NVARCHAR, SeriesOrder) ELSE CONVERT(NVARCHAR, SeriesOrder) END) + '-' + 
-            (CASE WHEN LEN(CONVERT(NUMERIC, MaxSerial)) = 1 THEN '000' + CONVERT(NVARCHAR, MaxSerial)
-                  WHEN LEN(CONVERT(NUMERIC, MaxSerial)) = 2 THEN '00' + CONVERT(NVARCHAR, MaxSerial)
-                  WHEN LEN(CONVERT(NUMERIC, MaxSerial)) = 3 THEN '0' + CONVERT(NVARCHAR, MaxSerial)
-                  ELSE CONVERT(NVARCHAR, MaxSerial) END),
+            RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(SeriesOrder, 0)), 4) + '-' + 
+            RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(MaxSerial, 0)), 4),
             ChunkQty,
             GETDATE()
         FROM (
             SELECT 
-                (RowNumber - 1) / 50000 AS ChunkIndex,
-                MIN(CAST(Series_Serial AS INT)) AS MinSerial,
-                MAX(CAST(Series_Serial AS INT)) AS MaxSerial,
-                MAX(CAST(Series_Order AS INT)) AS SeriesOrder,
+                (RowNumber - 1) / 10000 AS ChunkIndex,
+                MIN(Series_Serial) AS MinSerial,
+                MAX(Series_Serial) AS MaxSerial,
+                MAX(Series_Order) AS SeriesOrder,
                 COUNT(*) AS ChunkQty
             FROM (
                 SELECT 
-                    Series_Serial,
-                    Series_Order,
-                    ROW_NUMBER() OVER(ORDER BY CAST(Series_Serial AS INT)) AS RowNumber
+                    ISNULL(CAST(Series_Serial AS INT), CAST((ROW_NUMBER() OVER(ORDER BY Series_Serial) - 1) % 10000 AS INT)) AS Series_Serial,
+                    ISNULL(CAST(Series_Order AS INT), CAST((ROW_NUMBER() OVER(ORDER BY Series_Serial) - 1) / 10000 AS INT)) AS Series_Order,
+                    ROW_NUMBER() OVER(ORDER BY Series_Serial) AS RowNumber
                 FROM [dbo].[M_Code_PFL]
                 WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo
             ) A
-            GROUP BY (RowNumber - 1) / 50000
+            GROUP BY (RowNumber - 1) / 10000
         ) B;
     END
     ELSE
@@ -111,36 +105,30 @@ BEGIN
             @Label_Name,
             -- Format Series_From
             CONVERT(NVARCHAR, @Pro_ID) + '-' + 
-            (CASE WHEN LEN(CONVERT(NUMERIC, SeriesOrder)) = 1 THEN '0' + CONVERT(NVARCHAR, SeriesOrder) ELSE CONVERT(NVARCHAR, SeriesOrder) END) + '-' + 
-            (CASE WHEN LEN(CONVERT(NUMERIC, MinSerial)) = 1 THEN '000' + CONVERT(NVARCHAR, MinSerial)
-                  WHEN LEN(CONVERT(NUMERIC, MinSerial)) = 2 THEN '00' + CONVERT(NVARCHAR, MinSerial)
-                  WHEN LEN(CONVERT(NUMERIC, MinSerial)) = 3 THEN '0' + CONVERT(NVARCHAR, MinSerial)
-                  ELSE CONVERT(NVARCHAR, MinSerial) END),
+            RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(SeriesOrder, 0)), 4) + '-' + 
+            RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(MinSerial, 0)), 4),
             -- Format Series_To
             CONVERT(NVARCHAR, @Pro_ID) + '-' + 
-            (CASE WHEN LEN(CONVERT(NUMERIC, SeriesOrder)) = 1 THEN '0' + CONVERT(NVARCHAR, SeriesOrder) ELSE CONVERT(NVARCHAR, SeriesOrder) END) + '-' + 
-            (CASE WHEN LEN(CONVERT(NUMERIC, MaxSerial)) = 1 THEN '000' + CONVERT(NVARCHAR, MaxSerial)
-                  WHEN LEN(CONVERT(NUMERIC, MaxSerial)) = 2 THEN '00' + CONVERT(NVARCHAR, MaxSerial)
-                  WHEN LEN(CONVERT(NUMERIC, MaxSerial)) = 3 THEN '0' + CONVERT(NVARCHAR, MaxSerial)
-                  ELSE CONVERT(NVARCHAR, MaxSerial) END),
+            RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(SeriesOrder, 0)), 4) + '-' + 
+            RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(MaxSerial, 0)), 4),
             ChunkQty,
             GETDATE()
         FROM (
             SELECT 
-                (RowNumber - 1) / 50000 AS ChunkIndex,
-                MIN(CAST(Series_Serial AS INT)) AS MinSerial,
-                MAX(CAST(Series_Serial AS INT)) AS MaxSerial,
-                MAX(CAST(Series_Order AS INT)) AS SeriesOrder,
+                (RowNumber - 1) / 10000 AS ChunkIndex,
+                MIN(Series_Serial) AS MinSerial,
+                MAX(Series_Serial) AS MaxSerial,
+                MAX(Series_Order) AS SeriesOrder,
                 COUNT(*) AS ChunkQty
             FROM (
                 SELECT 
-                    Series_Serial,
-                    Series_Order,
-                    ROW_NUMBER() OVER(ORDER BY CAST(Series_Serial AS INT)) AS RowNumber
+                    ISNULL(CAST(Series_Serial AS INT), CAST((ROW_NUMBER() OVER(ORDER BY Series_Serial) - 1) % 10000 AS INT)) AS Series_Serial,
+                    ISNULL(CAST(Series_Order AS INT), CAST((ROW_NUMBER() OVER(ORDER BY Series_Serial) - 1) / 10000 AS INT)) AS Series_Order,
+                    ROW_NUMBER() OVER(ORDER BY Series_Serial) AS RowNumber
                 FROM [dbo].[M_Code]
                 WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo
             ) A
-            GROUP BY (RowNumber - 1) / 50000
+            GROUP BY (RowNumber - 1) / 10000
         ) B;
     END
 
