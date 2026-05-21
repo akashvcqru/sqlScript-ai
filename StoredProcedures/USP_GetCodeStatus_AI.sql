@@ -60,7 +60,7 @@ BEGIN
         ON sst.Subscribe_Id = ss.Subscribe_Id
     INNER JOIN Pro_Reg pr 
         ON pr.Pro_id = ss.Pro_ID
-    WHERE pr.Comp_ID = @ActualCompId
+    WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))
       AND sst.IsActive = 1 AND sst.IsDelete = 0
       AND ss.IsActive = 1 AND ss.IsDelete = 0;
 
@@ -96,7 +96,7 @@ BEGIN
            CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
     WHERE PE.Received_Code1 = @RecievedCode1
       AND PE.Received_Code2 = @RecievedCode2
-      AND pr.Comp_ID = @ActualCompId;
+      AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
 
     ---------------------------------------------------------
     -- DETAILS RESULT
@@ -171,7 +171,7 @@ BEGIN
             ON MS.Service_ID = ss.Service_ID
         WHERE PE.Received_Code1 = @RecievedCode1
           AND PE.Received_Code2 = @RecievedCode2
-          AND pr.Comp_ID = @ActualCompId
+          AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))
         ORDER BY PE.Enq_Date DESC;
     END
 END
