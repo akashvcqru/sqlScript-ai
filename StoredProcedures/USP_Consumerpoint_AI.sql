@@ -1,10 +1,11 @@
 USE [Vcqru]
 GO
+/****** Object:  StoredProcedure [dbo].[USP_Consumerpoint_AI]    Script Date: 5/20/2026 7:28:19 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [dbo].[USP_Consumerpoint_AI]
+ALTER   PROCEDURE [dbo].[USP_Consumerpoint_AI]
 @CompId varchar(50),
 @M_Consumerid varchar(50)
 AS

@@ -48,7 +48,7 @@ BEGIN
              + COALESCE(
                    (SELECT COALESCE(SUM(CAST(bp2.Points AS INT)), 0)
                     FROM BLoyaltyPointsEarned bp2
-                    WHERE bp2.M_Consumerid = @M_Consumerid AND bp2.compid = @Comp_ID AND bp2.ServiceName in ('Referral','KYCRewards')
+                    WHERE bp2.M_Consumerid = @M_Consumerid AND bp2.compid = @Comp_ID AND bp2.ServiceName in ('Referral','KYCRewards','Supervisor')
                    ), 0
                )
         FROM BLoyaltyPointsEarned bp

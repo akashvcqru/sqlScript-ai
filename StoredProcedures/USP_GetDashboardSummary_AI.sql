@@ -83,7 +83,7 @@ BEGIN
     FROM BLoyaltyPointsEarned
     WHERE M_Consumerid = @M_Consumerid 
       AND (compid = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567')))
-      AND ServiceName IN ('Referral', 'KYCRewards');
+      AND ServiceName IN ('Referral', 'KYCRewards', 'Supervisor');
 
     -- Result Set 1: Overall Stats
     SELECT 
