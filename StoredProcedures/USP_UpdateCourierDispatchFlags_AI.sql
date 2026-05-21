@@ -13,32 +13,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_UpdateCourierDispatchFlags_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
-
-    DECLARE @Tracking_No NVARCHAR(50);
-    
-    -- Get Tracking_No from Master table
-    SELECT @Tracking_No = Tracking_No 
-    FROM [dbo].[Courier_Dispatch_Master] 
-    WHERE [Courier_Disp_ID] = @Courier_Disp_ID;
-
-    -- Update M_Code or M_Code_PFL depending on Comp_ID
-    IF @Comp_ID = 'Comp-1693'
-    BEGIN
-        UPDATE MC
-        SET MC.[DispatchFlag] = 1,
-            MC.[LabelRequestId] = @Tracking_No
-        FROM [dbo].[M_Code_PFL] MC
-        INNER JOIN [dbo].[Courier_Disp_ProInfo] CDPI ON MC.[Pro_ID] = CDPI.[Pro_ID]
-        WHERE CDPI.[Courier_Disp_ID] = @Courier_Disp_ID;
-    END
-    ELSE
-    BEGIN
-        UPDATE MC
-        SET MC.[DispatchFlag] = 1,
-            MC.[LabelRequestId] = @Tracking_No
-        FROM [dbo].[M_Code] MC
-        INNER JOIN [dbo].[Courier_Disp_ProInfo] CDPI ON MC.[Pro_ID] = CDPI.[Pro_ID]
-        WHERE CDPI.[Courier_Disp_ID] = @Courier_Disp_ID;
-    END
+    -- Flags are already updated with high precision inside USP_InsertCourierDispatchDetail_AI.
+    -- This procedure is kept for compatibility with the controller call.
 END
 GO
