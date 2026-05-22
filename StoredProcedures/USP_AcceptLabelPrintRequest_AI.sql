@@ -55,6 +55,7 @@ BEGIN
                 UPDATE M_Code
                 SET Pro_ID = @Pro_ID,
                     Print_Status = 1,
+                    Use_type = 'L',
                     Print_Date = GETDATE(),
                     Allot_Date = GETDATE(),
                     LabelRequestId = @Tracking_No
