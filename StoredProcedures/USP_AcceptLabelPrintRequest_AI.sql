@@ -29,46 +29,141 @@ BEGIN
             WHERE Row_ID = @Row_ID;
 
             -- 3. Allocation logic
+            DECLARE @LastOrder INT = NULL;
+            DECLARE @LastSerial INT = NULL;
+            DECLARE @StartOrder INT = 0;
+            DECLARE @StartSerial INT = 0;
+            DECLARE @StartAbsoluteIndex INT = 0;
+
             IF @Comp_ID = 'Comp-1693'
             BEGIN
-                -- Update top @Qty available codes in M_Code_PFL
-                UPDATE M_Code_PFL
+                -- Find last assigned series for this product in M_Code_PFL
+                SELECT TOP 1 
+                    @LastOrder = CAST(Series_Order AS INT), 
+                    @LastSerial = CAST(Series_Serial AS INT)
+                FROM M_Code_PFL
+                WHERE Pro_ID = @Pro_ID 
+                  AND Series_Order IS NOT NULL 
+                  AND Series_Serial IS NOT NULL
+                ORDER BY Series_Order DESC, Series_Serial DESC;
+
+                IF @LastOrder IS NOT NULL AND @LastSerial IS NOT NULL
+                BEGIN
+                    IF @LastSerial = 9999
+                    BEGIN
+                        SET @StartOrder = @LastOrder + 1;
+                        SET @StartSerial = 0;
+                    END
+                    ELSE
+                    BEGIN
+                        SET @StartOrder = @LastOrder;
+                        SET @StartSerial = @LastSerial + 1;
+                    END
+                END
+
+                SET @StartAbsoluteIndex = @StartOrder * 10000 + @StartSerial;
+
+                -- Select Top @Qty available rows to update
+                DECLARE @SelectedRowsPFL TABLE (Row_ID NUMERIC(12, 0) PRIMARY KEY);
+                
+                INSERT INTO @SelectedRowsPFL (Row_ID)
+                SELECT TOP (@Qty) Row_ID 
+                FROM M_Code_PFL 
+                WHERE Pro_ID IS NULL 
+                  AND (Print_Status IS NULL OR Print_Status = 0)
+                  AND ISNULL([Use_Count],0) = 0 
+                  AND DispatchFlag IS NULL 
+                  AND ISNULL(ScrapeFlag,0) = 0
+                ORDER BY Row_ID ASC;
+
+                -- Update top @Qty available codes in M_Code_PFL with sequential series
+                ;WITH CTE_Update AS (
+                    SELECT 
+                        mc.Pro_ID,
+                        mc.Print_Status,
+                        mc.Print_Date,
+                        mc.Allot_Date,
+                        mc.LabelRequestId,
+                        mc.Series_Order,
+                        mc.Series_Serial,
+                        ROW_NUMBER() OVER (ORDER BY mc.Row_ID ASC) - 1 AS Seq
+                    FROM M_Code_PFL mc
+                    INNER JOIN @SelectedRowsPFL sr ON mc.Row_ID = sr.Row_ID
+                )
+                UPDATE CTE_Update
                 SET Pro_ID = @Pro_ID,
                     Print_Status = 1,
                     Print_Date = GETDATE(),
                     Allot_Date = GETDATE(),
-                    LabelRequestId = @Tracking_No
-                WHERE Row_ID IN (
-                    SELECT TOP (@Qty) Row_ID 
-                    FROM M_Code_PFL 
-                    WHERE Pro_ID IS NULL 
-                      AND (Print_Status IS NULL OR Print_Status = 0)
-                      AND ISNULL([Use_Count],0) = 0 
-                      AND DispatchFlag IS NULL 
-                      AND ISNULL(ScrapeFlag,0) = 0
-                    ORDER BY Row_ID ASC
-                );
+                    LabelRequestId = @Tracking_No,
+                    Series_Order = (@StartAbsoluteIndex + Seq) / 10000,
+                    Series_Serial = (@StartAbsoluteIndex + Seq) % 10000;
             END
             ELSE
             BEGIN
-                -- Update top @Qty available codes in M_Code
-                UPDATE M_Code
+                -- Find last assigned series for this product in M_Code
+                SELECT TOP 1 
+                    @LastOrder = CAST(Series_Order AS INT), 
+                    @LastSerial = CAST(Series_Serial AS INT)
+                FROM M_Code
+                WHERE Pro_ID = @Pro_ID 
+                  AND Series_Order IS NOT NULL 
+                  AND Series_Serial IS NOT NULL
+                ORDER BY Series_Order DESC, Series_Serial DESC;
+
+                IF @LastOrder IS NOT NULL AND @LastSerial IS NOT NULL
+                BEGIN
+                    IF @LastSerial = 9999
+                    BEGIN
+                        SET @StartOrder = @LastOrder + 1;
+                        SET @StartSerial = 0;
+                    END
+                    ELSE
+                    BEGIN
+                        SET @StartOrder = @LastOrder;
+                        SET @StartSerial = @LastSerial + 1;
+                    END
+                END
+
+                SET @StartAbsoluteIndex = @StartOrder * 10000 + @StartSerial;
+
+                -- Select Top @Qty available rows to update
+                DECLARE @SelectedRows TABLE (Row_ID NUMERIC(12, 0) PRIMARY KEY);
+                
+                INSERT INTO @SelectedRows (Row_ID)
+                SELECT TOP (@Qty) Row_ID 
+                FROM M_Code 
+                WHERE Pro_ID IS NULL 
+                  AND (Print_Status IS NULL OR Print_Status = 0)
+                  AND ISNULL([Use_Count],0) = 0 
+                  AND DispatchFlag IS NULL 
+                  AND ISNULL(ScrapeFlag,0) = 0
+                ORDER BY Row_ID ASC;
+
+                -- Update top @Qty available codes in M_Code with sequential series
+                ;WITH CTE_Update AS (
+                    SELECT 
+                        mc.Pro_ID,
+                        mc.Print_Status,
+                        mc.Use_type,
+                        mc.Print_Date,
+                        mc.Allot_Date,
+                        mc.LabelRequestId,
+                        mc.Series_Order,
+                        mc.Series_Serial,
+                        ROW_NUMBER() OVER (ORDER BY mc.Row_ID ASC) - 1 AS Seq
+                    FROM M_Code mc
+                    INNER JOIN @SelectedRows sr ON mc.Row_ID = sr.Row_ID
+                )
+                UPDATE CTE_Update
                 SET Pro_ID = @Pro_ID,
                     Print_Status = 1,
                     Use_type = 'L',
                     Print_Date = GETDATE(),
                     Allot_Date = GETDATE(),
-                    LabelRequestId = @Tracking_No
-                WHERE Row_ID IN (
-                    SELECT TOP (@Qty) Row_ID 
-                    FROM M_Code 
-                    WHERE Pro_ID IS NULL 
-                      AND (Print_Status IS NULL OR Print_Status = 0)
-                      AND ISNULL([Use_Count],0) = 0 
-                      AND DispatchFlag IS NULL 
-                      AND ISNULL(ScrapeFlag,0) = 0
-                    ORDER BY Row_ID ASC
-                );
+                    LabelRequestId = @Tracking_No,
+                    Series_Order = (@StartAbsoluteIndex + Seq) / 10000,
+                    Series_Serial = (@StartAbsoluteIndex + Seq) % 10000;
             END
 
             SET @Result = 'Success';

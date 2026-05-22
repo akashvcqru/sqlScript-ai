@@ -83,20 +83,13 @@ BEGIN
             GETDATE()
         FROM (
             SELECT 
-                (RowNumber - 1) / 10000 AS ChunkIndex,
-                MIN(Series_Serial) AS MinSerial,
-                MAX(Series_Serial) AS MaxSerial,
-                MAX(Series_Order) AS SeriesOrder,
+                CAST(Series_Order AS INT) AS SeriesOrder,
+                MIN(CAST(Series_Serial AS INT)) AS MinSerial,
+                MAX(CAST(Series_Serial AS INT)) AS MaxSerial,
                 COUNT(*) AS ChunkQty
-            FROM (
-                SELECT 
-                    CAST(Series_Serial AS INT) AS Series_Serial,
-                    CAST(Series_Order AS INT) AS Series_Order,
-                    ROW_NUMBER() OVER(ORDER BY Series_Order, Series_Serial) AS RowNumber
-                FROM [dbo].[M_Code_PFL]
-                WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo
-            ) A
-            GROUP BY (RowNumber - 1) / 10000
+            FROM [dbo].[M_Code_PFL]
+            WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo
+            GROUP BY Series_Order
         ) B;
     END
     ELSE
@@ -141,20 +134,13 @@ BEGIN
             GETDATE()
         FROM (
             SELECT 
-                (RowNumber - 1) / 10000 AS ChunkIndex,
-                MIN(Series_Serial) AS MinSerial,
-                MAX(Series_Serial) AS MaxSerial,
-                MAX(Series_Order) AS SeriesOrder,
+                CAST(Series_Order AS INT) AS SeriesOrder,
+                MIN(CAST(Series_Serial AS INT)) AS MinSerial,
+                MAX(CAST(Series_Serial AS INT)) AS MaxSerial,
                 COUNT(*) AS ChunkQty
-            FROM (
-                SELECT 
-                    CAST(Series_Serial AS INT) AS Series_Serial,
-                    CAST(Series_Order AS INT) AS Series_Order,
-                    ROW_NUMBER() OVER(ORDER BY Series_Order, Series_Serial) AS RowNumber
-                FROM [dbo].[M_Code]
-                WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo
-            ) A
-            GROUP BY (RowNumber - 1) / 10000
+            FROM [dbo].[M_Code]
+            WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo
+            GROUP BY Series_Order
         ) B;
     END
 
