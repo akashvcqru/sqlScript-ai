@@ -36,6 +36,12 @@ BEGIN
             END) AS RequestStatusFlag,
            Tracking_No, 
            M_Label_Request.Flag,
+           CAST(CASE 
+               WHEN Pro_Reg.Comp_ID = 'Comp-1693' THEN 
+                   ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code_PFL WHERE LabelRequestId = M_Label_Request.Tracking_No AND Pro_ID = M_Label_Request.Pro_ID), 0)
+               ELSE 
+                   ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code WHERE LabelRequestId = M_Label_Request.Tracking_No AND Pro_ID = M_Label_Request.Pro_ID), 0)
+           END AS INT) AS CourierDispatchFlag,
            COUNT(*) OVER() AS TotalRecords
     FROM M_Label_Request 
     INNER JOIN M_Label ON M_Label_Request.Label_Code = M_Label.Label_Code 
