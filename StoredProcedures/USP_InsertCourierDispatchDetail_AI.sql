@@ -43,6 +43,19 @@ BEGIN
     -- 4. Insert chunked records into Courier_Disp_ProInfo
     IF @Comp_ID = 'Comp-1693'
     BEGIN
+        ;WITH CTE AS (
+            SELECT 
+                Series_Serial,
+                Series_Order,
+                ROW_NUMBER() OVER(ORDER BY code1, code2) - 1 AS RowNum
+            FROM [dbo].[M_Code_PFL]
+            WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo
+        )
+        UPDATE CTE
+        SET Series_Serial = RowNum % 10000,
+            Series_Order = RowNum / 10000
+        WHERE Series_Serial IS NULL;
+
         INSERT INTO [dbo].[Courier_Disp_ProInfo] (
             [Courier_Disp_ID],
             [Pro_ID],
@@ -77,9 +90,9 @@ BEGIN
                 COUNT(*) AS ChunkQty
             FROM (
                 SELECT 
-                    ISNULL(CAST(Series_Serial AS INT), CAST((ROW_NUMBER() OVER(ORDER BY Series_Serial) - 1) % 10000 AS INT)) AS Series_Serial,
-                    ISNULL(CAST(Series_Order AS INT), CAST((ROW_NUMBER() OVER(ORDER BY Series_Serial) - 1) / 10000 AS INT)) AS Series_Order,
-                    ROW_NUMBER() OVER(ORDER BY Series_Serial) AS RowNumber
+                    CAST(Series_Serial AS INT) AS Series_Serial,
+                    CAST(Series_Order AS INT) AS Series_Order,
+                    ROW_NUMBER() OVER(ORDER BY Series_Order, Series_Serial) AS RowNumber
                 FROM [dbo].[M_Code_PFL]
                 WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo
             ) A
@@ -88,6 +101,19 @@ BEGIN
     END
     ELSE
     BEGIN
+        ;WITH CTE AS (
+            SELECT 
+                Series_Serial,
+                Series_Order,
+                ROW_NUMBER() OVER(ORDER BY code1, code2) - 1 AS RowNum
+            FROM [dbo].[M_Code]
+            WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo
+        )
+        UPDATE CTE
+        SET Series_Serial = RowNum % 10000,
+            Series_Order = RowNum / 10000
+        WHERE Series_Serial IS NULL;
+
         INSERT INTO [dbo].[Courier_Disp_ProInfo] (
             [Courier_Disp_ID],
             [Pro_ID],
@@ -122,9 +148,9 @@ BEGIN
                 COUNT(*) AS ChunkQty
             FROM (
                 SELECT 
-                    ISNULL(CAST(Series_Serial AS INT), CAST((ROW_NUMBER() OVER(ORDER BY Series_Serial) - 1) % 10000 AS INT)) AS Series_Serial,
-                    ISNULL(CAST(Series_Order AS INT), CAST((ROW_NUMBER() OVER(ORDER BY Series_Serial) - 1) / 10000 AS INT)) AS Series_Order,
-                    ROW_NUMBER() OVER(ORDER BY Series_Serial) AS RowNumber
+                    CAST(Series_Serial AS INT) AS Series_Serial,
+                    CAST(Series_Order AS INT) AS Series_Order,
+                    ROW_NUMBER() OVER(ORDER BY Series_Order, Series_Serial) AS RowNumber
                 FROM [dbo].[M_Code]
                 WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo
             ) A
@@ -137,14 +163,14 @@ BEGIN
     BEGIN
         UPDATE [dbo].[M_Code_PFL]
         SET [DispatchFlag] = 1,
-            [LabelRequestId] = @Tracking_No
+            [LabelRequestId] = @Tracking_No,Use_Type='L',ReceiveFlag=1
         WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo;
     END
     ELSE
     BEGIN
         UPDATE [dbo].[M_Code]
         SET [DispatchFlag] = 1,
-            [LabelRequestId] = @Tracking_No
+            [LabelRequestId] = @Tracking_No,Use_Type='L',ReceiveFlag=1
         WHERE Pro_ID = @Pro_ID AND LabelRequestId = @PrintRequestTrackingNo;
     END
 END
