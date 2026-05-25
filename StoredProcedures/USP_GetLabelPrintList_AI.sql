@@ -9,7 +9,7 @@ GO
 -- =============================================
 -- Author:      Antigravity
 -- Create date: 2026-05-22
--- Description: Get Label Print List with pagination and filters
+-- Description: Get Label Print List with pagination and filters (optimized with CROSS APPLY)
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetLabelPrintList_AI]
     @Comp_ID NVARCHAR(50),
@@ -22,131 +22,128 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    DECLARE @RegDate DATETIME;
+    SELECT TOP 1 @RegDate = Reg_Date FROM Comp_Reg WHERE Comp_ID = @Comp_ID AND Status = 1;
+
+    -- Normalize empty or zero product ID
+    IF @Pro_ID = '' OR @Pro_ID = '0'
+        SET @Pro_ID = NULL;
+
     IF @Comp_ID = 'Comp-1693'
     BEGIN
-        ;WITH RawData AS (
+        ;WITH UniqueBatches AS (
             SELECT 
+                MC.LabelRequestId, 
                 MC.Pro_ID,
-                MC.Series_Order,
-                MC.Series_Serial,
-                MC.Print_Date,
-                MC.LabelRequestId,
-                MC.DispatchFlag,
-                MC.Row_ID,
-                B.Display_Series,
-                ISNULL(B.Display_Product, B.Pro_Name) AS Pro_Name,
-                ROW_NUMBER() OVER (PARTITION BY MC.LabelRequestId, MC.Pro_ID ORDER BY MC.Series_Order ASC, MC.Series_Serial ASC) AS rn_start,
-                ROW_NUMBER() OVER (PARTITION BY MC.LabelRequestId, MC.Pro_ID ORDER BY MC.Series_Order DESC, MC.Series_Serial DESC) AS rn_end
+                MAX(MC.Row_ID) as MaxRowID,
+                MAX(MC.Print_Date) as Print_DateTime
             FROM M_Code_PFL MC 
-            LEFT JOIN Pro_Reg B ON MC.Pro_ID = B.Pro_ID
+            INNER JOIN Pro_Reg B ON MC.Pro_ID = B.Pro_ID
             WHERE MC.[Use_Type]='L' 
               AND B.Comp_ID = @Comp_ID 
-              AND MC.Print_Date >= (SELECT TOP 1 Reg_Date FROM Comp_Reg WHERE Comp_ID = @Comp_ID AND Status = 1)
-              AND (@Pro_ID IS NULL OR @Pro_ID = '' OR @Pro_ID = '0' OR MC.Pro_ID = @Pro_ID)
+              AND MC.Print_Date >= @RegDate
+              AND (@Pro_ID IS NULL OR MC.Pro_ID = @Pro_ID)
               AND (@DateFrom IS NULL OR MC.Print_Date >= @DateFrom)
               AND (@DateTo IS NULL OR MC.Print_Date <= @DateTo)
+              AND MC.LabelRequestId IS NOT NULL
+            GROUP BY MC.LabelRequestId, MC.Pro_ID
         ),
-        Aggregated AS (
+        NumberedBatches AS (
             SELECT 
-                MC.Pro_ID,
-                MC.LabelRequestId,
-                MAX(CASE WHEN rn_start = 1 THEN MC.Series_Order END) AS StartOrder,
-                MAX(CASE WHEN rn_start = 1 THEN MC.Series_Serial END) AS StartSerial,
-                MAX(CASE WHEN rn_end = 1 THEN MC.Series_Order END) AS EndOrder,
-                MAX(CASE WHEN rn_end = 1 THEN MC.Series_Serial END) AS EndSerial,
-                COUNT(MC.Row_ID) AS Codes,
-                ISNULL(MC.Display_Series, MC.Pro_ID) AS Display_Pro_ID,
-                MAX(MC.Pro_Name) AS Pro_Name,
-                CAST(MAX(MC.Print_Date) AS DATE) AS Print_Date,
-                MAX(CAST(ISNULL(MC.DispatchFlag, 0) AS INT)) AS IsDispatched
-            FROM RawData MC
-            GROUP BY MC.Pro_ID, MC.Display_Series, MC.LabelRequestId
+                LabelRequestId,
+                Pro_ID,
+                Print_DateTime,
+                ROW_NUMBER() OVER(ORDER BY MaxRowID ASC) AS ID,
+                COUNT(*) OVER() as TotalRecords
+            FROM UniqueBatches
+        ),
+        PaginatedBatches AS (
+            SELECT LabelRequestId, Pro_ID, Print_DateTime, ID, TotalRecords
+            FROM NumberedBatches
+            ORDER BY ID DESC
+            OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
         )
-        SELECT ROW_NUMBER() OVER(ORDER BY print_date ASC) ID, SerFr, SerTo, SUM(Codes) Codes, pro_id, DownFl, Pro_Name, print_date, MAX(IsDispatched) AS IsDispatched, COUNT(*) OVER() as TotalRecords
-        FROM (
+        SELECT 
+            PB.ID,
+            CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex % 10000, 0)), 4) AS SerFr,
+            CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex % 10000, 0)), 4) AS SerTo,
+            S.Codes,
+            ISNULL(B.Display_Series, PB.Pro_ID) AS pro_id,
+            PB.Pro_ID + '*' + CONVERT(NVARCHAR, PB.Print_DateTime, 105) + '*' + PB.LabelRequestId AS DownFl,
+            ISNULL(B.Display_Product, B.Pro_Name) AS Pro_Name,
+            CAST(PB.Print_DateTime AS DATE) AS print_date,
+            S.IsDispatched,
+            PB.TotalRecords
+        FROM PaginatedBatches PB
+        INNER JOIN Pro_Reg B ON PB.Pro_ID = B.Pro_ID
+        CROSS APPLY (
             SELECT 
-                -- Format SerFr
-                CONVERT(NVARCHAR, A.Pro_ID) + '-' + 
-                (CASE WHEN LEN(CONVERT(NUMERIC, ISNULL(A.StartOrder, 0))) = 1 THEN '0' + CONVERT(NVARCHAR, ISNULL(A.StartOrder, 0)) ELSE CONVERT(NVARCHAR, ISNULL(A.StartOrder, 0)) END) + '-' + 
-                (CASE WHEN LEN(CONVERT(NUMERIC, ISNULL(A.StartSerial, 0))) = 1 THEN '000' + CONVERT(NVARCHAR, ISNULL(A.StartSerial, 0)) WHEN LEN(CONVERT(NUMERIC, ISNULL(A.StartSerial, 0))) = 2 THEN '00' + CONVERT(NVARCHAR, ISNULL(A.StartSerial, 0)) WHEN LEN(CONVERT(NUMERIC, ISNULL(A.StartSerial, 0))) = 3 THEN '0' + CONVERT(NVARCHAR, ISNULL(A.StartSerial, 0)) ELSE CONVERT(NVARCHAR, ISNULL(A.StartSerial, 0)) END) AS SerFr,
-                -- Format SerTo
-                CONVERT(NVARCHAR, A.Pro_ID) + '-' + 
-                (CASE WHEN LEN(CONVERT(NUMERIC, ISNULL(A.EndOrder, 0))) = 1 THEN '0' + CONVERT(NVARCHAR, ISNULL(A.EndOrder, 0)) ELSE CONVERT(NVARCHAR, ISNULL(A.EndOrder, 0)) END) + '-' + 
-                (CASE WHEN LEN(CONVERT(NUMERIC, ISNULL(A.EndSerial, 0))) = 1 THEN '000' + CONVERT(NVARCHAR, ISNULL(A.EndSerial, 0)) WHEN LEN(CONVERT(NUMERIC, ISNULL(A.EndSerial, 0))) = 2 THEN '00' + CONVERT(NVARCHAR, ISNULL(A.EndSerial, 0)) WHEN LEN(CONVERT(NUMERIC, ISNULL(A.EndSerial, 0))) = 3 THEN '0' + CONVERT(NVARCHAR, ISNULL(A.EndSerial, 0)) ELSE CONVERT(NVARCHAR, ISNULL(A.EndSerial, 0)) END) AS SerTo,
-                A.Codes,
-                A.Display_Pro_ID AS pro_id,
-                A.Pro_ID + '*' + CONVERT(NVARCHAR, A.Print_Date, 105) + '*' + A.LabelRequestId AS DownFl,
-                A.Pro_Name,
-                A.Print_Date AS print_date,
-                A.IsDispatched
-            FROM Aggregated A
-        ) InnerA
-        GROUP BY SerFr, SerTo, InnerA.pro_id, DownFl, Pro_Name, print_date
-        ORDER BY ID DESC
-        OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
+                MIN(CAST(MC.Series_Order AS BIGINT) * 10000 + CAST(MC.Series_Serial AS BIGINT)) as MinIndex,
+                MAX(CAST(MC.Series_Order AS BIGINT) * 10000 + CAST(MC.Series_Serial AS BIGINT)) as MaxIndex,
+                COUNT(MC.Row_ID) as Codes,
+                MAX(CAST(ISNULL(MC.DispatchFlag, 0) AS INT)) as IsDispatched
+            FROM M_Code_PFL MC
+            WHERE MC.LabelRequestId = PB.LabelRequestId AND MC.Pro_ID = PB.Pro_ID AND MC.[Use_Type]='L'
+        ) S
+        ORDER BY PB.ID DESC;
     END
     ELSE
     BEGIN
-        ;WITH RawData AS (
+        ;WITH UniqueBatches AS (
             SELECT 
+                MC.LabelRequestId, 
                 MC.Pro_ID,
-                MC.Series_Order,
-                MC.Series_Serial,
-                MC.Print_Date,
-                MC.LabelRequestId,
-                MC.DispatchFlag,
-                MC.Row_ID,
-                B.Display_Series,
-                B.Pro_Name,
-                ROW_NUMBER() OVER (PARTITION BY MC.LabelRequestId, MC.Pro_ID ORDER BY MC.Series_Order ASC, MC.Series_Serial ASC) AS rn_start,
-                ROW_NUMBER() OVER (PARTITION BY MC.LabelRequestId, MC.Pro_ID ORDER BY MC.Series_Order DESC, MC.Series_Serial DESC) AS rn_end
+                MAX(MC.Row_ID) as MaxRowID,
+                MAX(MC.Print_Date) as Print_DateTime
             FROM M_Code MC 
-            LEFT JOIN Pro_Reg B ON MC.Pro_ID = B.Pro_ID
+            INNER JOIN Pro_Reg B ON MC.Pro_ID = B.Pro_ID
             WHERE MC.[Use_Type]='L' 
               AND B.Comp_ID = @Comp_ID 
-              AND MC.Print_Date >= (SELECT TOP 1 Reg_Date FROM Comp_Reg WHERE Comp_ID = @Comp_ID AND Status = 1)
-              AND (@Pro_ID IS NULL OR @Pro_ID = '' OR @Pro_ID = '0' OR MC.Pro_ID = @Pro_ID)
+              AND MC.Print_Date >= @RegDate
+              AND (@Pro_ID IS NULL OR MC.Pro_ID = @Pro_ID)
               AND (@DateFrom IS NULL OR MC.Print_Date >= @DateFrom)
               AND (@DateTo IS NULL OR MC.Print_Date <= @DateTo)
+              AND MC.LabelRequestId IS NOT NULL
+            GROUP BY MC.LabelRequestId, MC.Pro_ID
         ),
-        Aggregated AS (
+        NumberedBatches AS (
             SELECT 
-                MC.Pro_ID,
-                MC.LabelRequestId,
-                MAX(CASE WHEN rn_start = 1 THEN MC.Series_Order END) AS StartOrder,
-                MAX(CASE WHEN rn_start = 1 THEN MC.Series_Serial END) AS StartSerial,
-                MAX(CASE WHEN rn_end = 1 THEN MC.Series_Order END) AS EndOrder,
-                MAX(CASE WHEN rn_end = 1 THEN MC.Series_Serial END) AS EndSerial,
-                COUNT(MC.Row_ID) AS Codes,
-                ISNULL(MC.Display_Series, MC.Pro_ID) AS Display_Pro_ID,
-                MAX(MC.Pro_Name) AS Pro_Name,
-                CAST(MAX(MC.Print_Date) AS DATE) AS Print_Date,
-                MAX(CAST(ISNULL(MC.DispatchFlag, 0) AS INT)) AS IsDispatched
-            FROM RawData MC
-            GROUP BY MC.Pro_ID, MC.Display_Series, MC.LabelRequestId
+                LabelRequestId,
+                Pro_ID,
+                Print_DateTime,
+                ROW_NUMBER() OVER(ORDER BY MaxRowID ASC) AS ID,
+                COUNT(*) OVER() as TotalRecords
+            FROM UniqueBatches
+        ),
+        PaginatedBatches AS (
+            SELECT LabelRequestId, Pro_ID, Print_DateTime, ID, TotalRecords
+            FROM NumberedBatches
+            ORDER BY ID DESC
+            OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
         )
-        SELECT ROW_NUMBER() OVER(ORDER BY print_date ASC) ID, SerFr, SerTo, SUM(Codes) Codes, pro_id, DownFl, Pro_Name, print_date, MAX(IsDispatched) AS IsDispatched, COUNT(*) OVER() as TotalRecords
-        FROM (
+        SELECT 
+            PB.ID,
+            CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex % 10000, 0)), 4) AS SerFr,
+            CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex % 10000, 0)), 4) AS SerTo,
+            S.Codes,
+            ISNULL(B.Display_Series, PB.Pro_ID) AS pro_id,
+            PB.Pro_ID + '*' + CONVERT(NVARCHAR, PB.Print_DateTime, 105) + '*' + PB.LabelRequestId AS DownFl,
+            B.Pro_Name,
+            CAST(PB.Print_DateTime AS DATE) AS print_date,
+            S.IsDispatched,
+            PB.TotalRecords
+        FROM PaginatedBatches PB
+        INNER JOIN Pro_Reg B ON PB.Pro_ID = B.Pro_ID
+        CROSS APPLY (
             SELECT 
-                -- Format SerFr
-                CONVERT(NVARCHAR, A.Pro_ID) + '-' + 
-                (CASE WHEN LEN(CONVERT(NUMERIC, ISNULL(A.StartOrder, 0))) = 1 THEN '0' + CONVERT(NVARCHAR, ISNULL(A.StartOrder, 0)) ELSE CONVERT(NVARCHAR, ISNULL(A.StartOrder, 0)) END) + '-' + 
-                (CASE WHEN LEN(CONVERT(NUMERIC, ISNULL(A.StartSerial, 0))) = 1 THEN '000' + CONVERT(NVARCHAR, ISNULL(A.StartSerial, 0)) WHEN LEN(CONVERT(NUMERIC, ISNULL(A.StartSerial, 0))) = 2 THEN '00' + CONVERT(NVARCHAR, ISNULL(A.StartSerial, 0)) WHEN LEN(CONVERT(NUMERIC, ISNULL(A.StartSerial, 0))) = 3 THEN '0' + CONVERT(NVARCHAR, ISNULL(A.StartSerial, 0)) ELSE CONVERT(NVARCHAR, ISNULL(A.StartSerial, 0)) END) AS SerFr,
-                -- Format SerTo
-                CONVERT(NVARCHAR, A.Pro_ID) + '-' + 
-                (CASE WHEN LEN(CONVERT(NUMERIC, ISNULL(A.EndOrder, 0))) = 1 THEN '0' + CONVERT(NVARCHAR, ISNULL(A.EndOrder, 0)) ELSE CONVERT(NVARCHAR, ISNULL(A.EndOrder, 0)) END) + '-' + 
-                (CASE WHEN LEN(CONVERT(NUMERIC, ISNULL(A.EndSerial, 0))) = 1 THEN '000' + CONVERT(NVARCHAR, ISNULL(A.EndSerial, 0)) WHEN LEN(CONVERT(NUMERIC, ISNULL(A.EndSerial, 0))) = 2 THEN '00' + CONVERT(NVARCHAR, ISNULL(A.EndSerial, 0)) WHEN LEN(CONVERT(NUMERIC, ISNULL(A.EndSerial, 0))) = 3 THEN '0' + CONVERT(NVARCHAR, ISNULL(A.EndSerial, 0)) ELSE CONVERT(NVARCHAR, ISNULL(A.EndSerial, 0)) END) AS SerTo,
-                A.Codes,
-                A.Display_Pro_ID AS pro_id,
-                A.Pro_ID + '*' + CONVERT(NVARCHAR, A.Print_Date, 105) + '*' + A.LabelRequestId AS DownFl,
-                A.Pro_Name,
-                A.Print_Date AS print_date,
-                A.IsDispatched
-            FROM Aggregated A
-        ) InnerA
-        GROUP BY SerFr, SerTo, InnerA.pro_id, DownFl, Pro_Name, print_date
-        ORDER BY ID DESC
-        OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
+                MIN(CAST(MC.Series_Order AS BIGINT) * 10000 + CAST(MC.Series_Serial AS BIGINT)) as MinIndex,
+                MAX(CAST(MC.Series_Order AS BIGINT) * 10000 + CAST(MC.Series_Serial AS BIGINT)) as MaxIndex,
+                COUNT(MC.Row_ID) as Codes,
+                MAX(CAST(ISNULL(MC.DispatchFlag, 0) AS INT)) as IsDispatched
+            FROM M_Code MC
+            WHERE MC.LabelRequestId = PB.LabelRequestId AND MC.Pro_ID = PB.Pro_ID AND MC.[Use_Type]='L'
+        ) S
+        ORDER BY PB.ID DESC;
     END
 END
 GO
