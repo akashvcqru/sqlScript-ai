@@ -25,7 +25,7 @@ BEGIN
         BEGIN
             -- 2. Update M_Label_Request entry setting Flag to 1 (Accepted/Processed)
             UPDATE M_Label_Request 
-            SET Flag = 1
+            SET Flag = 1, PrintType = @PrintType
             WHERE Row_ID = @Row_ID;
 
             -- 3. Allocation logic
