@@ -225,7 +225,7 @@ end
 end   
 end
   
-IF ISNULL(@scp, 0) > 0
+IF ISNULL(@scp, 0) > 0 AND UPPER(@Compid) = 'COMP-1152'
 BEGIN
     SELECT @v_ProName = Pro_Name FROM Pro_Reg (NOLOCK) WHERE Pro_ID = @Proid;
     SELECT @v_ServiceID = ss.Service_ID FROM M_ServiceSubscription ss (NOLOCK) INNER JOIN M_ServiceSubscriptionTrans sst (NOLOCK) ON ss.Subscribe_Id = sst.Subscribe_Id WHERE sst.SST_Id = @SST_ID;
