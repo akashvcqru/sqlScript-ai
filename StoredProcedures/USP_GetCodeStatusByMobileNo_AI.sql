@@ -84,7 +84,11 @@ BEGIN
         pr.Pro_Name
     INTO #FinalData
     FROM Pro_Enq PE
-    INNER JOIN M_Code mc 
+    INNER JOIN (
+        SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code WHERE @ActualCompId <> 'Comp-1693'
+        UNION ALL
+        SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code_PFL WHERE @ActualCompId = 'Comp-1693'
+    ) mc 
         ON mc.Code1 = PE.Received_Code1
        AND mc.Code2 = PE.Received_Code2
     INNER JOIN Pro_Reg pr 

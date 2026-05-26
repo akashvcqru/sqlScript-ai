@@ -41,16 +41,17 @@ BEGIN
     IF @Type IS NOT NULL
         SET @Type = UPPER(LTRIM(RTRIM(@Type)));
 
-    ---------------------------------------------------------
-    -- Get Code1 and Code2 from M_Code based on Serial
-    ---------------------------------------------------------
     DECLARE @RecievedCode1 NVARCHAR(10);
     DECLARE @RecievedCode2 NVARCHAR(10);
 
     SELECT 
         @RecievedCode1 = Code1, 
         @RecievedCode2 = Code2 
-    FROM M_Code 
+    FROM (
+        SELECT Code1, Code2, Pro_ID, Series_Order, Series_Serial FROM M_Code WHERE @ActualCompId <> 'Comp-1693'
+        UNION ALL
+        SELECT Code1, Code2, Pro_ID, Series_Order, Series_Serial FROM M_Code_PFL WHERE @ActualCompId = 'Comp-1693'
+    ) mc
     WHERE Pro_ID = @Pro_ID 
       AND Series_Order = @Series_Order 
       AND Series_Serial = @Series_Serial;
@@ -95,7 +96,11 @@ BEGIN
         pr.Pro_Name
     INTO #FinalData
     FROM Pro_Enq PE
-    INNER JOIN M_Code mc 
+    INNER JOIN (
+        SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code WHERE @ActualCompId <> 'Comp-1693'
+        UNION ALL
+        SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code_PFL WHERE @ActualCompId = 'Comp-1693'
+    ) mc 
         ON mc.Code1 = PE.Received_Code1
        AND mc.Code2 = PE.Received_Code2
     INNER JOIN Pro_Reg pr 
@@ -166,7 +171,11 @@ BEGIN
             CASE WHEN sst.IsActive = 1 AND ss.IsActive = 1 AND ss.IsDelete = 0 AND sst.IsDelete = 0 THEN 'Active' ELSE 'In Active' END AS CodeActiveStatus,
             CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points
         FROM Pro_Enq PE
-        INNER JOIN M_Code mc 
+        INNER JOIN (
+            SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code WHERE @ActualCompId <> 'Comp-1693'
+            UNION ALL
+            SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code_PFL WHERE @ActualCompId = 'Comp-1693'
+        ) mc 
             ON mc.Code1 = PE.Received_Code1
            AND mc.Code2 = PE.Received_Code2
         INNER JOIN Pro_Reg pr 

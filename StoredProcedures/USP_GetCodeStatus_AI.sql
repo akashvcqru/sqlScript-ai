@@ -79,7 +79,11 @@ BEGIN
         ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode
     INTO #CodeStatus
     FROM Pro_Enq PE
-    INNER JOIN M_Code mc 
+    INNER JOIN (
+        SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code WHERE @ActualCompId <> 'Comp-1693'
+        UNION ALL
+        SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code_PFL WHERE @ActualCompId = 'Comp-1693'
+    ) mc 
         ON mc.Code1 = PE.Received_Code1
        AND mc.Code2 = PE.Received_Code2
     INNER JOIN Pro_Reg pr 
@@ -150,7 +154,11 @@ BEGIN
             CASE WHEN sst.IsActive = 1 AND ss.IsActive = 1 AND ss.IsDelete = 0 AND sst.IsDelete = 0 THEN 'Active' ELSE 'In Active' END AS CodeActiveStatus,
             CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points
         FROM Pro_Enq PE
-        INNER JOIN M_Code mc 
+        INNER JOIN (
+            SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code WHERE @ActualCompId <> 'Comp-1693'
+            UNION ALL
+            SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code_PFL WHERE @ActualCompId = 'Comp-1693'
+        ) mc 
             ON mc.Code1 = PE.Received_Code1
            AND mc.Code2 = PE.Received_Code2
         INNER JOIN Pro_Reg pr 
