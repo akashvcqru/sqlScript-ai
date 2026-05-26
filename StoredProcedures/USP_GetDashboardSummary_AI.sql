@@ -36,6 +36,8 @@ BEGIN
     -- Use Temp Tables instead of CTEs to support multiple result sets
     --------------------------------------------------------------------------------
     IF OBJECT_ID('tempdb..#UserScans') IS NOT NULL DROP TABLE #UserScans;
+    IF OBJECT_ID('tempdb..#EarnedPoints') IS NOT NULL DROP TABLE #EarnedPoints;
+    IF OBJECT_ID('tempdb..#ConfigPoints') IS NOT NULL DROP TABLE #ConfigPoints;
     IF OBJECT_ID('tempdb..#ConfiguredPoints') IS NOT NULL DROP TABLE #ConfiguredPoints;
     IF OBJECT_ID('tempdb..#ReferralStats') IS NOT NULL DROP TABLE #ReferralStats;
 
@@ -53,28 +55,65 @@ BEGIN
       AND PE.Is_Success = '1'
       AND (pr.Comp_ID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND pr.Comp_ID IN ('Comp-1650', 'Comp-1567')));
 
+    -- Get Earned Points
+    SELECT
+        MC.M_Codeid,
+        ISNULL(SS.Service_ID, 'SRV1001') AS Service_ID,
+        MAX(CAST(
+            CASE 
+                WHEN @CompID = 'Comp-1274' THEN ISNULL(BL.Cash, 0) * 1.10
+                ELSE ISNULL(BL.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS Points
+    INTO #EarnedPoints
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    INNER JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    LEFT JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON BL.SST_id = SST.SST_Id
+    LEFT JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+    WHERE BL.M_Consumerid = @M_Consumerid
+      AND (BL.compid = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND BL.compid IN ('Comp-1650', 'Comp-1567')))
+    GROUP BY MC.M_Codeid, ISNULL(SS.Service_ID, 'SRV1001');
+
+    CREATE CLUSTERED INDEX IX_EarnedPoints_MCodeid ON #EarnedPoints(M_Codeid);
+
+    -- Get Config Points
     SELECT 
+        US.M_Codeid,
         SS.Service_ID,
-        SUM(CAST(
+        MAX(CAST(
             CASE 
                 WHEN @CompID = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
-                ELSE ISNULL(SST.Points, 0)
+                ELSE CASE WHEN SST.Points IS NULL OR SST.Points = 0 THEN ISNULL(SST.IsCash, 0) ELSE SST.Points END
             END 
-        AS DECIMAL(18,2))) AS ServiceTotalPoints,
-        SUM(CAST(ISNULL(SST.IsCash, 0) AS DECIMAL(18,2))) AS ServiceTotalCash
-    INTO #ConfiguredPoints
+        AS DECIMAL(18,2))) AS ConfigPoints,
+        MAX(CAST(ISNULL(SST.IsCash, 0) AS DECIMAL(18,2))) AS ConfigCash
+    INTO #ConfigPoints
     FROM #UserScans US
     INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = US.Pro_ID
     INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
     WHERE US.rn = 1
+      AND SS.IsActive = 1 AND SS.IsDelete = 0
+      AND SST.IsActive = 1 AND SST.IsDelete = 0
       AND (SS.Comp_ID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND SS.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-      --AND SST.IsActive = 1 AND SST.IsDelete = 0
-     -- AND SS.IsActive = 1 AND SS.IsDelete = 0
       AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
-      AND CONCAT(FORMAT(US.Series_Order, '000#'), FORMAT(US.Series_Serial, '000#')) 
-          BETWEEN CONCAT(FORMAT(SS.start_order, '000#'), FORMAT(SS.start_series, '000#')) 
-              AND CONCAT(FORMAT(SS.end_order, '000#'), FORMAT(SS.end_series, '000#'))
-    GROUP BY SS.Service_ID;
+      AND (US.Series_Order > SS.start_order OR (US.Series_Order = SS.start_order AND US.Series_Serial >= SS.start_series))
+      AND (US.Series_Order < SS.end_order OR (US.Series_Order = SS.end_order AND US.Series_Serial <= SS.end_series))
+    GROUP BY US.M_Codeid, SS.Service_ID;
+
+    CREATE CLUSTERED INDEX IX_ConfigPoints_MCodeid ON #ConfigPoints(M_Codeid);
+
+    -- Aggregate into #ConfiguredPoints
+    SELECT
+        COALESCE(CP.Service_ID, EP.Service_ID, 'SRV1001') AS Service_ID,
+        SUM(ISNULL(CP.ConfigPoints, ISNULL(EP.Points, 0))) AS ServiceTotalPoints,
+        SUM(ISNULL(CP.ConfigCash, 0)) AS ServiceTotalCash
+    INTO #ConfiguredPoints
+    FROM #UserScans US
+    LEFT JOIN #ConfigPoints CP ON CP.M_Codeid = US.M_Codeid
+    LEFT JOIN #EarnedPoints EP ON EP.M_Codeid = US.M_Codeid
+    WHERE US.rn = 1
+    GROUP BY COALESCE(CP.Service_ID, EP.Service_ID, 'SRV1001');
 
     SELECT 
         ISNULL(SUM(CAST(Points AS DECIMAL(18,2))), 0) as RefPoints,
