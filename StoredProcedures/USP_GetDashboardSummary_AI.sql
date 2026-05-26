@@ -68,8 +68,8 @@ BEGIN
     INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
     WHERE US.rn = 1
       AND (SS.Comp_ID = @CompID OR (@CompID IN ('Comp-1650', 'Comp-1567') AND SS.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-      AND SST.IsActive = 1 AND SST.IsDelete = 0
-      AND SS.IsActive = 1 AND SS.IsDelete = 0
+      --AND SST.IsActive = 1 AND SST.IsDelete = 0
+     -- AND SS.IsActive = 1 AND SS.IsDelete = 0
       AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
       AND CONCAT(FORMAT(US.Series_Order, '000#'), FORMAT(US.Series_Serial, '000#')) 
           BETWEEN CONCAT(FORMAT(SS.start_order, '000#'), FORMAT(SS.start_series, '000#')) 
