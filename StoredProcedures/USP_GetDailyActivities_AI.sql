@@ -92,24 +92,52 @@ BEGIN
     -- Prepare valid scans
     ------------------------------------------------------
     DROP TABLE IF EXISTS #ValidScans;
+    CREATE TABLE #ValidScans (
+        ScanDate DATE,
+        MobileNo VARCHAR(50),
+        FullCode NVARCHAR(100)
+    );
 
-    SELECT
-        CAST(pe.Enq_Date AS DATE) AS ScanDate,
-        pe.MobileNo,
-        (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20))) AS FullCode
-    INTO #ValidScans
-    FROM Pro_Enq pe WITH (NOLOCK)
-    INNER JOIN M_Code mc WITH (NOLOCK)
-        ON (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20)))
-         = (pe.Received_Code1 + pe.Received_Code2)
-    INNER JOIN Pro_Reg pr WITH (NOLOCK)
-        ON pr.Pro_ID = mc.Pro_ID
-       AND pr.Comp_ID = @Comp_Id
-    WHERE pe.Is_Success = 1
-      AND mc.Use_Count = 1
-      AND pe.Enq_Date >= @StartDate
-      AND pe.Enq_Date <  @EndDate
-      AND mc.Gen_Date >= @CompanyStartDate;
+    IF @Comp_Id = 'Comp-1693'
+    BEGIN
+        INSERT INTO #ValidScans (ScanDate, MobileNo, FullCode)
+        SELECT
+            CAST(pe.Enq_Date AS DATE) AS ScanDate,
+            pe.MobileNo,
+            (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20))) AS FullCode
+        FROM Pro_Enq pe WITH (NOLOCK)
+        INNER JOIN M_Code_PFL mc WITH (NOLOCK)
+            ON (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20)))
+             = (pe.Received_Code1 + pe.Received_Code2)
+        INNER JOIN Pro_Reg pr WITH (NOLOCK)
+            ON pr.Pro_ID = mc.Pro_ID
+           AND pr.Comp_ID = @Comp_Id
+        WHERE pe.Is_Success = 1
+          AND mc.Use_Count = 1
+          AND pe.Enq_Date >= @StartDate
+          AND pe.Enq_Date <  @EndDate
+          AND mc.Gen_Date >= @CompanyStartDate;
+    END
+    ELSE
+    BEGIN
+        INSERT INTO #ValidScans (ScanDate, MobileNo, FullCode)
+        SELECT
+            CAST(pe.Enq_Date AS DATE) AS ScanDate,
+            pe.MobileNo,
+            (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20))) AS FullCode
+        FROM Pro_Enq pe WITH (NOLOCK)
+        INNER JOIN M_Code mc WITH (NOLOCK)
+            ON (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20)))
+             = (pe.Received_Code1 + pe.Received_Code2)
+        INNER JOIN Pro_Reg pr WITH (NOLOCK)
+            ON pr.Pro_ID = mc.Pro_ID
+           AND pr.Comp_ID = @Comp_Id
+        WHERE pe.Is_Success = 1
+          AND mc.Use_Count = 1
+          AND pe.Enq_Date >= @StartDate
+          AND pe.Enq_Date <  @EndDate
+          AND mc.Gen_Date >= @CompanyStartDate;
+    END
 
     ------------------------------------------------------
     -- First scan per user

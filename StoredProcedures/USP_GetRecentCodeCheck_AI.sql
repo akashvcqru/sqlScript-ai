@@ -63,7 +63,21 @@ BEGIN
             , CAST(MC.Code2 AS NVARCHAR(10)) AS Code2V
         FROM M_Code MC WITH (NOLOCK)
         JOIN Pro_Reg PR WITH (NOLOCK) ON MC.Pro_ID = PR.Pro_ID
-        WHERE PR.Comp_ID = @Comp_Id
+        WHERE PR.Comp_ID = @Comp_Id AND @Comp_Id <> 'Comp-1693'
+          AND EXISTS (SELECT 1 FROM PE_Recent PE WHERE PE.Received_Code1 = CAST(MC.Code1 AS NVARCHAR(10)) AND PE.Received_Code2 = CAST(MC.Code2 AS NVARCHAR(10)))
+
+        UNION ALL
+
+        SELECT 
+              MC.Pro_ID
+            , MC.Batch_No
+            , MC.Use_Count
+            , PR.Pro_Name
+            , CAST(MC.Code1 AS NVARCHAR(10)) AS Code1V
+            , CAST(MC.Code2 AS NVARCHAR(10)) AS Code2V
+        FROM M_Code_PFL MC WITH (NOLOCK)
+        JOIN Pro_Reg PR WITH (NOLOCK) ON MC.Pro_ID = PR.Pro_ID
+        WHERE PR.Comp_ID = @Comp_Id AND @Comp_Id = 'Comp-1693'
           AND EXISTS (SELECT 1 FROM PE_Recent PE WHERE PE.Received_Code1 = CAST(MC.Code1 AS NVARCHAR(10)) AND PE.Received_Code2 = CAST(MC.Code2 AS NVARCHAR(10)))
     ),
 

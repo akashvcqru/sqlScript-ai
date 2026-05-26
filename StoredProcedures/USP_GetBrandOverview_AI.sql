@@ -83,23 +83,50 @@ BEGIN
     -- Step 1: Pre-filter M_Code (Deduplicated)
     ---------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
-    
-    ;WITH DistinctCodes AS (
-        SELECT 
-            a.Code1, 
-            a.Code2, 
-            a.Pro_ID,
-            a.Use_Count,
-            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-        FROM M_Code a 
-        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
-        WHERE b.Comp_ID = @CompanyKey 
-          AND a.Use_Count > 0
-    )
-    SELECT Code1, Code2, Pro_ID
-    INTO #tempM_Code 
-    FROM DistinctCodes
-    WHERE rn = 1;
+    CREATE TABLE #tempM_Code (
+        Code1 VARCHAR(100),
+        Code2 VARCHAR(100),
+        Pro_ID VARCHAR(50)
+    );
+
+    IF @CompanyKey = 'Comp-1693'
+    BEGIN
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, 
+                a.Code2, 
+                a.Pro_ID,
+                a.Use_Count,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            FROM M_Code_PFL a 
+            INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @CompanyKey 
+              AND a.Use_Count > 0
+        )
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID)
+        SELECT Code1, Code2, Pro_ID
+        FROM DistinctCodes
+        WHERE rn = 1;
+    END
+    ELSE
+    BEGIN
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, 
+                a.Code2, 
+                a.Pro_ID,
+                a.Use_Count,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            FROM M_Code a 
+            INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @CompanyKey 
+              AND a.Use_Count > 0
+        )
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID)
+        SELECT Code1, Code2, Pro_ID
+        FROM DistinctCodes
+        WHERE rn = 1;
+    END
 
     ---------------------------------------------------------
     -- Step 2: Pre-filter Pro_Enq
@@ -123,7 +150,11 @@ BEGIN
     ---------------------------------------------------------
     -- Step 3: Aggregates
     ---------------------------------------------------------
-    DECLARE @LifetimeCodeGeneration INT = (SELECT COUNT(*) FROM M_Code a INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID WHERE b.Comp_ID = @CompanyKey);
+    DECLARE @LifetimeCodeGeneration INT;
+    IF @CompanyKey = 'Comp-1693'
+        SET @LifetimeCodeGeneration = (SELECT COUNT(*) FROM M_Code_PFL a INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID WHERE b.Comp_ID = @CompanyKey);
+    ELSE
+        SET @LifetimeCodeGeneration = (SELECT COUNT(*) FROM M_Code a INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID WHERE b.Comp_ID = @CompanyKey);
     DECLARE @AntiCounterfeitMeasures INT = (SELECT COUNT(*) FROM #tempPro_Enq WHERE CodeExists = 1 AND Is_Success = 1);
     DECLARE @CounterfeitAttemptsDetected INT = (SELECT COUNT(*) FROM #tempPro_Enq WHERE CodeExists = 0 OR Is_Success NOT IN (1, 2));
     DECLARE @NumberofScans INT = (SELECT COUNT(*) FROM #tempPro_Enq);
