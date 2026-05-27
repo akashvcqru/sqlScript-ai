@@ -137,8 +137,8 @@ BEGIN
         G.Longitude,
         S.MobileNo,
         CASE WHEN S.Is_Success = 1 THEN 
-            CASE WHEN S.Points IS NULL OR S.Points = 0 THEN CAST(S.Cash AS SQL_VARIANT) ELSE CAST(S.Points AS SQL_VARIANT) END 
-            ELSE CAST(0 AS SQL_VARIANT) 
+            CASE WHEN S.Points IS NULL OR S.Points = 0 THEN ISNULL(S.Cash, 0) ELSE S.Points END 
+            ELSE 0 
         END AS Points,
         CASE 
             WHEN S.Is_Success = 1 THEN 'VERIFIED'
