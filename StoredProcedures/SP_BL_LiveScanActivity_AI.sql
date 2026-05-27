@@ -109,7 +109,7 @@ BEGIN
         G.Latitude,
         G.Longitude,
         S.MobileNo,
-        ISNULL(P.TotalPoints,0) AS Points,
+        CASE WHEN S.Is_Success = 1 THEN ISNULL(P.TotalPoints,0) ELSE 0 END AS Points,
         CASE 
             WHEN S.Is_Success = 1 THEN 'VERIFIED'
             WHEN S.Is_Success = 2 THEN 'DUPLICATE'

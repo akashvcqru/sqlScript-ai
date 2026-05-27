@@ -136,7 +136,10 @@ BEGIN
         G.Latitude,
         G.Longitude,
         S.MobileNo,
-        CASE WHEN S.Points IS NULL OR S.Points = 0 THEN CAST(S.Cash AS SQL_VARIANT) ELSE CAST(S.Points AS SQL_VARIANT) END AS Points,
+        CASE WHEN S.Is_Success = 1 THEN 
+            CASE WHEN S.Points IS NULL OR S.Points = 0 THEN CAST(S.Cash AS SQL_VARIANT) ELSE CAST(S.Points AS SQL_VARIANT) END 
+            ELSE CAST(0 AS SQL_VARIANT) 
+        END AS Points,
         CASE 
             WHEN S.Is_Success = 1 THEN 'VERIFIED'
             WHEN S.Is_Success = 2 THEN 'DUPLICATE'
