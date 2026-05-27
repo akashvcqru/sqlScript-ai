@@ -26,7 +26,8 @@ BEGIN
         cr.gst_TradeName,
         cr.gst_RegistrationDate,
         cr.comp_pan_type,
-        cr.comp_pan_status
+        cr.comp_pan_status,
+        cr.Industry_Type
     FROM Comp_Reg cr
     LEFT JOIN CityMaster cm ON cr.City_ID = cm.City_Id
     LEFT JOIN StateMaster sm ON cr.StateId = sm.State_Id
