@@ -22,7 +22,11 @@ BEGIN
         b.Gift_desc,      aa.Service_ID ,aa.ServiceName,
         b.Gift_image,     
         b.gift_id,     
-        a.Row_id AS claimid       
+        a.Row_id AS claimid,
+        a.SupervisorValue,
+        a.SupervisorGet,
+        a.SupervisorValueType,
+        a.SupervisorMobileNo
     FROM ClaimDetails a      
     INNER JOIN Claim_gift b ON a.Gift_id = b.gift_id   	left join M_Service aa on aa.Service_ID = a.Service_ID  
     WHERE a.Comp_id = b.CompID     
@@ -43,7 +47,11 @@ BEGIN
         '' AS Gift_desc,      aa.Service_ID ,aa.ServiceName, 
         'images/Gift/new/Cash_transfer.png' AS Gift_image,     
         '' AS gift_id,     
-        Row_id AS claimid       
+        Row_id AS claimid,
+        a.SupervisorValue,
+        a.SupervisorGet,
+        a.SupervisorValueType,
+        a.SupervisorMobileNo
     FROM ClaimDetails     a 	left join M_Service aa on aa.Service_ID = a.Service_ID
   WHERE Gift_id IS NULL  
       AND a.Mobileno = @Mobileno   
@@ -67,7 +75,11 @@ BEGIN
         'Cash Transfer' AS ServiceName,
         'images/Gift/new/Cash_transfer.png' AS Gift_image,
         '' AS gift_id,
-        TransactionsId AS claimid
+        TransactionsId AS claimid,
+        NULL AS SupervisorValue,
+        NULL AS SupervisorGet,
+        NULL AS SupervisorValueType,
+        NULL AS SupervisorMobileNo
     FROM [dbo].[Transactions] WITH (NOLOCK)
     WHERE (MobileNumber = @Mobileno OR RIGHT(MobileNumber, 10) = RIGHT(@Mobileno, 10))
       AND ('Comp-' + CAST(CompId AS VARCHAR) = @Comp_id OR CAST(CompId AS VARCHAR) = @Comp_id)
