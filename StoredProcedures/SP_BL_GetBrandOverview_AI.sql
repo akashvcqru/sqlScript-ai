@@ -141,7 +141,22 @@ BEGIN
     WHERE Comp_ID = @CompId AND Enq_Date >= @CompRegDate AND Enq_Date < @StartDate;
 
     ---------------------------------------------------------
-    -- 5. TOTAL CASH UTILIZED (Total Payouts)
+    -- 5. CASH UTILIZATION IN PERIOD (Current & Previous)
+    ---------------------------------------------------------
+    DECLARE @PeriodCashUtilized_Current DECIMAL(18,2), @PeriodCashUtilized_Prev DECIMAL(18,2);
+
+    SELECT @PeriodCashUtilized_Current = SUM(ISNULL(Amount, 0)) 
+    FROM tblUPITransactionDetails WITH (NOLOCK)
+    WHERE Comp_Id = @CompId AND Status = 'Success'
+      AND ReqDate >= @StartDate AND ReqDate < @EndDate;
+
+    SELECT @PeriodCashUtilized_Prev = SUM(ISNULL(Amount, 0)) 
+    FROM tblUPITransactionDetails WITH (NOLOCK)
+    WHERE Comp_Id = @CompId AND Status = 'Success'
+      AND ReqDate >= @PrevStartDate AND ReqDate < @PrevEndDate;
+
+    ---------------------------------------------------------
+    -- 5b. TOTAL CASH UTILIZED (Total Payouts - All Time)
     ---------------------------------------------------------
     DECLARE @CashUtilized_Current DECIMAL(18,2), @CashUtilized_Prev DECIMAL(18,2);
 
@@ -191,9 +206,9 @@ BEGIN
         @QrVerified_Prev AS QrCodesVerified_Previous,
         CASE WHEN @QrVerified_Prev > 0 THEN ((CAST(@QrVerified_Current AS DECIMAL(18,2)) - @QrVerified_Prev) / @QrVerified_Prev) * 100 ELSE 0 END AS QrCodesVerified_Change,
 
-        @Util_Current AS CashUtilization_Current,
-        @Util_Prev AS CashUtilization_Previous,
-        (@Util_Current - @Util_Prev) AS CashUtilization_Change,
+        ISNULL(@PeriodCashUtilized_Current, 0) AS CashUtilization_Current,
+        ISNULL(@PeriodCashUtilized_Prev, 0) AS CashUtilization_Previous,
+        CASE WHEN @PeriodCashUtilized_Prev > 0 THEN ((ISNULL(@PeriodCashUtilized_Current, 0) - @PeriodCashUtilized_Prev) / @PeriodCashUtilized_Prev) * 100 ELSE 0 END AS CashUtilization_Change,
 
         ISNULL(@CashUtilized_Current, 0) AS TotalCashUtilized_Current,
         ISNULL(@CashUtilized_Prev, 0) AS TotalCashUtilized_Previous,
