@@ -86,7 +86,7 @@ BEGIN
         STRING_AGG(i.ImagePath, ',') AS ImagePaths
     FROM Tickets t  
     LEFT JOIN TicketImages i ON t.TicketId = i.TicketId  
-    LEFT JOIN M_Consumer mc ON mc.M_Consumerid = t.M_Consumerid
+    LEFT JOIN M_Consumer mc ON mc.M_Consumerid = TRY_CAST(t.M_Consumerid AS INT)
     LEFT JOIN Comp_Reg cr ON cr.Comp_ID = t.Comp_id
     WHERE (@Search IS NULL OR t.Comp_id LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
       AND (@StartDate IS NULL OR t.CreatedAt >= @StartDate)
