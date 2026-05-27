@@ -38,6 +38,7 @@ BEGIN
     IF OBJECT_ID('tempdb..#UserScans') IS NOT NULL DROP TABLE #UserScans;
     IF OBJECT_ID('tempdb..#EarnedPoints') IS NOT NULL DROP TABLE #EarnedPoints;
     IF OBJECT_ID('tempdb..#ConfigPoints') IS NOT NULL DROP TABLE #ConfigPoints;
+    IF OBJECT_ID('tempdb..#ScanServices') IS NOT NULL DROP TABLE #ScanServices;
     IF OBJECT_ID('tempdb..#ConfiguredPoints') IS NOT NULL DROP TABLE #ConfiguredPoints;
     IF OBJECT_ID('tempdb..#ReferralStats') IS NOT NULL DROP TABLE #ReferralStats;
 
@@ -103,17 +104,23 @@ BEGIN
 
     CREATE CLUSTERED INDEX IX_ConfigPoints_MCodeid ON #ConfigPoints(M_Codeid);
 
+    -- Get distinct M_Codeid and Service_ID mapping from both tables to avoid Cartesian product duplication
+    SELECT M_Codeid, Service_ID INTO #ScanServices FROM #ConfigPoints
+    UNION
+    SELECT M_Codeid, Service_ID FROM #EarnedPoints;
+
     -- Aggregate into #ConfiguredPoints
     SELECT
-        COALESCE(CP.Service_ID, EP.Service_ID, 'SRV1001') AS Service_ID,
+        COALESCE(SS.Service_ID, 'SRV1001') AS Service_ID,
         SUM(ISNULL(CP.ConfigPoints, ISNULL(EP.Points, 0))) AS ServiceTotalPoints,
         SUM(ISNULL(CP.ConfigCash, 0)) AS ServiceTotalCash
     INTO #ConfiguredPoints
     FROM #UserScans US
-    LEFT JOIN #ConfigPoints CP ON CP.M_Codeid = US.M_Codeid
-    LEFT JOIN #EarnedPoints EP ON EP.M_Codeid = US.M_Codeid
+    LEFT JOIN #ScanServices SS ON US.M_Codeid = SS.M_Codeid
+    LEFT JOIN #ConfigPoints CP ON CP.M_Codeid = SS.M_Codeid AND CP.Service_ID = SS.Service_ID
+    LEFT JOIN #EarnedPoints EP ON EP.M_Codeid = SS.M_Codeid AND EP.Service_ID = SS.Service_ID
     WHERE US.rn = 1
-    GROUP BY COALESCE(CP.Service_ID, EP.Service_ID, 'SRV1001');
+    GROUP BY COALESCE(SS.Service_ID, 'SRV1001');
 
     SELECT 
         ISNULL(SUM(CAST(Points AS DECIMAL(18,2))), 0) as RefPoints,
