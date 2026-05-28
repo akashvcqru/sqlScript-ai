@@ -12,7 +12,7 @@ SELECT
 m.M_consumerId,m.User_ID,ConsumerName,M.MobileNo, v.EmailId as email, v.IsActive,v.usercity as City,v.userstate as state,v.userpin as PinCode,v.Entry_date,v.Vrkabel_User_Type,u.User_Type,v.Outlet_name as OutletName,v.Owner_name as OwnerName,v.Segmanet_name as Segment ,v.Branddetails as Brand  , 
 dcl.total_credit_limit,dsd.deposit_amount,
 m.dob, m.gender, m.gst_number, m.pancard_number, m.pan_card_file, m.FirmName, m.Shop_address, m.aadharNumber, m.aadharFile, m.aadharback, m.employeeID, m.distributorID, m.UPIId, m.sur_name, m.Address, m.Per_Address, m.ReferralCode,
-v.userupi, v.shop_file, v.Dealer_M_consumerid, m.Created_by, m.Comp_ID
+v.userupi, v.shop_file, v.Dealer_M_consumerid, m.Created_by, m.Comp_ID, m.Addedfrom
 FROM M_consumer M     
 INNER JOIN tbl_Vendorvisekycstatus v on m.M_Consumerid=v.M_consumerId    
 inner join User_Type u on u.Row_ID=v.Vrkabel_User_Type    

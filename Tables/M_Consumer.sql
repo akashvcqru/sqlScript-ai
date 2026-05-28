@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[M_Consumer]    Script Date: 3/2/2026 12:27:10 PM ******/
+/****** Object:  Table [dbo].[M_Consumer]    Script Date: 3/2/2026 12:27:10 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -86,6 +86,7 @@ CREATE TABLE [dbo].[M_Consumer](
 	[transaction_status] [varchar](300) NULL,
 	[dealer_state] [varchar](150) NULL,
 	[DealerType] [int] NOT NULL,
+	[Addedfrom] [int] NULL,
  CONSTRAINT [Additional_Unique] UNIQUE NONCLUSTERED 
 (
 	[MobileNo] ASC,
