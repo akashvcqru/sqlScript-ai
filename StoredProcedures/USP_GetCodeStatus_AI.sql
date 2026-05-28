@@ -29,6 +29,29 @@ BEGIN
         SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_ID;
     END
 
+    DECLARE @Series_Order INT = 0;
+    DECLARE @Series_Serial INT = 0;
+    DECLARE @Pro_ID VARCHAR(50) = '';
+
+    IF @ActualCompId = 'Comp-1693'
+    BEGIN
+        SELECT TOP 1 
+            @Pro_ID = Pro_ID, 
+            @Series_Order = Series_Order, 
+            @Series_Serial = Series_Serial 
+        FROM M_Code_PFL 
+        WHERE Code1 = @RecievedCode1 AND Code2 = @RecievedCode2;
+    END
+    ELSE
+    BEGIN
+        SELECT TOP 1 
+            @Pro_ID = Pro_ID, 
+            @Series_Order = Series_Order, 
+            @Series_Serial = Series_Serial 
+        FROM M_Code 
+        WHERE Code1 = @RecievedCode1 AND Code2 = @RecievedCode2;
+    END
+
     ---------------------------------------------------------
     -- Normalize flags & pagination
     ---------------------------------------------------------
@@ -45,24 +68,53 @@ BEGIN
     ---------------------------------------------------------
     IF OBJECT_ID('tempdb..#temp1') IS NOT NULL DROP TABLE #temp1;
 
+    WITH RankedTrans AS (
+        SELECT 
+            sst.SST_Id,
+            sst.Points,
+            sst.IsCash,
+            sst.Frequency,
+            ss.Service_ID,
+            ss.Pro_ID,
+            sst.Entry_Date,
+            ROW_NUMBER() OVER (
+                PARTITION BY ss.Service_ID 
+                ORDER BY sst.Entry_Date DESC, sst.SST_Id DESC
+            ) AS rn_service
+        FROM M_ServiceSubscriptionTrans sst WITH (NOLOCK)
+        INNER JOIN M_ServiceSubscription ss WITH (NOLOCK)
+            ON sst.Subscribe_Id = ss.Subscribe_Id
+        INNER JOIN Pro_Reg pr WITH (NOLOCK)
+            ON pr.Pro_id = ss.Pro_ID
+        WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))
+          AND sst.IsActive = 1 AND sst.IsDelete = 0
+          AND ss.IsActive = 1 AND ss.IsDelete = 0
+          AND ss.Pro_ID = @Pro_ID
+          AND (@Series_Order > ss.start_order OR (@Series_Order = ss.start_order AND @Series_Serial >= ss.start_series))
+          AND (@Series_Order < ss.end_order OR (@Series_Order = ss.end_order AND @Series_Serial <= ss.end_series))
+    ),
+    UniqueServiceTrans AS (
+        SELECT * 
+        FROM RankedTrans 
+        WHERE rn_service = 1
+    ),
+    FinalRankedTrans AS (
+        SELECT 
+            Points,
+            IsCash,
+            Frequency,
+            ROW_NUMBER() OVER (
+                ORDER BY Entry_Date DESC, SST_Id DESC
+            ) AS rn_final
+        FROM UniqueServiceTrans
+    )
     SELECT 
-        sst.SST_Id,
-        sst.Points,
-        sst.IsCash,
-        ss.Pro_ID,
-        ss.start_order,
-        ss.start_series,
-        ss.end_order,
-        ss.end_series
+        Points,
+        IsCash,
+        Frequency
     INTO #temp1
-    FROM M_ServiceSubscriptionTrans sst
-    INNER JOIN M_ServiceSubscription ss 
-        ON sst.Subscribe_Id = ss.Subscribe_Id
-    INNER JOIN Pro_Reg pr 
-        ON pr.Pro_id = ss.Pro_ID
-    WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))
-      AND sst.IsActive = 1 AND sst.IsDelete = 0
-      AND ss.IsActive = 1 AND ss.IsDelete = 0;
+    FROM FinalRankedTrans
+    WHERE rn_final = 1;
 
     ---------------------------------------------------------
     -- Code Status Temp
@@ -70,15 +122,24 @@ BEGIN
     IF OBJECT_ID('tempdb..#CodeStatus') IS NOT NULL DROP TABLE #CodeStatus;
 
     SELECT
-        CASE WHEN PE.Is_Success = 1 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
-        CAST(CASE WHEN PE.Is_Success = 1 THEN CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
+        CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
+        CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
         ISNULL(sd.IsCash, 0) AS IsCash,
         PE.Enq_Date,
         ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS UniqueCode,
         PE.MobileNo,
         ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode
     INTO #CodeStatus
-    FROM Pro_Enq PE
+    FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (
+                   PARTITION BY Received_Code1, Received_Code2, Is_Success 
+                   ORDER BY Enq_Date ASC
+               ) AS Success_Rn
+        FROM Pro_Enq WITH (NOLOCK)
+        WHERE Received_Code1 = @RecievedCode1
+          AND Received_Code2 = @RecievedCode2
+    ) PE
     INNER JOIN (
         SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code WHERE @ActualCompId <> 'Comp-1693'
         UNION ALL
@@ -89,18 +150,8 @@ BEGIN
     INNER JOIN Pro_Reg pr 
         ON pr.Pro_ID = mc.Pro_ID
     LEFT JOIN #temp1 sd 
-        ON sd.Pro_ID = mc.Pro_Id
-       AND CONCAT(
-            FORMAT(mc.Series_Order, '000#'),
-            FORMAT(mc.Series_Serial, '000#')
-           )
-           BETWEEN 
-           CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#'))
-           AND 
-           CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
-    WHERE PE.Received_Code1 = @RecievedCode1
-      AND PE.Received_Code2 = @RecievedCode2
-      AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
+        ON 1 = 1
+    WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
 
     ---------------------------------------------------------
     -- DETAILS RESULT
