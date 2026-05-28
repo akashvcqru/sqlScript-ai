@@ -73,9 +73,11 @@ BEGIN
             ISNULL(B.Display_Product, B.Pro_Name) AS Pro_Name,
             CAST(PB.Print_DateTime AS DATE) AS print_date,
             S.IsDispatched,
+            CASE WHEN LR.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType,
             PB.TotalRecords
         FROM PaginatedBatches PB
         INNER JOIN Pro_Reg B ON PB.Pro_ID = B.Pro_ID
+        LEFT JOIN M_Label_Request LR ON PB.LabelRequestId = LR.Tracking_No
         CROSS APPLY (
             SELECT 
                 MIN(CAST(MC.Series_Order AS BIGINT) * 10000 + CAST(MC.Series_Serial AS BIGINT)) as MinIndex,
@@ -131,9 +133,11 @@ BEGIN
             B.Pro_Name,
             CAST(PB.Print_DateTime AS DATE) AS print_date,
             S.IsDispatched,
+            CASE WHEN LR.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType,
             PB.TotalRecords
         FROM PaginatedBatches PB
         INNER JOIN Pro_Reg B ON PB.Pro_ID = B.Pro_ID
+        LEFT JOIN M_Label_Request LR ON PB.LabelRequestId = LR.Tracking_No
         CROSS APPLY (
             SELECT 
                 MIN(CAST(MC.Series_Order AS BIGINT) * 10000 + CAST(MC.Series_Serial AS BIGINT)) as MinIndex,
