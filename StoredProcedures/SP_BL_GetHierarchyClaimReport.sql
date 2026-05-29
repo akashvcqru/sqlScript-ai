@@ -143,7 +143,7 @@ BEGIN
         SET @BaseWhere += N'
         AND CD.PaymentStatus = @PaymentStatus';
 
-    -- Flexible Search (Claimant name/mobile or Supervisor name/mobile)
+    -- Flexible Search (Claimant name/mobile or Supervisor name/mobile or Claim ID)
     IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
         SET @BaseWhere += N'
         AND (
@@ -151,6 +151,7 @@ BEGIN
             OR REPLACE(MC.ConsumerName, '' '', '''') LIKE ''%'' + REPLACE(@Search, '' '', '''') + ''%''
             OR REPLACE(sup.ConsumerName, '' '', '''') LIKE ''%'' + REPLACE(@Search, '' '', '''') + ''%''
             OR REPLACE(sup.MobileNo, '' '', '''') LIKE ''%'' + REPLACE(@Search, '' '', '''') + ''%''
+            OR CAST(CD.Row_id AS VARCHAR(20)) LIKE ''%'' + REPLACE(@Search, '' '', '''') + ''%''
         )';
 
     ---------------------------------------------------------
