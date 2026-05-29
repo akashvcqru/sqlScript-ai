@@ -154,7 +154,7 @@ BEGIN
              WHERE IsSuccess = 1
                AND M_CounserID = @M_Consumerid
                AND 'Comp-' + CAST(CompId AS VARCHAR) = @CompID
-               AND TransactionDate >= '2022-11-25 00:00:00.000'
+              -- AND TransactionDate >= '2022-11-25 00:00:00.000'
                AND TransactionDate < GETDATE())
         ) as ReedemPoints,
         (SELECT COUNT(pe.Received_Code1) 
