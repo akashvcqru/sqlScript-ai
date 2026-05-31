@@ -5,6 +5,7 @@ CREATE TABLE [dbo].[Namrata_RetailerInvoiceData_AI](
     [invoiceAmount] [decimal](18, 2) NOT NULL,
     [PointPersent] [decimal](18, 2) NOT NULL,
     [points] [int] NOT NULL,
+    [invoiceid] [varchar](20) NULL,
     [createdate] [datetime] DEFAULT GETDATE(),
     [updateddate] [datetime] DEFAULT GETDATE(),
     PRIMARY KEY CLUSTERED ([id] ASC)
