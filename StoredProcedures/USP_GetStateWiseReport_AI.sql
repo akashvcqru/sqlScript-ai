@@ -122,7 +122,11 @@ BEGIN
             a.Pro_ID,
             a.Use_Count,
             ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-        FROM M_Code a 
+        FROM (
+            SELECT Code1, Code2, Pro_ID, Use_Count FROM M_Code WHERE @Comp_ID <> 'Comp-1693'
+            UNION ALL
+            SELECT Code1, Code2, Pro_ID, Use_Count FROM M_Code_PFL WHERE @Comp_ID = 'Comp-1693'
+        ) a 
         INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
         WHERE b.Comp_ID = @Comp_ID 
           AND a.Use_Count > 0
@@ -131,6 +135,7 @@ BEGIN
     INTO #tempM_Code 
     FROM DistinctCodes
     WHERE rn = 1;
+
 
     CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
 
