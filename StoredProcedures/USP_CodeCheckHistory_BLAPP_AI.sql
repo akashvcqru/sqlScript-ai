@@ -37,7 +37,8 @@ BEGIN
                 WHEN bl.Is_Success = 1 THEN 'Green'  
                 WHEN bl.Is_Success = 0 THEN 'Red'  
                 ELSE 'Red'  
-            END AS ColourCode  
+            END AS ColourCode,
+            CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
         FROM [dbo].[ConsumerPointsCashDetails] bl
         LEFT JOIN M_Service ms ON ms.Service_ID = bl.Service_ID
         WHERE bl.MobileNo = @MobileNo
@@ -72,7 +73,8 @@ BEGIN
                 WHEN pe.Is_Success = 1 THEN 'Green'  
                 WHEN pe.Is_Success = 0 THEN 'Red'  
                 ELSE 'Red'  
-            END AS ColourCode  
+            END AS ColourCode,
+            CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
         FROM Pro_Enq pe
         INNER JOIN M_Code m 
             ON TRY_CAST(pe.Received_Code1 AS INT) = m.Code1
@@ -151,7 +153,8 @@ BEGIN
             WHEN t2.Status = 'Success' THEN 'Green'  
             WHEN t2.Status = 'Pending' THEN 'Yellow'  
             ELSE 'Red'  
-        END AS ColourCode  
+        END AS ColourCode,
+        CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
     FROM ConsumerData t2  
     INNER JOIN BLoyaltyPointsEarned bl ON t2.M_Consumerid = bl.M_Consumerid
     INNER JOIN M_ServiceSubscriptionTrans a ON bl.SST_id = a.SST_Id 
@@ -172,7 +175,8 @@ BEGIN
             WHEN t2.Status = 'Success' THEN 'Green'  
             WHEN t2.Status = 'Pending' THEN 'Yellow'  
             ELSE 'Red'  
-        END AS ColourCode  
+        END AS ColourCode,
+        CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
     FROM ConsumerData t2  
     WHERE t2.Status IN ('Invalid', 'Unsuccess')  
   
@@ -192,11 +196,25 @@ BEGIN
         CONCAT('+', bll.Points) AS Points,  
         bll.ServiceName,  
         bll.ServiceName AS ServiceNameNew,
-        'Green' AS ColourCode  
+        'Green' AS ColourCode,
+        CASE 
+            WHEN bll.ServiceName = 'InvoiceBenifit' THEN 
+                COALESCE(
+                    (SELECT TOP 1 invoiceAmount FROM Namrata_RetailerInvoiceData_AI WHERE id = bll.TransacionID),
+                    (SELECT TOP 1 invoiceAmount FROM Namrata_RetailerInvoiceData_AI WHERE M_Consumerid = bll.M_Consumerid AND comp_id = bll.compid AND points = bll.Points AND ABS(DATEDIFF(SECOND, createdate, bll.UpdateDate)) <= 5),
+                    (SELECT TOP 1 invoiceAmount FROM Namrata_RetailerInvoiceData_AI WHERE M_Consumerid = bll.M_Consumerid AND comp_id = bll.compid AND points = bll.Points ORDER BY createdate DESC)
+                )
+            WHEN bll.ServiceName = 'InvoiceRewards' THEN 
+                COALESCE(
+                    (SELECT TOP 1 Amount FROM tblInvoiceData_AI WHERE Id = bll.TransacionID),
+                    (SELECT TOP 1 Amount FROM tblInvoiceData_AI WHERE M_Consumerid = bll.M_Consumerid AND Comp_id = bll.compid AND Status = 1 ORDER BY Created_Date DESC)
+                )
+            ELSE NULL
+        END AS InvoiceAmount  
     FROM BLoyaltyPointsEarned bll  
     INNER JOIN Comp_Reg cr ON cr.Comp_ID = bll.compid  
     WHERE bll.M_Consumerid = @M_Consumer_id   
-      AND bll.ServiceName = 'Referral'   
+      AND bll.ServiceName IN ('Referral', 'InvoiceBenifit', 'InvoiceRewards')   
       AND bll.compid = @Comp_ID  
   
     ORDER BY Enq_Date DESC;  

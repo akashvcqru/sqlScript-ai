@@ -86,7 +86,7 @@ BEGIN
                     FROM BLoyaltyPointsEarned WITH (NOLOCK)
                     WHERE M_Consumerid = mc.M_Consumerid 
                       AND (compid = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567')))
-                      AND ServiceName IN ('Referral', 'KYCRewards', 'Supervisor')
+                      AND ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards')
                 ), 0)
         END AS totalPoints,
         -- Redeem Points
@@ -188,7 +188,7 @@ BEGIN
                         FROM BLoyaltyPointsEarned WITH (NOLOCK)
                         WHERE M_Consumerid = mc.M_Consumerid 
                           AND (compid = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567')))
-                          AND ServiceName IN ('Referral', 'KYCRewards', 'Supervisor')
+                          AND ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards')
                     ), 0)
             END
         )

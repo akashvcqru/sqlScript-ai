@@ -63,7 +63,7 @@ BEGIN
     FROM BLoyaltyPointsEarned
     WHERE M_Consumerid = @M_Consumerid 
       AND (compid = @CompId OR (@CompId IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567')))
-      AND ServiceName IN ('Referral', 'KYCRewards');
+      AND ServiceName IN ('Referral', 'KYCRewards', 'InvoiceBenifit', 'InvoiceRewards');
 
     -- 3. Extra Amount for specific company (if still needed)
     DECLARE @ExtraAmount DECIMAL(18,2) = 0;
