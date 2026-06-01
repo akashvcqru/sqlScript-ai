@@ -36,7 +36,7 @@ BEGIN
     -------------------------------------------------
     ;WITH PE_Recent AS
     (
-        SELECT TOP 20 
+        SELECT TOP 5 
               Received_Code1
             , Received_Code2
             , MobileNo
@@ -124,9 +124,9 @@ BEGIN
         , MC.Pro_ID
         , MC.Pro_Name
         , MC.Batch_No
-        , MC.Code1V
-        , MC.Code2V
-        , (MC.Code1V + MC.Code2V) AS UniqueCode
+        , ISNULL(MC.Code1V, PE.Received_Code1) AS Code1V
+        , ISNULL(MC.Code2V, PE.Received_Code2) AS Code2V
+        , ISNULL((MC.Code1V + MC.Code2V), ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '')) AS UniqueCode
         , PE.Enq_Date
         , PE.Dial_Mode
         
@@ -144,7 +144,7 @@ BEGIN
               ELSE 'Low Risk'
           END AS RiskLevel
 
-        , MC.Use_Count
+        , ISNULL(MC.Use_Count, 0) AS Use_Count
         , GEO.State
         , GEO.City
         , GEO.Postcode AS PinCode
@@ -152,7 +152,7 @@ BEGIN
         , GEO.Longitude
 
     FROM PE_Recent PE
-    JOIN MC 
+    LEFT JOIN MC 
         ON PE.Received_Code1 = MC.Code1V
        AND PE.Received_Code2 = MC.Code2V
 

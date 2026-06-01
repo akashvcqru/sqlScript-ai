@@ -40,163 +40,208 @@ BEGIN
     SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01')
     FROM Comp_Reg WHERE Comp_ID = @Comp_ID AND Status = 1;
 
-    DECLARE @finalFromDate DATETIME, @finalToDate DATETIME
-    IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null' OR @datePreset = 'All')
-        SET @datePreset = 'ALL'
-    ELSE
-        SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
-
-    DECLARE @today DATE = CAST(GETDATE() AS DATE); 
-    SET DATEFIRST 1; -- Monday as first day of week
-
-    IF @datePreset = 'ALL' 
-    BEGIN 
-        SET @finalFromDate = NULL; 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'CUSTOM' 
-    BEGIN 
-        SET @finalFromDate = @FromDate; 
-        SET @finalToDate = @ToDate; 
-    END
-    ELSE IF @datePreset = 'TODAY' 
-    BEGIN 
-        SET @finalFromDate = CAST(@today AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'YESTERDAY' OR @datePreset = 'LASTDAY' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEADD(DAY, -1, @today) AS DATETIME); 
-        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@today AS DATETIME)) AS DATETIME); 
-    END
-    ELSE IF @datePreset = 'WEEK' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'LASTWEEK' 
-    BEGIN 
-        DECLARE @lastMonday DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); 
-        SET @finalFromDate = CAST(DATEADD(DAY, -7, @lastMonday) AS DATETIME); 
-        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@lastMonday AS DATETIME)) AS DATETIME); 
-    END
-    ELSE IF @datePreset = 'MONTH' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'LASTMONTH' 
-    BEGIN 
-        DECLARE @firstOfThisMonth DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
-        SET @finalFromDate = CAST(DATEADD(MONTH, -1, @firstOfThisMonth) AS DATETIME); 
-        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@firstOfThisMonth AS DATETIME)) AS DATETIME); 
-    END
-    ELSE IF @datePreset = 'QUARTER' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0) AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'YEAR' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'LASTYEAR' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1) AS DATETIME); 
-        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME)) AS DATETIME); 
-    END
-    ELSE 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-
-    ------------------------------------------------------
-    -- Step 1: Pre-filter Pro_Enq (The largest table)
-    ------------------------------------------------------
-    IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
-    SELECT 
-        Received_Code1, 
-        Received_Code2, 
-        MobileNo,
-        RIGHT(MobileNo, 10) AS MobileLast10,
-        Enq_Date, 
-        Is_Success
-    INTO #tempPro_Enq
-    FROM Pro_Enq
-    WHERE Comp_ID = @Comp_ID
-      AND Enq_Date >= @CompanyStartDate
-      AND (@finalFromDate IS NULL OR Enq_Date >= @finalFromDate)
-      AND (@finalToDate IS NULL OR Enq_Date < DATEADD(DAY, 1, @finalToDate))
-      AND (@DialModeFilter IS NULL OR Dial_Mode = @DialModeFilter)
-      AND (
-          @CodeStatusFilter IS NULL OR
-          (@CodeStatusFilter = 'Verified' AND Is_Success = 1) OR
-          (@CodeStatusFilter = 'Already Scanned' AND Is_Success = 2) OR
-          (@CodeStatusFilter = 'Invalid' AND Is_Success NOT IN (1, 2))
-      );
-
-    CREATE INDEX IX_tempPro_Enq_Codes ON #tempPro_Enq(Received_Code1, Received_Code2);
-    CREATE INDEX IX_tempPro_Enq_Mobile ON #tempPro_Enq(MobileLast10);
-
-    ------------------------------------------------------
-    -- Step 2: Pre-filter M_Code (Deduplicated per code pair)
-    ------------------------------------------------------
-    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+    -------------------------------------------------
+    -- 2. Construct Date Range
+    -------------------------------------------------
+    DECLARE @StartDate DATE, @EndDate DATE;
+    DECLARE @Today DATE = CAST(GETDATE() AS DATE);
+    DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset,''))));
     
-    ;WITH DistinctCodes AS (
+    IF @Win = '' OR @Win = 'NULL' SET @Win = 'ALL';
+
+    IF @Win = 'TODAY'
+    BEGIN
+        SET @StartDate = @Today;
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'YESTERDAY'
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -1, @Today);
+        SET @EndDate   = @Today;
+    END
+    ELSE IF @Win = 'WEEK'
+    BEGIN
+        SET DATEFIRST 1; -- Monday
+        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTWEEK'
+    BEGIN
+        SET DATEFIRST 1;
+        DECLARE @ThisWeekStart DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
+        SET @StartDate = DATEADD(DAY, -7, @ThisWeekStart);
+        SET @EndDate   = @ThisWeekStart;
+    END
+    ELSE IF @Win = 'MONTH'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTMONTH'
+    BEGIN
+        DECLARE @ThisMonthStart DATE = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @StartDate = DATEADD(MONTH, -1, @ThisMonthStart);
+        SET @EndDate   = @ThisMonthStart;
+    END
+    ELSE IF @Win = 'QUARTER'
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -90, @Today);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'YEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), 1, 1);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTYEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today) - 1, 1, 1);
+        SET @EndDate   = DATEFROMPARTS(YEAR(@Today), 1, 1);
+    END
+    ELSE IF @Win = 'ALL'
+    BEGIN
+        SET @StartDate = '1900-01-01';
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'CUSTOM'
+    BEGIN
+        SET @StartDate = ISNULL(CAST(@FromDate AS DATE), '1900-01-01');
+        SET @EndDate   = DATEADD(DAY, 1, ISNULL(CAST(@ToDate AS DATE), @Today));
+    END
+    ELSE
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+
+    -------------------------------------------------
+    -- 3. Execution Branching
+    -------------------------------------------------
+    IF @Comp_ID = 'Comp-1693'
+    BEGIN
         SELECT 
-            a.Code1, 
-            a.Code2, 
-            a.Pro_ID,
-            a.Use_Count,
-            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            ROW_NUMBER() OVER (ORDER BY pe.MobileLast10) AS SNo,
+            MAX(pe.MobileNo) AS MobileNo,
+            ISNULL(pe.State, '') AS State,
+            ISNULL(pe.City, '') AS City,
+            '' AS Email,
+            ISNULL(mc.ConsumerName, 'Anonymous') AS ConsumerName,
+            COUNT(*) AS TotalCodeScanned,
+            SUM(CASE WHEN pe.Status IN ('Authenticate', 'Re-Authenticate') THEN 1 ELSE 0 END) AS SuccessfulCodeScanned,
+            SUM(CASE WHEN pe.Status = 'Failed' THEN 1 ELSE 0 END) AS UnsuccessfulCodeScanned,
+            MIN(pe.Enq_Date) AS FirstScannedDate,
+            MAX(pe.Enq_Date) AS LastScannedDate,
+            ISNULL(pe.PinCode, '') AS PostCode,
+            COUNT(*) OVER() AS TotalRecords
         FROM (
-            SELECT Code1, Code2, Pro_ID, Use_Count FROM M_Code WHERE @Comp_ID <> 'Comp-1693'
-            UNION ALL
-            SELECT Code1, Code2, Pro_ID, Use_Count FROM M_Code_PFL WHERE @Comp_ID = 'Comp-1693'
-        ) a 
-        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
-        WHERE b.Comp_ID = @Comp_ID
-          AND a.Use_Count > 0
-    )
-    SELECT Code1, Code2, Pro_ID
-    INTO #tempM_Code 
-    FROM DistinctCodes
-    WHERE rn = 1;
+            SELECT *, RIGHT(MobileNo, 10) AS MobileLast10
+            FROM pfl_codecheckData WITH (NOLOCK)
+            WHERE Enq_Date >= @StartDate
+              AND Enq_Date < @EndDate
+              AND (@CompanyStartDate IS NULL OR Enq_Date >= @CompanyStartDate)
+              AND (@StateFilter IS NULL OR State = @StateFilter)
+              AND (@DialModeFilter IS NULL OR Dial_Mode = @DialModeFilter)
+              AND (
+                  @CodeStatusFilter IS NULL OR
+                  (@CodeStatusFilter = 'Verified' AND Status = 'Authenticate') OR
+                  (@CodeStatusFilter = 'Already Scanned' AND Status = 'Re-Authenticate') OR
+                  (@CodeStatusFilter = 'Invalid' AND Status = 'Failed')
+              )
+              AND (@Search IS NULL OR (
+                  MobileNo LIKE '%' + @Search + '%' OR 
+                  UniqueCode LIKE '%' + @Search + '%' OR 
+                  Batch_No LIKE '%' + @Search + '%' OR
+                  Pro_Name LIKE '%' + @Search + '%' OR
+                  Pro_ID LIKE '%' + @Search + '%'
+              ))
+        ) pe
+        LEFT JOIN M_Consumer mc WITH (NOLOCK) ON pe.MobileLast10 = mc.MobileLast10
+        GROUP BY pe.MobileLast10, pe.State, pe.City, mc.ConsumerName, pe.PinCode
+        ORDER BY pe.MobileLast10
+        OFFSET (@PageNumber - 1) * @PageSize ROWS
+        FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
+        OPTION (RECOMPILE);
+    END
+    ELSE
+    BEGIN
+        ------------------------------------------------------
+        -- Step 1: Pre-filter Pro_Enq (The largest table)
+        ------------------------------------------------------
+        IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
+        SELECT 
+            Received_Code1, 
+            Received_Code2, 
+            MobileNo,
+            RIGHT(MobileNo, 10) AS MobileLast10,
+            Enq_Date, 
+            Is_Success
+        INTO #tempPro_Enq
+        FROM Pro_Enq WITH (NOLOCK)
+        WHERE Comp_ID = @Comp_ID
+          AND Enq_Date >= @CompanyStartDate
+          AND Enq_Date >= @StartDate
+          AND Enq_Date < @EndDate
+          AND (@DialModeFilter IS NULL OR Dial_Mode = @DialModeFilter)
+          AND (
+              @CodeStatusFilter IS NULL OR
+              (@CodeStatusFilter = 'Verified' AND Is_Success = 1) OR
+              (@CodeStatusFilter = 'Already Scanned' AND Is_Success = 2) OR
+              (@CodeStatusFilter = 'Invalid' AND Is_Success NOT IN (1, 2))
+          );
 
+        CREATE INDEX IX_tempPro_Enq_Codes ON #tempPro_Enq(Received_Code1, Received_Code2);
+        CREATE INDEX IX_tempPro_Enq_Mobile ON #tempPro_Enq(MobileLast10);
 
-    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+        ------------------------------------------------------
+        -- Step 2: Pre-filter M_Code (Deduplicated per code pair)
+        ------------------------------------------------------
+        IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+        
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, 
+                a.Code2, 
+                a.Pro_ID,
+                a.Use_Count,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            FROM M_Code a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @Comp_ID 
+              AND a.Use_Count > 0
+        )
+        SELECT Code1, Code2, Pro_ID
+        INTO #tempM_Code 
+        FROM DistinctCodes
+        WHERE rn = 1;
 
-    ------------------------------------------------------
-    -- Main Query (Using optimized temp tables)
-    ------------------------------------------------------
-    SELECT 
-        ROW_NUMBER() OVER (ORDER BY pe.MobileLast10) AS SNo,
-        MAX(pe.MobileNo) AS MobileNo, -- Show one example mobile no
-        ISNULL(mc.State, '') AS State,
-        ISNULL(mc.City, '') AS City,
-        ISNULL(mc.Email, '') AS Email,
-        ISNULL(mc.ConsumerName, 'Anonymous') AS ConsumerName,
-        COUNT(pe.Received_Code1) AS TotalCodeScanned,
-        SUM(CASE WHEN mc_tbl.Code1 IS NOT NULL AND pe.Is_Success = 1 THEN 1 ELSE 0 END) AS SuccessfulCodeScanned,
-        SUM(CASE WHEN mc_tbl.Code1 IS NULL OR pe.Is_Success <> 1 THEN 1 ELSE 0 END) AS UnsuccessfulCodeScanned,
-        MIN(pe.Enq_Date) AS FirstScannedDate,
-        MAX(pe.Enq_Date) AS LastScannedDate,
-        ISNULL(mc.PinCode, '') AS PostCode,
-        COUNT(*) OVER() AS TotalRecords
-    FROM #tempPro_Enq pe
-    LEFT JOIN M_Consumer mc ON pe.MobileLast10 = mc.MobileLast10
-    LEFT JOIN #tempM_Code mc_tbl ON LTRIM(RTRIM(CAST(mc_tbl.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
-          AND LTRIM(RTRIM(CAST(mc_tbl.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
-    WHERE (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
-      AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
-    GROUP BY pe.MobileLast10, mc.State, mc.City, mc.Email, mc.PinCode, mc.ConsumerName
-    ORDER BY pe.MobileLast10
-    OFFSET (@PageNumber - 1) * @PageSize ROWS
-    FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
-    OPTION (RECOMPILE);
-END
+        CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+
+        ------------------------------------------------------
+        -- Main Query (Using optimized temp tables)
+        ------------------------------------------------------
+        SELECT 
+            ROW_NUMBER() OVER (ORDER BY pe.MobileLast10) AS SNo,
+            MAX(pe.MobileNo) AS MobileNo, -- Show one example mobile no
+            ISNULL(mc.State, '') AS State,
+            ISNULL(mc.City, '') AS City,
+            ISNULL(mc.Email, '') AS Email,
+            ISNULL(mc.ConsumerName, 'Anonymous') AS ConsumerName,
+            COUNT(pe.Received_Code1) AS TotalCodeScanned,
+            SUM(CASE WHEN mc_tbl.Code1 IS NOT NULL AND pe.Is_Success = 1 THEN 1 ELSE 0 END) AS SuccessfulCodeScanned,
+            SUM(CASE WHEN mc_tbl.Code1 IS NULL OR pe.Is_Success <> 1 THEN 1 ELSE 0 END) AS UnsuccessfulCodeScanned,
+            MIN(pe.Enq_Date) AS FirstScannedDate,
+            MAX(pe.Enq_Date) AS LastScannedDate,
+            ISNULL(mc.PinCode, '') AS PostCode,
+            COUNT(*) OVER() AS TotalRecords
+        FROM #tempPro_Enq pe
+        LEFT JOIN M_Consumer mc WITH (NOLOCK) ON pe.MobileLast10 = mc.MobileLast10
+        LEFT JOIN #tempM_Code mc_tbl ON LTRIM(RTRIM(CAST(mc_tbl.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+              AND LTRIM(RTRIM(CAST(mc_tbl.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+        GROUP BY pe.MobileLast10, mc.State, mc.City, mc.Email, mc.PinCode, mc.ConsumerName
+        ORDER BY pe.MobileLast10
+        OFFSET (@PageNumber - 1) * @PageSize ROWS
+        FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
+        OPTION (RECOMPILE);
+    END
 END
 GO
