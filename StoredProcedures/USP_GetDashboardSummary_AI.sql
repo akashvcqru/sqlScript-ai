@@ -161,10 +161,12 @@ BEGIN
          FROM Pro_Enq pe 
          WHERE pe.MobileNo = @MobileNo AND pe.Is_Success = 1) as SuccessCode,
         CASE 
+            WHEN @CompID = 'Comp-1274' THEN (SELECT ISNULL(SUM(cash), 0) FROM BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND compid LIKE '%' + @CompID + '%')
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(cash AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo)
             ELSE (SELECT ISNULL(SUM(ServiceTotalCash), 0) FROM #ConfiguredPoints) + (SELECT RefCash FROM #ReferralStats)
         END as TotalCash,
         CASE 
+            WHEN @CompID = 'Comp-1274' THEN (SELECT ISNULL(SUM(points), 0) FROM BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND compid LIKE '%' + @CompID + '%')
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo)
             ELSE (SELECT ISNULL(SUM(ServiceTotalPoints), 0) FROM #ConfiguredPoints) + (SELECT RefPoints FROM #ReferralStats)
         END as TotalPoints,
