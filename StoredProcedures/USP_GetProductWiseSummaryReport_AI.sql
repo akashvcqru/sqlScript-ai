@@ -153,7 +153,7 @@ BEGIN
         MobileNo VARCHAR(50),
         Is_Success INT,
         Enq_Date DATETIME,
-        State VARCHAR(100),
+        State NVARCHAR(100),
         Pro_ID VARCHAR(50)
     );
 
@@ -276,7 +276,7 @@ BEGIN
         CAST(ISNULL(pm.TotalScans*1.0/NULLIF(pm.UniqueUIDsScanned,0),0) AS DECIMAL(18,2)) AS AvgScansPerUID,
         COUNT(*) OVER() AS TotalRecords
     FROM Pro_Reg pr
-    LEFT JOIN #ProductMetrics pm ON pm.Pro_ID = pr.Pro_ID
+    INNER JOIN #ProductMetrics pm ON pm.Pro_ID = pr.Pro_ID
     LEFT JOIN #TopStates ts ON ts.Pro_ID = pr.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
       AND (@ProductID IS NULL OR pr.Pro_ID = @ProductID)
