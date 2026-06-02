@@ -81,7 +81,9 @@ BEGIN
                 WHEN IsSuccess = 1 THEN 'Successful Login'
                 ELSE 'Unsuccessful Login'
             END AS LoginStatus,
-            [Message]
+            [Message],
+            Latitude,
+            Longitude
         FROM Tbl_Login_History
         WHERE Comp_ID = @Comp_ID
           AND (@StartDate IS NULL OR LoginTime >= @StartDate)
@@ -114,7 +116,9 @@ BEGIN
             WHEN IsSuccess = 1 THEN 'Successful Login'
             ELSE 'Unsuccessful Login'
         END AS LoginStatus,
-        [Message]
+        [Message],
+        Latitude,
+        Longitude
     FROM Tbl_Login_History
     WHERE Comp_ID = @Comp_ID
       AND (@StartDate IS NULL OR LoginTime >= @StartDate)
