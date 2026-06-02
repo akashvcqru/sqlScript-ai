@@ -120,7 +120,7 @@ BEGIN
     IF @Comp_ID = 'Comp-1693'
     BEGIN
         SELECT 
-            ROW_NUMBER() OVER (ORDER BY pe.MobileLast10) AS SNo,
+            ROW_NUMBER() OVER (ORDER BY SUM(CASE WHEN pe.Status IN ('Authenticate', 'Re-Authenticate') THEN 1 ELSE 0 END) DESC, pe.MobileLast10) AS SNo,
             MAX(pe.MobileNo) AS MobileNo,
             ISNULL(pe.State, '') AS State,
             ISNULL(pe.City, '') AS City,
@@ -157,7 +157,7 @@ BEGIN
         ) pe
         LEFT JOIN M_Consumer mc WITH (NOLOCK) ON pe.MobileLast10 = mc.MobileLast10
         GROUP BY pe.MobileLast10, pe.State, pe.City, mc.ConsumerName, pe.PinCode
-        ORDER BY pe.MobileLast10
+        ORDER BY SuccessfulCodeScanned DESC
         OFFSET (@PageNumber - 1) * @PageSize ROWS
         FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
         OPTION (RECOMPILE);
@@ -220,7 +220,7 @@ BEGIN
         -- Main Query (Using optimized temp tables)
         ------------------------------------------------------
         SELECT 
-            ROW_NUMBER() OVER (ORDER BY pe.MobileLast10) AS SNo,
+            ROW_NUMBER() OVER (ORDER BY SUM(CASE WHEN mc_tbl.Code1 IS NOT NULL AND pe.Is_Success = 1 THEN 1 ELSE 0 END) DESC, pe.MobileLast10) AS SNo,
             MAX(pe.MobileNo) AS MobileNo, -- Show one example mobile no
             ISNULL(mc.State, '') AS State,
             ISNULL(mc.City, '') AS City,
@@ -238,7 +238,7 @@ BEGIN
         LEFT JOIN #tempM_Code mc_tbl ON LTRIM(RTRIM(CAST(mc_tbl.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
               AND LTRIM(RTRIM(CAST(mc_tbl.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
         GROUP BY pe.MobileLast10, mc.State, mc.City, mc.Email, mc.PinCode, mc.ConsumerName
-        ORDER BY pe.MobileLast10
+        ORDER BY SuccessfulCodeScanned DESC
         OFFSET (@PageNumber - 1) * @PageSize ROWS
         FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
         OPTION (RECOMPILE);
