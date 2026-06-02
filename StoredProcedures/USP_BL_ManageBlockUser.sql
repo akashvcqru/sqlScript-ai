@@ -27,9 +27,12 @@ BEGIN
                 mc.City,
                 mc.block_date AS block_date
             FROM M_Consumer mc WITH (NOLOCK)
-            WHERE mc.Comp_id = @Comp_Id 
-              AND mc.IsActive = '1' 
-              AND mc.IsDelete = '1'
+            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+            WHERE vks.Comp_id = @Comp_Id 
+              AND (
+                  (mc.IsActive = '1' AND mc.IsDelete = '1')
+                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
+              )
               AND (
                   @Search IS NULL 
                   OR mc.ConsumerName LIKE '%' + @Search + '%' 
@@ -47,9 +50,12 @@ BEGIN
                 mc.City,
                 mc.block_date AS block_date
             FROM M_Consumer mc WITH (NOLOCK)
-            WHERE mc.Comp_id = @Comp_Id 
-              AND mc.IsActive = '1' 
-              AND mc.IsDelete = '1'
+            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+            WHERE vks.Comp_id = @Comp_Id 
+              AND (
+                  (mc.IsActive = '1' AND mc.IsDelete = '1')
+                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
+              )
               AND (
                   @Search IS NULL 
                   OR mc.ConsumerName LIKE '%' + @Search + '%' 
@@ -65,9 +71,12 @@ BEGIN
                 @Limit AS Limit,
                 CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
             FROM M_Consumer mc WITH (NOLOCK)
-            WHERE mc.Comp_id = @Comp_Id 
-              AND mc.IsActive = '1' 
-              AND mc.IsDelete = '1'
+            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+            WHERE vks.Comp_id = @Comp_Id 
+              AND (
+                  (mc.IsActive = '1' AND mc.IsDelete = '1')
+                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
+              )
               AND (
                   @Search IS NULL 
                   OR mc.ConsumerName LIKE '%' + @Search + '%' 
