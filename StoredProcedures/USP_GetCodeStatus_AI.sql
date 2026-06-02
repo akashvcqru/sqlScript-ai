@@ -117,6 +117,32 @@ BEGIN
     WHERE rn_final = 1;
 
     -------------------------------------------------
+    ---------------------------------------------------------
+    -- Get ExpireCodeDate & CodeServiceSetingStatus
+    ---------------------------------------------------------
+    DECLARE @ExpireCodeDate DATETIME = NULL;
+    DECLARE @CodeServiceSetingStatus VARCHAR(20) = 'Deactive';
+
+    IF @Pro_ID IS NOT NULL AND @Pro_ID <> ''
+    BEGIN
+        SELECT TOP 1
+            @ExpireCodeDate = ISNULL(sst.DateTo, ss.DateTo),
+            @CodeServiceSetingStatus = CASE 
+                WHEN ss.IsActive = 1 AND ss.IsAdminVerify = 1 AND ss.IsDelete = 0 
+                     AND sst.IsActive = 1 AND sst.IsDelete = 0 
+                THEN 'Active' 
+                ELSE 'Deactive' 
+            END
+        FROM M_ServiceSubscription ss WITH (NOLOCK)
+        LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) 
+            ON sst.Subscribe_Id = ss.Subscribe_Id
+        WHERE ss.Pro_ID = @Pro_ID
+          AND (ss.start_order IS NULL OR @Series_Order > ss.start_order OR (@Series_Order = ss.start_order AND @Series_Serial >= ss.start_series))
+          AND (ss.end_order IS NULL OR @Series_Order < ss.end_order OR (@Series_Order = ss.end_order AND @Series_Serial <= ss.end_series))
+        ORDER BY ss.EntryDate DESC, sst.SST_Id DESC;
+    END
+
+    -------------------------------------------------
     -- Code Status Temp
     -------------------------------------------------
     IF OBJECT_ID('tempdb..#CodeStatus') IS NOT NULL DROP TABLE #CodeStatus;
@@ -128,12 +154,14 @@ BEGIN
         Enq_Date DATETIME,
         UniqueCode VARCHAR(100),
         MobileNo VARCHAR(50),
-        Dial_Mode VARCHAR(50)
+        Dial_Mode VARCHAR(50),
+        ExpireCodeDate DATETIME,
+        CodeServiceSetingStatus VARCHAR(20)
     );
 
     IF @ActualCompId = 'Comp-1693'
     BEGIN
-        INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode)
+        INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, ExpireCodeDate, CodeServiceSetingStatus)
         SELECT
             CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
             CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
@@ -141,7 +169,9 @@ BEGIN
             PE.Enq_Date,
             ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS UniqueCode,
             PE.MobileNo,
-            ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode
+            ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
+            @ExpireCodeDate AS ExpireCodeDate,
+            @CodeServiceSetingStatus AS CodeServiceSetingStatus
         FROM (
             SELECT 
                 Code1V AS Received_Code1,
@@ -169,7 +199,7 @@ BEGIN
     END
     ELSE
     BEGIN
-        INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode)
+        INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, ExpireCodeDate, CodeServiceSetingStatus)
         SELECT
             CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
             CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
@@ -177,7 +207,9 @@ BEGIN
             PE.Enq_Date,
             ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS UniqueCode,
             PE.MobileNo,
-            ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode
+            ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
+            @ExpireCodeDate AS ExpireCodeDate,
+            @CodeServiceSetingStatus AS CodeServiceSetingStatus
         FROM (
             SELECT *,
                    ROW_NUMBER() OVER (
@@ -244,12 +276,12 @@ BEGIN
                 ISNULL(PE.Code1V, '') + ISNULL(PE.Code2V, '') AS ThirteenDigitCode,
                 MS.ServiceName,
                 ss.DateFrom AS ServiceAssignDate,
-                ss.DateTo AS CodeExpiryDate,
+                @ExpireCodeDate AS CodeExpiryDate,
                 pr.Pro_Name,
                 CASE WHEN MC.Use_Count >= 1 THEN 'Used' ELSE 'Un Used' END AS CodeCheckStatus,
                 PE.Enq_Date,
                 (SELECT COUNT(1) FROM pfl_codecheckData WHERE Code1V = @RecievedCode1 AND Code2V = @RecievedCode2) AS CodeCheckCount,
-                CASE WHEN sst.IsActive = 1 AND ss.IsActive = 1 AND ss.IsDelete = 0 AND sst.IsDelete = 0 THEN 'Active' ELSE 'In Active' END AS CodeActiveStatus,
+                @CodeServiceSetingStatus AS CodeActiveStatus,
                 CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points
             FROM pfl_codecheckData PE WITH (NOLOCK)
             INNER JOIN M_Code_PFL mc WITH (NOLOCK)
@@ -285,12 +317,12 @@ BEGIN
                 ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS ThirteenDigitCode,
                 MS.ServiceName,
                 ss.DateFrom AS ServiceAssignDate,
-                ss.DateTo AS CodeExpiryDate,
+                @ExpireCodeDate AS CodeExpiryDate,
                 pr.Pro_Name,
                 CASE WHEN MC.Use_Count >= 1 THEN 'Used' ELSE 'Un Used' END AS CodeCheckStatus,
                 PE.Enq_Date,
                 (SELECT COUNT(1) FROM Pro_Enq WHERE Received_Code1 = @RecievedCode1 AND Received_Code2 = @RecievedCode2) AS CodeCheckCount,
-                CASE WHEN sst.IsActive = 1 AND ss.IsActive = 1 AND ss.IsDelete = 0 AND sst.IsDelete = 0 THEN 'Active' ELSE 'In Active' END AS CodeActiveStatus,
+                @CodeServiceSetingStatus AS CodeActiveStatus,
                 CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points
             FROM Pro_Enq PE WITH (NOLOCK)
             INNER JOIN M_Code mc WITH (NOLOCK)

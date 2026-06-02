@@ -133,7 +133,7 @@ BEGIN
             WHERE b.Comp_ID = @Comp_ID 
               AND a.Use_Count > 0
         )
-        SELECT Code1, Code2, Pro_ID
+        SELECT Code1, Code2, Pro_ID, Use_Count
         INTO #tempM_Code 
         FROM DistinctCodes
         WHERE rn = 1;
@@ -154,23 +154,32 @@ BEGIN
         Is_Success INT,
         Enq_Date DATETIME,
         State NVARCHAR(100),
-        Pro_ID VARCHAR(50)
+        Pro_ID VARCHAR(50),
+        Use_Count INT
     );
 
     IF @Comp_ID = 'Comp-1693'
     BEGIN
-        INSERT INTO #tempPro_Enq (Received_Code1, Received_Code2, MobileNo, Is_Success, Enq_Date, State, Pro_ID)
+        INSERT INTO #tempPro_Enq (Received_Code1, Received_Code2, MobileNo, Is_Success, Enq_Date, State, Pro_ID, Use_Count)
         SELECT 
             pe.UniqueCode AS Received_Code1, 
             '' AS Received_Code2, 
             pe.MobileNo, 
-            CASE WHEN pe.Status = 'Authenticate' THEN 1 ELSE 2 END AS Is_Success, 
+            CASE 
+                WHEN pe.Status = 'Authenticate' THEN 1 
+                WHEN pe.Status = 'Re-Authenticate' THEN 2 
+                ELSE 0 
+            END AS Is_Success, 
             pe.Enq_Date, 
             pe.State,
-            pe.Pro_ID
+            COALESCE(pr.Pro_ID, pe.Pro_ID) AS Pro_ID,
+            pe.Use_Count
         FROM pfl_codecheckData pe WITH (NOLOCK)
+        LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON LTRIM(RTRIM(pr.Pro_Name)) = LTRIM(RTRIM(pe.Pro_Name)) AND pr.Comp_ID = @Comp_ID
         WHERE pe.Enq_Date >= @StartDate
           AND pe.Enq_Date < @EndDate
+          AND pe.Pro_Name IS NOT NULL
+          AND pe.Pro_Name <> 'Not Assigned'
           AND (@CompanyStartDate IS NULL OR pe.Enq_Date >= @CompanyStartDate)
           AND (@StateFilter IS NULL OR pe.State = @StateFilter)
           AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
@@ -183,7 +192,7 @@ BEGIN
     END
     ELSE
     BEGIN
-        INSERT INTO #tempPro_Enq (Received_Code1, Received_Code2, MobileNo, Is_Success, Enq_Date, State, Pro_ID)
+        INSERT INTO #tempPro_Enq (Received_Code1, Received_Code2, MobileNo, Is_Success, Enq_Date, State, Pro_ID, Use_Count)
         SELECT 
             pe.Received_Code1, 
             pe.Received_Code2, 
@@ -191,7 +200,8 @@ BEGIN
             pe.Is_Success, 
             pe.Enq_Date, 
             pe.State,
-            mc.Pro_ID
+            mc.Pro_ID,
+            mc.Use_Count
         FROM Pro_Enq pe WITH (NOLOCK)
         INNER JOIN #tempM_Code mc ON CAST(mc.Code1 AS VARCHAR(50)) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
               AND CAST(mc.Code2 AS VARCHAR(50)) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
@@ -239,18 +249,49 @@ BEGIN
     -- Step 4: Aggregate Metrics per product
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#ProductMetrics') IS NOT NULL DROP TABLE #ProductMetrics;
-    SELECT 
-        Pro_ID,
-        COUNT(DISTINCT MobileNo) AS UniqueConsumers,
-        COUNT(DISTINCT CAST(Received_Code1 AS VARCHAR(50))+'-'+CAST(Received_Code2 AS VARCHAR(50))) AS UniqueUIDsScanned,
-        SUM(CASE WHEN Is_Success=1 THEN 1 ELSE 0 END) AS Genuine,
-        SUM(CASE WHEN Is_Success<>1 THEN 1 ELSE 0 END) AS Duplicate,
-        COUNT(*) AS TotalScans,
-        MAX(Enq_Date) AS LastScan,
-        SUM(CASE WHEN Enq_Date >= DATEADD(day,-7,GETDATE()) THEN 1 ELSE 0 END) AS Last7DaysScans
-    INTO #ProductMetrics
-    FROM #tempPro_Enq
-    GROUP BY Pro_ID;
+    
+    CREATE TABLE #ProductMetrics (
+        Pro_ID VARCHAR(50),
+        UniqueConsumers INT,
+        UniqueUIDsScanned INT,
+        Genuine INT,
+        Duplicate INT,
+        TotalScans INT,
+        LastScan DATETIME,
+        Last7DaysScans INT
+    );
+
+    IF @Comp_ID = 'Comp-1693'
+    BEGIN
+        INSERT INTO #ProductMetrics (Pro_ID, UniqueConsumers, UniqueUIDsScanned, Genuine, Duplicate, TotalScans, LastScan, Last7DaysScans)
+        SELECT 
+            Pro_ID,
+            COUNT(DISTINCT MobileNo) AS UniqueConsumers,
+            COUNT(DISTINCT CAST(Received_Code1 AS VARCHAR(50))+'-'+CAST(Received_Code2 AS VARCHAR(50))) AS UniqueUIDsScanned,
+            SUM(CASE WHEN Is_Success IN (1, 2) THEN 1 ELSE 0 END) AS Genuine,
+            SUM(CASE WHEN Is_Success = 0 THEN 1 ELSE 0 END) AS Duplicate,
+            COUNT(*) AS TotalScans,
+            MAX(Enq_Date) AS LastScan,
+            SUM(CASE WHEN Enq_Date >= DATEADD(day,-7,GETDATE()) THEN 1 ELSE 0 END) AS Last7DaysScans
+        FROM #tempPro_Enq
+        GROUP BY Pro_ID;
+    END
+    ELSE
+    BEGIN
+        INSERT INTO #ProductMetrics (Pro_ID, UniqueConsumers, UniqueUIDsScanned, Genuine, Duplicate, TotalScans, LastScan, Last7DaysScans)
+        SELECT 
+            Pro_ID,
+            COUNT(DISTINCT MobileNo) AS UniqueConsumers,
+            COUNT(DISTINCT CAST(Received_Code1 AS VARCHAR(50))+'-'+CAST(Received_Code2 AS VARCHAR(50))) AS UniqueUIDsScanned,
+            SUM(CASE WHEN Use_Count = 1 AND Is_Success = 1 THEN 1 ELSE 0 END) AS Genuine,
+            SUM(CASE WHEN Is_Success<>1 THEN 1 ELSE 0 END) AS Duplicate,
+            SUM(CASE WHEN Use_Count = 1 AND Is_Success = 1 THEN 1 ELSE 0 END)
+            + SUM(CASE WHEN Is_Success<>1 THEN 1 ELSE 0 END) AS TotalScans,
+            MAX(Enq_Date) AS LastScan,
+            SUM(CASE WHEN Enq_Date >= DATEADD(day,-7,GETDATE()) THEN 1 ELSE 0 END) AS Last7DaysScans
+        FROM #tempPro_Enq
+        GROUP BY Pro_ID;
+    END;
 
     CREATE INDEX IX_ProductMetrics_ProID ON #ProductMetrics(Pro_ID);
 
@@ -280,6 +321,7 @@ BEGIN
     LEFT JOIN #TopStates ts ON ts.Pro_ID = pr.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
       AND (@ProductID IS NULL OR pr.Pro_ID = @ProductID)
+      AND (@Search IS NULL OR pr.Pro_Name LIKE '%' + @Search + '%' OR pr.Pro_ID LIKE '%' + @Search + '%')
     ORDER BY pr.Pro_Name
     OFFSET (@PageNumber-1)*@PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport=1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
