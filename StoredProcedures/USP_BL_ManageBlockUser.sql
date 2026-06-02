@@ -77,11 +77,31 @@ BEGIN
     END
     ELSE IF @Action = 'ADD'
     BEGIN
+        -- Verify that the consumer is registered under the company in M_Consumer and tbl_Vendorvisekycstatus
+        DECLARE @ConsumerID INT = NULL;
+
+        SELECT TOP 1 @ConsumerID = mc.M_Consumerid
+        FROM M_Consumer mc WITH (NOLOCK)
+        INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+        WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10)
+          AND vks.Comp_id = @Comp_Id;
+
+        IF @ConsumerID IS NULL
+        BEGIN
+            SELECT 0 AS Status, 'Consumer is not registered under this company.' AS Message;
+            RETURN;
+        END
+
         UPDATE M_Consumer
         SET IsActive = '1',
             IsDelete = '1',
             block_date = GETDATE()
-        WHERE MobileNo = @MobileNo;
+        WHERE M_Consumerid = @ConsumerID;
+
+        UPDATE tbl_Vendorvisekycstatus
+        SET IsActive = 1,
+            IsDelete = 1
+        WHERE M_consumerId = @ConsumerID AND Comp_id = @Comp_Id;
 
         IF @@ROWCOUNT > 0
         BEGIN
@@ -89,7 +109,7 @@ BEGIN
         END
         ELSE
         BEGIN
-            SELECT 0 AS Status, 'No matching mobile number found.' AS Message;
+            SELECT 0 AS Status, 'Failed to block the consumer.' AS Message;
         END
     END
 END
