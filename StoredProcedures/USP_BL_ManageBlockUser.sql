@@ -3,7 +3,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE PROCEDURE [dbo].[USP_BL_ManageBlockUser]
+ALTER PROCEDURE [dbo].[USP_BL_ManageBlockUser]
     @Action VARCHAR(10),        -- 'GET' or 'ADD'
     @Comp_Id VARCHAR(20) = NULL,
     @MobileNo VARCHAR(20) = NULL,
@@ -24,7 +24,8 @@ BEGIN
                 mc.ConsumerName,
                 mc.MobileNo AS MobileNumber,
                 mc.PinCode,
-                mc.City
+                mc.City,
+                mc.block_date AS block_date
             FROM M_Consumer mc WITH (NOLOCK)
             WHERE mc.Comp_id = @Comp_Id 
               AND mc.IsActive = '1' 
@@ -43,7 +44,8 @@ BEGIN
                 mc.ConsumerName,
                 mc.MobileNo AS MobileNumber,
                 mc.PinCode,
-                mc.City
+                mc.City,
+                mc.block_date AS block_date
             FROM M_Consumer mc WITH (NOLOCK)
             WHERE mc.Comp_id = @Comp_Id 
               AND mc.IsActive = '1' 
@@ -77,7 +79,8 @@ BEGIN
     BEGIN
         UPDATE M_Consumer
         SET IsActive = '1',
-            IsDelete = '1'
+            IsDelete = '1',
+            block_date = GETDATE()
         WHERE MobileNo = @MobileNo;
 
         IF @@ROWCOUNT > 0
