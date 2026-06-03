@@ -6,7 +6,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE PROCEDURE [dbo].[SP_BL_UPIPayoutReport_MAndM_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_UPIPayoutReport_MAndM_AI]
 (
       @Compid        NVARCHAR(50),
       @FromDate      DATE = NULL,

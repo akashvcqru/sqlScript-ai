@@ -93,10 +93,10 @@ BEGIN
     SELECT 
         CAST(Code1 AS NVARCHAR(20)) AS Code1,
         CAST(Code2 AS NVARCHAR(20)) AS Code2,
-        SUM(ISNULL(Points,0)) AS TotalPoints
+        SUM(CASE WHEN Points IS NULL OR Points = 0 THEN ISNULL(Cash,0) ELSE Points END) AS TotalPoints
     INTO #Points
     FROM BLoyaltyPointsEarned WITH (NOLOCK)
-    WHERE CompId = @CompId AND UpdateDate >= @CompRegDate
+    WHERE (CompId = @CompId OR CompId IS NULL) AND UpdateDate >= @CompRegDate
     GROUP BY Code1, Code2;
 
     -- RESULT 1: Latest Scan Records
@@ -109,7 +109,7 @@ BEGIN
         G.Latitude,
         G.Longitude,
         S.MobileNo,
-        ISNULL(P.TotalPoints,0) AS Points,
+        CASE WHEN S.Is_Success = 1 THEN ISNULL(P.TotalPoints,0) ELSE 0 END AS Points,
         CASE 
             WHEN S.Is_Success = 1 THEN 'VERIFIED'
             WHEN S.Is_Success = 2 THEN 'DUPLICATE'

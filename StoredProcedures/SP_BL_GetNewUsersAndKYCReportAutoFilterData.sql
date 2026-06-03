@@ -70,6 +70,18 @@ BEGIN
     ELSE
         SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
 
+    -- Normalize KYCStatusFilter
+    IF @KYCStatusFilter IS NOT NULL
+    BEGIN
+        SET @KYCStatusFilter = UPPER(LTRIM(RTRIM(@KYCStatusFilter)));
+        IF @KYCStatusFilter IN ('1', 'APPROVED', 'APPROVE')
+            SET @KYCStatusFilter = 'APPROVED';
+        ELSE IF @KYCStatusFilter IN ('2', 'REJECTED', 'REJECT')
+            SET @KYCStatusFilter = 'REJECTED';
+        ELSE IF @KYCStatusFilter IN ('0', 'PENDING', '3')
+            SET @KYCStatusFilter = 'PENDING';
+    END
+
     -- Explicit date range overrides datePreset
     IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
     BEGIN
@@ -190,8 +202,6 @@ BEGIN
         MC.MobileNo,
         MC.Email,
         MC.City,
-        MC.cin_number,
-        MC.ref_cin_number,
         MC.PinCode,
         MC.[State] AS state,
         MC.Other_Role,
@@ -231,16 +241,9 @@ BEGIN
         CASE WHEN MC.aadharkycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.aadharkycStatus, '''') END AS aadharkycStatus,
         CASE WHEN (MC.bankekycStatus IN (''1'', ''Online'') OR EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
-        MC.dob,
-        MC.aadharNumber,
         MC.pancard_number,
-        MC.gst_number,
         MC.gender,
-        MC.aadharFile,
-        MC.aadharback,
-        MC.pan_card_file,
         MC.shop_file,
-        MC.AddressProof,
         VKS.kycremark AS remark,
         VKS.kycremark, -- Keep original name too
 
@@ -250,18 +253,13 @@ BEGIN
         MB.Account_No,
         MB.Branch,
         MB.IFSC_Code,
-        MB.passbook_source AS passBook,
-        MB.chkPassbook,
 
         -- Shop Information (Workplace Address)
         MC.Shop_address AS Workplacestate,
 
         -- Additional Details
         MC.UPIId,
-        MC.UpiidImage,
         MC.Selfie_image,
-        MC.UPIKYCSTATUS,
-        MC.teslapayoutmode,
         VKS.Entry_Date,
         MC.M_Consumerid
     FROM tbl_Vendorvisekycstatus VKS

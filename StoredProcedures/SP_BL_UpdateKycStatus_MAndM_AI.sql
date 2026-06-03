@@ -9,7 +9,7 @@ GO
 -- Description: Update KYC status for Mahindra & Mahindra (Comp-1152)
 -- =============================================
 -- exec [dbo].[SP_BL_UpdateKycStatus_MAndM_AI] 'Comp-1152','1','156308','Approved'
-CREATE PROCEDURE [dbo].[SP_BL_UpdateKycStatus_MAndM_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_UpdateKycStatus_MAndM_AI]
     @Comp_Id        VARCHAR(15),
     @Status         NVARCHAR(20), -- 0:Pending, 1:Approved, 2:Rejected
     @m_consumerid   NVARCHAR(20),
@@ -17,6 +17,18 @@ CREATE PROCEDURE [dbo].[SP_BL_UpdateKycStatus_MAndM_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId VARCHAR(15) = @Comp_Id;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
 
     -- Validate required parameters
     IF (@Comp_Id IS NULL OR @Comp_Id = ''
@@ -28,7 +40,7 @@ BEGIN
     END;
 
     -- Mahindra specific check (though the SP name implies it)
-    IF (@Comp_Id <> 'Comp-1152')
+    IF (@ActualCompId <> 'Comp-1152')
     BEGIN
         SELECT 'This procedure is only for Mahindra & Mahindra (Comp-1152)' AS Message, 0 AS Success;
         RETURN;
@@ -41,7 +53,7 @@ BEGIN
         UPDATE M_Consumer 
         SET VRKbl_KYC_status = @Status,
             remark = @Comments
-        WHERE Comp_id = @Comp_Id 
+        WHERE Comp_id = @ActualCompId 
           AND M_Consumerid = @m_consumerid 
           AND IsDelete = 0;
 
@@ -49,21 +61,21 @@ BEGIN
         UPDATE tbl_Vendorvisekycstatus
         SET VRKbl_KYC_status = @Status,
             kycremark = @Comments
-        WHERE Comp_id = @Comp_Id 
+        WHERE Comp_id = @ActualCompId 
           AND M_consumerId = @m_consumerid;
 
         -- Update Mahindra Cron Job table if exists
         IF EXISTS (
             SELECT 1 
             FROM UserData_MHCroneJob
-            WHERE Comp_id = @Comp_Id 
+            WHERE Comp_id = @ActualCompId 
               AND M_consumerId = @m_consumerid
         )
         BEGIN
             UPDATE UserData_MHCroneJob
             SET VRKbl_KYC_status = @Status,
                 kycremark = @Comments
-            WHERE Comp_id = @Comp_Id 
+            WHERE Comp_id = @ActualCompId 
               AND M_consumerId = @m_consumerid;
         END
 

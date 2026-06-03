@@ -19,6 +19,16 @@ BEGIN
     SET NOCOUNT ON;
 
     ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(50) = @Comp_ID;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_ID)
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_ID;
+    END
+
+    ---------------------------------------------------------
     -- Normalize flags & pagination
     ---------------------------------------------------------
     SET @IsExport = ISNULL(@IsExport, 0);
@@ -54,7 +64,7 @@ BEGIN
         ON sst.Subscribe_Id = ss.Subscribe_Id
     INNER JOIN Pro_Reg pr 
         ON pr.Pro_id = ss.Pro_ID
-    WHERE pr.Comp_ID = @Comp_ID
+    WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))
       AND sst.IsActive = 1 AND sst.IsDelete = 0
       AND ss.IsActive = 1 AND ss.IsDelete = 0;
 
@@ -63,34 +73,85 @@ BEGIN
     ---------------------------------------------------------
     IF OBJECT_ID('tempdb..#FinalData') IS NOT NULL DROP TABLE #FinalData;
 
-    SELECT
-        CASE WHEN PE.Is_Success = 1 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
-        CAST(CASE WHEN PE.Is_Success = 1 THEN ISNULL(sd.Points, 0) ELSE 0 END AS DECIMAL(18,2)) AS Points,
-        ISNULL(sd.IsCash, 0) AS IsCash,
-        PE.Enq_Date,
-        ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS UniqueCode,
-        PE.MobileNo,
-        ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
-        pr.Pro_Name
-    INTO #FinalData
-    FROM Pro_Enq PE
-    INNER JOIN M_Code mc 
-        ON mc.Code1 = PE.Received_Code1
-       AND mc.Code2 = PE.Received_Code2
-    INNER JOIN Pro_Reg pr 
-        ON pr.Pro_ID = mc.Pro_ID
-    LEFT JOIN #temp1 sd 
-        ON sd.Pro_ID = mc.Pro_Id
-       AND CONCAT(
-            FORMAT(mc.Series_Order, '000#'),
-            FORMAT(mc.Series_Serial, '000#')
-           )
-           BETWEEN 
-           CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#'))
-           AND 
-           CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
-    WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
-      AND pr.Comp_ID = @Comp_ID;
+    CREATE TABLE #FinalData (
+        CodeStatus VARCHAR(20),
+        Points DECIMAL(18,2),
+        IsCash INT,
+        Enq_Date DATETIME,
+        UniqueCode VARCHAR(100),
+        MobileNo VARCHAR(50),
+        Dial_Mode VARCHAR(50),
+        Pro_Name NVARCHAR(200),
+        Batch_No NVARCHAR(100),
+        ImageVerified INT
+    );
+
+    IF @ActualCompId = 'Comp-1693'
+    BEGIN
+        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified)
+        SELECT
+            CASE WHEN PE.Status = 'Authenticate' THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
+            CAST(CASE WHEN PE.Status = 'Authenticate' THEN CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
+            ISNULL(sd.IsCash, 0) AS IsCash,
+            PE.Enq_Date,
+            ISNULL(PE.Code1V, '') + ISNULL(PE.Code2V, '') AS UniqueCode,
+            PE.MobileNo,
+            ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
+            PE.Pro_Name,
+            PE.Batch_No,
+            ISNULL(PE.IsVerified, 0) AS ImageVerified
+        FROM pfl_codecheckData PE WITH (NOLOCK)
+        INNER JOIN M_Code_PFL mc WITH (NOLOCK)
+            ON mc.Code1 = PE.Code1V
+           AND mc.Code2 = PE.Code2V
+        INNER JOIN Pro_Reg pr WITH (NOLOCK)
+            ON pr.Pro_ID = mc.Pro_ID
+        LEFT JOIN #temp1 sd 
+            ON sd.Pro_ID = mc.Pro_Id
+           AND CONCAT(
+                FORMAT(mc.Series_Order, '000#'),
+                FORMAT(mc.Series_Serial, '000#')
+               )
+               BETWEEN 
+               CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#'))
+               AND 
+               CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+        WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
+          AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
+    END
+    ELSE
+    BEGIN
+        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified)
+        SELECT
+            CASE WHEN PE.Is_Success = 1 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
+            CAST(CASE WHEN PE.Is_Success = 1 THEN CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
+            ISNULL(sd.IsCash, 0) AS IsCash,
+            PE.Enq_Date,
+            ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS UniqueCode,
+            PE.MobileNo,
+            ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
+            pr.Pro_Name,
+            mc.Batch_No,
+            ISNULL(PE.IsVerified, 0) AS ImageVerified
+        FROM Pro_Enq PE WITH (NOLOCK)
+        INNER JOIN M_Code mc WITH (NOLOCK)
+            ON mc.Code1 = PE.Received_Code1
+           AND mc.Code2 = PE.Received_Code2
+        INNER JOIN Pro_Reg pr WITH (NOLOCK)
+            ON pr.Pro_ID = mc.Pro_ID
+        LEFT JOIN #temp1 sd 
+            ON sd.Pro_ID = mc.Pro_Id
+           AND CONCAT(
+                FORMAT(mc.Series_Order, '000#'),
+                FORMAT(mc.Series_Serial, '000#')
+               )
+               BETWEEN 
+               CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#'))
+               AND 
+               CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+        WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
+          AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
+    END
 
     ---------------------------------------------------------
     -- Calculate Summary Counts

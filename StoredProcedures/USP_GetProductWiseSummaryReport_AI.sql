@@ -40,76 +40,78 @@ BEGIN
     SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01')
     FROM Comp_Reg WHERE Comp_ID = @Comp_ID AND Status = 1;
 
-    DECLARE @finalFromDate DATETIME, @finalToDate DATETIME
-    IF (@datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR LOWER(LTRIM(RTRIM(@datePreset))) = 'null' OR @datePreset = 'All')
-        SET @datePreset = 'ALL'
+    -------------------------------------------------
+    -- 2. Construct Date Range
+    -------------------------------------------------
+    DECLARE @StartDate DATE, @EndDate DATE;
+    DECLARE @Today DATE = CAST(GETDATE() AS DATE);
+    DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset,''))));
+    
+    IF @Win = '' OR @Win = 'NULL' SET @Win = 'ALL';
+
+    IF @Win = 'TODAY'
+    BEGIN
+        SET @StartDate = @Today;
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'YESTERDAY'
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -1, @Today);
+        SET @EndDate   = @Today;
+    END
+    ELSE IF @Win = 'WEEK'
+    BEGIN
+        SET DATEFIRST 1; -- Monday
+        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTWEEK'
+    BEGIN
+        SET DATEFIRST 1;
+        DECLARE @ThisWeekStart DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
+        SET @StartDate = DATEADD(DAY, -7, @ThisWeekStart);
+        SET @EndDate   = @ThisWeekStart;
+    END
+    ELSE IF @Win = 'MONTH'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTMONTH'
+    BEGIN
+        DECLARE @ThisMonthStart DATE = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @StartDate = DATEADD(MONTH, -1, @ThisMonthStart);
+        SET @EndDate   = @ThisMonthStart;
+    END
+    ELSE IF @Win = 'QUARTER'
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -90, @Today);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'YEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), 1, 1);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTYEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today) - 1, 1, 1);
+        SET @EndDate   = DATEFROMPARTS(YEAR(@Today), 1, 1);
+    END
+    ELSE IF @Win = 'ALL'
+    BEGIN
+        SET @StartDate = '1900-01-01';
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'CUSTOM'
+    BEGIN
+        SET @StartDate = ISNULL(CAST(@FromDate AS DATE), '1900-01-01');
+        SET @EndDate   = DATEADD(DAY, 1, ISNULL(CAST(@ToDate AS DATE), @Today));
+    END
     ELSE
-        SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
-
-    DECLARE @today DATE = CAST(GETDATE() AS DATE); 
-    SET DATEFIRST 1; -- Monday as first day of week
-
-    IF @datePreset = 'ALL' 
-    BEGIN 
-        SET @finalFromDate = NULL; 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'CUSTOM' 
-    BEGIN 
-        SET @finalFromDate = @FromDate; 
-        SET @finalToDate = @ToDate; 
-    END
-    ELSE IF @datePreset = 'TODAY' 
-    BEGIN 
-        SET @finalFromDate = CAST(@today AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'YESTERDAY' OR @datePreset = 'LASTDAY' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEADD(DAY, -1, @today) AS DATETIME); 
-        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@today AS DATETIME)) AS DATETIME); 
-    END
-    ELSE IF @datePreset = 'WEEK' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'LASTWEEK' 
-    BEGIN 
-        DECLARE @lastMonday DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today); 
-        SET @finalFromDate = CAST(DATEADD(DAY, -7, @lastMonday) AS DATETIME); 
-        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@lastMonday AS DATETIME)) AS DATETIME); 
-    END
-    ELSE IF @datePreset = 'MONTH' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'LASTMONTH' 
-    BEGIN 
-        DECLARE @firstOfThisMonth DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
-        SET @finalFromDate = CAST(DATEADD(MONTH, -1, @firstOfThisMonth) AS DATETIME); 
-        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(@firstOfThisMonth AS DATETIME)) AS DATETIME); 
-    END
-    ELSE IF @datePreset = 'QUARTER' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0) AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'YEAR' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
-    END
-    ELSE IF @datePreset = 'LASTYEAR' 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1) AS DATETIME); 
-        SET @finalToDate = CAST(DATEADD(SECOND, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME)) AS DATETIME); 
-    END
-    ELSE 
-    BEGIN 
-        SET @finalFromDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, @today), @today) AS DATETIME); 
-        SET @finalToDate = GETDATE(); 
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
     END
 
     ------------------------------------------------------
@@ -117,52 +119,104 @@ BEGIN
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
     
-    ;WITH DistinctCodes AS (
-        SELECT 
-            a.Code1, 
-            a.Code2, 
-            a.Pro_ID,
-            a.Use_Count,
-            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-        FROM M_Code a 
-        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
-        WHERE b.Comp_ID = @Comp_ID 
-          AND a.Use_Count > 0
-    )
-    SELECT Code1, Code2, Pro_ID
-    INTO #tempM_Code 
-    FROM DistinctCodes
-    WHERE rn = 1;
+    IF @Comp_ID <> 'Comp-1693'
+    BEGIN
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, 
+                a.Code2, 
+                a.Pro_ID,
+                a.Use_Count,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            FROM M_Code a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @Comp_ID 
+              AND a.Use_Count > 0
+        )
+        SELECT Code1, Code2, Pro_ID, Use_Count
+        INTO #tempM_Code 
+        FROM DistinctCodes
+        WHERE rn = 1;
 
-    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
-    CREATE INDEX IX_tempM_Code_ProID ON #tempM_Code(Pro_ID);
+        CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+        CREATE INDEX IX_tempM_Code_ProID ON #tempM_Code(Pro_ID);
+    END
 
     ------------------------------------------------------
     -- Step 2: Pre-filter Pro_Enq (Definitive list of scans)
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
-    SELECT 
-        pe.Received_Code1, 
-        pe.Received_Code2, 
-        pe.MobileNo, 
-        pe.Is_Success, 
-        pe.Enq_Date, 
-        pe.State,
-        mc.Pro_ID
-    INTO #tempPro_Enq
-    FROM Pro_Enq pe
-    INNER JOIN #tempM_Code mc ON CAST(mc.Code1 AS VARCHAR(50)) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
-          AND CAST(mc.Code2 AS VARCHAR(50)) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
-    WHERE (@finalFromDate IS NULL OR pe.Enq_Date >= @finalFromDate)
-      AND (@finalToDate IS NULL OR pe.Enq_Date < DATEADD(DAY, 1, @finalToDate))
-      AND (@StateFilter IS NULL OR pe.State = @StateFilter)
-      AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
-      AND (
-          @CodeStatusFilter IS NULL OR
-          (@CodeStatusFilter = 'Verified' AND pe.Is_Success = 1) OR
-          (@CodeStatusFilter = 'Already Scanned' AND pe.Is_Success = 2) OR
-          (@CodeStatusFilter = 'Invalid' AND pe.Is_Success NOT IN (1, 2))
-      );
+
+    CREATE TABLE #tempPro_Enq (
+        Received_Code1 VARCHAR(100),
+        Received_Code2 VARCHAR(100),
+        MobileNo VARCHAR(50),
+        Is_Success INT,
+        Enq_Date DATETIME,
+        State NVARCHAR(100),
+        Pro_ID VARCHAR(50),
+        Use_Count INT
+    );
+
+    IF @Comp_ID = 'Comp-1693'
+    BEGIN
+        INSERT INTO #tempPro_Enq (Received_Code1, Received_Code2, MobileNo, Is_Success, Enq_Date, State, Pro_ID, Use_Count)
+        SELECT 
+            pe.UniqueCode AS Received_Code1, 
+            '' AS Received_Code2, 
+            pe.MobileNo, 
+            CASE 
+                WHEN pe.Status = 'Authenticate' THEN 1 
+                WHEN pe.Status = 'Re-Authenticate' THEN 2 
+                ELSE 0 
+            END AS Is_Success, 
+            pe.Enq_Date, 
+            pe.State,
+            COALESCE(pr.Pro_ID, pe.Pro_ID) AS Pro_ID,
+            pe.Use_Count
+        FROM pfl_codecheckData pe WITH (NOLOCK)
+        LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON LTRIM(RTRIM(pr.Pro_Name)) = LTRIM(RTRIM(pe.Pro_Name)) AND pr.Comp_ID = @Comp_ID
+        WHERE pe.Enq_Date >= @StartDate
+          AND pe.Enq_Date < @EndDate
+          AND pe.Pro_Name IS NOT NULL
+          AND pe.Pro_Name <> 'Not Assigned'
+          AND (@CompanyStartDate IS NULL OR pe.Enq_Date >= @CompanyStartDate)
+          AND (@StateFilter IS NULL OR pe.State = @StateFilter)
+          AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
+          AND (
+              @CodeStatusFilter IS NULL OR
+              (@CodeStatusFilter = 'Verified' AND pe.Status = 'Authenticate') OR
+              (@CodeStatusFilter = 'Already Scanned' AND pe.Status = 'Re-Authenticate') OR
+              (@CodeStatusFilter = 'Invalid' AND pe.Status = 'Failed')
+          );
+    END
+    ELSE
+    BEGIN
+        INSERT INTO #tempPro_Enq (Received_Code1, Received_Code2, MobileNo, Is_Success, Enq_Date, State, Pro_ID, Use_Count)
+        SELECT 
+            pe.Received_Code1, 
+            pe.Received_Code2, 
+            pe.MobileNo, 
+            pe.Is_Success, 
+            pe.Enq_Date, 
+            pe.State,
+            mc.Pro_ID,
+            mc.Use_Count
+        FROM Pro_Enq pe WITH (NOLOCK)
+        INNER JOIN #tempM_Code mc ON CAST(mc.Code1 AS VARCHAR(50)) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+              AND CAST(mc.Code2 AS VARCHAR(50)) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+        WHERE pe.Enq_Date >= @StartDate
+          AND pe.Enq_Date < @EndDate
+          AND (@CompanyStartDate IS NULL OR pe.Enq_Date >= @CompanyStartDate)
+          AND (@StateFilter IS NULL OR pe.State = @StateFilter)
+          AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
+          AND (
+              @CodeStatusFilter IS NULL OR
+              (@CodeStatusFilter = 'Verified' AND pe.Is_Success = 1) OR
+              (@CodeStatusFilter = 'Already Scanned' AND pe.Is_Success = 2) OR
+              (@CodeStatusFilter = 'Invalid' AND pe.Is_Success NOT IN (1, 2))
+          );
+    END;
 
     CREATE INDEX IX_tempPro_Enq_ProID ON #tempPro_Enq(Pro_ID);
 
@@ -195,18 +249,49 @@ BEGIN
     -- Step 4: Aggregate Metrics per product
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#ProductMetrics') IS NOT NULL DROP TABLE #ProductMetrics;
-    SELECT 
-        Pro_ID,
-        COUNT(DISTINCT MobileNo) AS UniqueConsumers,
-        COUNT(DISTINCT CAST(Received_Code1 AS VARCHAR(50))+'-'+CAST(Received_Code2 AS VARCHAR(50))) AS UniqueUIDsScanned,
-        SUM(CASE WHEN Is_Success=1 THEN 1 ELSE 0 END) AS Genuine,
-        SUM(CASE WHEN Is_Success<>1 THEN 1 ELSE 0 END) AS Duplicate,
-        COUNT(*) AS TotalScans,
-        MAX(Enq_Date) AS LastScan,
-        SUM(CASE WHEN Enq_Date >= DATEADD(day,-7,GETDATE()) THEN 1 ELSE 0 END) AS Last7DaysScans
-    INTO #ProductMetrics
-    FROM #tempPro_Enq
-    GROUP BY Pro_ID;
+    
+    CREATE TABLE #ProductMetrics (
+        Pro_ID VARCHAR(50),
+        UniqueConsumers INT,
+        UniqueUIDsScanned INT,
+        Genuine INT,
+        Duplicate INT,
+        TotalScans INT,
+        LastScan DATETIME,
+        Last7DaysScans INT
+    );
+
+    IF @Comp_ID = 'Comp-1693'
+    BEGIN
+        INSERT INTO #ProductMetrics (Pro_ID, UniqueConsumers, UniqueUIDsScanned, Genuine, Duplicate, TotalScans, LastScan, Last7DaysScans)
+        SELECT 
+            Pro_ID,
+            COUNT(DISTINCT MobileNo) AS UniqueConsumers,
+            COUNT(DISTINCT CAST(Received_Code1 AS VARCHAR(50))+'-'+CAST(Received_Code2 AS VARCHAR(50))) AS UniqueUIDsScanned,
+            SUM(CASE WHEN Is_Success IN (1, 2) THEN 1 ELSE 0 END) AS Genuine,
+            SUM(CASE WHEN Is_Success = 0 THEN 1 ELSE 0 END) AS Duplicate,
+            COUNT(*) AS TotalScans,
+            MAX(Enq_Date) AS LastScan,
+            SUM(CASE WHEN Enq_Date >= DATEADD(day,-7,GETDATE()) THEN 1 ELSE 0 END) AS Last7DaysScans
+        FROM #tempPro_Enq
+        GROUP BY Pro_ID;
+    END
+    ELSE
+    BEGIN
+        INSERT INTO #ProductMetrics (Pro_ID, UniqueConsumers, UniqueUIDsScanned, Genuine, Duplicate, TotalScans, LastScan, Last7DaysScans)
+        SELECT 
+            Pro_ID,
+            COUNT(DISTINCT MobileNo) AS UniqueConsumers,
+            COUNT(DISTINCT CAST(Received_Code1 AS VARCHAR(50))+'-'+CAST(Received_Code2 AS VARCHAR(50))) AS UniqueUIDsScanned,
+            SUM(CASE WHEN Use_Count = 1 AND Is_Success = 1 THEN 1 ELSE 0 END) AS Genuine,
+            SUM(CASE WHEN Is_Success<>1 THEN 1 ELSE 0 END) AS Duplicate,
+            SUM(CASE WHEN Use_Count = 1 AND Is_Success = 1 THEN 1 ELSE 0 END)
+            + SUM(CASE WHEN Is_Success<>1 THEN 1 ELSE 0 END) AS TotalScans,
+            MAX(Enq_Date) AS LastScan,
+            SUM(CASE WHEN Enq_Date >= DATEADD(day,-7,GETDATE()) THEN 1 ELSE 0 END) AS Last7DaysScans
+        FROM #tempPro_Enq
+        GROUP BY Pro_ID;
+    END;
 
     CREATE INDEX IX_ProductMetrics_ProID ON #ProductMetrics(Pro_ID);
 
@@ -232,10 +317,11 @@ BEGIN
         CAST(ISNULL(pm.TotalScans*1.0/NULLIF(pm.UniqueUIDsScanned,0),0) AS DECIMAL(18,2)) AS AvgScansPerUID,
         COUNT(*) OVER() AS TotalRecords
     FROM Pro_Reg pr
-    LEFT JOIN #ProductMetrics pm ON pm.Pro_ID = pr.Pro_ID
+    INNER JOIN #ProductMetrics pm ON pm.Pro_ID = pr.Pro_ID
     LEFT JOIN #TopStates ts ON ts.Pro_ID = pr.Pro_ID
     WHERE pr.Comp_ID = @Comp_ID
       AND (@ProductID IS NULL OR pr.Pro_ID = @ProductID)
+      AND (@Search IS NULL OR pr.Pro_Name LIKE '%' + @Search + '%' OR pr.Pro_ID LIKE '%' + @Search + '%')
     ORDER BY pr.Pro_Name
     OFFSET (@PageNumber-1)*@PageSize ROWS
     FETCH NEXT (CASE WHEN @IsExport=1 THEN 1000000 ELSE @PageSize END) ROWS ONLY

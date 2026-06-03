@@ -15,6 +15,18 @@ AS
 BEGIN
      SET NOCOUNT ON;
 
+    ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(50) = @CompId;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
+
     DECLARE 
         @Today DATE = CAST(GETDATE() AS DATE),
         @StartDate DATE,
@@ -100,11 +112,20 @@ BEGIN
         SET @Label1 = '0-2 Days'; SET @Label2 = '3-7 Days'; SET @Label3 = '>7 Days';
     END
 
-    -- Total Users (Lifetime)
-   SELECT @TotalUsers = COUNT(VC.M_consumerId)
-   FROM M_Consumer AS MC WITH (NOLOCK)
-   INNER JOIN tbl_Vendorvisekycstatus AS VC WITH (NOLOCK) ON VC.M_consumerId=MC.M_Consumerid
-   WHERE VC.Comp_ID = @CompId AND MC.IsDelete=0
+     -- Total Users (Lifetime)
+    SELECT @TotalUsers = COUNT(VC.M_consumerId)
+    FROM M_Consumer AS MC WITH (NOLOCK)
+    INNER JOIN (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
+        FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+    ) AS VC ON VC.M_consumerId=MC.M_Consumerid
+    WHERE VC.Comp_ID = @ActualCompId 
+      AND VC.rn = 1
+      AND MC.IsDelete=0
+      AND (
+            (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
+            (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM')
+          );
 
     ----------------------------------------------------------------
     -- 4️⃣ SOURCE CTE (FILTERED BY TIMEWINDOW)
@@ -116,8 +137,17 @@ BEGIN
             VC.VRKbl_KYC_status,
             VC.Entry_date
         FROM M_Consumer AS MC WITH (NOLOCK)
-        INNER JOIN tbl_Vendorvisekycstatus AS VC WITH (NOLOCK) ON VC.M_consumerId=MC.M_Consumerid
-        WHERE VC.Comp_ID = @CompId AND MC.IsDelete=0
+        INNER JOIN (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
+            FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+        ) AS VC ON VC.M_consumerId=MC.M_Consumerid
+        WHERE VC.Comp_ID = @ActualCompId 
+          AND VC.rn = 1
+          AND MC.IsDelete=0
+          AND (
+                (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
+                (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM')
+              )
           AND CAST(VC.Entry_date AS DATE) BETWEEN @StartDate AND @EndDate
     ),
     ----------------------------------------------------------------

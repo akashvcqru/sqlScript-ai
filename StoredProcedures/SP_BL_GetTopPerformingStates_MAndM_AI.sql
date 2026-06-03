@@ -15,6 +15,18 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(50) = @CompId;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
+
    DECLARE @StartDate DATE;
 DECLARE @EndDate   DATE;
 
@@ -31,7 +43,7 @@ IF @Win = 'QUARTER(90DAYS)' SET @Win = 'QUARTER';
 DECLARE @CompRegDate DATE;
 SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
 FROM Comp_Reg WITH (NOLOCK) 
-WHERE Comp_ID = @CompId AND Status = 1;
+WHERE Comp_ID = @ActualCompId AND Status = 1;
 
 IF @CompRegDate IS NULL 
     SET @CompRegDate = '2000-01-01';
@@ -70,106 +82,132 @@ BEGIN
     SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
     SET @EndDate = DATEADD(DAY, -1, DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0));
 END
-ELSE
-BEGIN
-    -- Default to THIS WEEK
-    SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
-    SET @EndDate = CAST(GETDATE() AS DATE);
-END
+    ELSE IF @Win = 'ALL' OR @Win = 'ALLTIME'
+    BEGIN
+        SET @StartDate = @CompRegDate;
+        SET @EndDate = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE
+    BEGIN
+        -- Default to THIS MONTH for Mahindra Dashboard
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+        SET @EndDate = CAST(GETDATE() AS DATE);
+    END
 
 
-   ;WITH CTE_AllUsers AS (
-    -- Base: Users linked with this company via KYC
+    IF OBJECT_ID('tempdb..#Users') IS NOT NULL DROP TABLE #Users;
+
     SELECT DISTINCT 
         V.M_ConsumerId,
-        MC.MobileNo
-    FROM tbl_VendorViseKYCStatus V
-    LEFT JOIN M_Consumer MC ON MC.M_ConsumerId = V.M_ConsumerId
-    WHERE V.Comp_Id = @CompId AND (MC.Entry_Date IS NULL OR MC.Entry_Date >= @CompRegDate)
-),
-CTE_State AS (
-    -- Get latest scanned state for each user
+        MC.MobileNo,
+        ISNULL(NULLIF(LTRIM(RTRIM(MC.state)), ''), '') AS RegisteredState
+    INTO #Users
+    FROM tbl_VendorViseKYCStatus V WITH (NOLOCK)
+    JOIN M_Consumer MC WITH (NOLOCK) ON MC.M_ConsumerId = V.M_ConsumerId
+    WHERE V.Comp_Id = @ActualCompId 
+      AND (MC.Entry_Date IS NULL OR MC.Entry_Date >= @CompRegDate)
+      AND (
+            (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
+            (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM')
+          );
+
+    CREATE CLUSTERED INDEX IX_Users ON #Users (M_ConsumerId);
+    CREATE NONCLUSTERED INDEX IX_Users_Mobile ON #Users (MobileNo);
+
+    IF OBJECT_ID('tempdb..#GeoScans') IS NOT NULL DROP TABLE #GeoScans;
+
     SELECT 
-        AU.M_ConsumerId,
-        AU.MobileNo,
-        G.[State],
-        ROW_NUMBER() OVER (PARTITION BY AU.M_ConsumerId ORDER BY G.Enq_Date DESC) AS rn
-    FROM CTE_AllUsers AU
-    LEFT JOIN GeoLocationData G
-        ON G.MobileNo = AU.MobileNo
-       AND G.Comp_Id = @CompId
-       AND G.Enq_Date >= @CompRegDate
-       AND CAST(G.Enq_Date AS DATE) BETWEEN @StartDate AND @EndDate
-),
-CTE_UserState AS (
-    SELECT M_ConsumerId, MobileNo, [State]
-    FROM CTE_State
-    WHERE rn = 1   -- Latest State Only
-),
-CTE_BLE AS (
+        G.MobileNo,
+        G.State,
+        ROW_NUMBER() OVER (PARTITION BY G.MobileNo ORDER BY G.Enq_Date DESC) AS rn
+    INTO #GeoScans
+    FROM GeoLocationData G WITH (NOLOCK)
+    WHERE G.Comp_Id = @ActualCompId
+      AND G.Enq_Date >= @CompRegDate
+      AND G.Enq_Date >= @StartDate
+      AND G.Enq_Date < DATEADD(DAY, 1, @EndDate);
+
+    CREATE CLUSTERED INDEX IX_GeoScans ON #GeoScans (MobileNo);
+
+    IF OBJECT_ID('tempdb..#UserState') IS NOT NULL DROP TABLE #UserState;
+
     SELECT 
-        US.[State],
-        SUM(BLE.Points) AS TotalEarnedPoints
-    FROM CTE_AllUsers AU
-    LEFT JOIN BLoyaltyPointsEarned BLE
-        ON BLE.M_ConsumerId = AU.M_ConsumerId
-       AND BLE.Compid = @CompId
-       AND BLE.UpdateDate >= @CompRegDate
-       AND CAST(BLE.UpdateDate AS DATE) BETWEEN @StartDate AND @EndDate
-    LEFT JOIN CTE_UserState US
-        ON US.M_ConsumerId = AU.M_ConsumerId
-    GROUP BY US.[State]
-),
-CTE_Redeem AS (
+        U.M_ConsumerId,
+        U.MobileNo,
+        ISNULL(NULLIF(U.RegisteredState, ''), ISNULL(GS.State, '')) AS State
+    INTO #UserState
+    FROM #Users U
+    LEFT JOIN #GeoScans GS ON GS.MobileNo = U.MobileNo AND GS.rn = 1;
+
+    CREATE CLUSTERED INDEX IX_UserState ON #UserState (M_ConsumerId);
+
+    IF OBJECT_ID('tempdb..#BLE') IS NOT NULL DROP TABLE #BLE;
+
     SELECT 
-        US.[State],
+        US.State,
+        SUM(CASE WHEN BLE.Points IS NULL OR BLE.Points = 0 THEN ISNULL(BLE.Cash, 0) ELSE BLE.Points END) AS TotalEarnedPoints
+    INTO #BLE
+    FROM BLoyaltyPointsEarned BLE WITH (NOLOCK)
+    JOIN #UserState US ON BLE.M_ConsumerId = US.M_ConsumerId
+    LEFT JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BLE.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    LEFT JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    WHERE ISNULL(BLE.Compid, MC.Compid) = @ActualCompId
+      AND BLE.UpdateDate >= @CompRegDate
+      AND BLE.UpdateDate >= @StartDate
+      AND BLE.UpdateDate < DATEADD(DAY, 1, @EndDate)
+    GROUP BY US.State;
+
+    IF OBJECT_ID('tempdb..#Redeem') IS NOT NULL DROP TABLE #Redeem;
+
+    SELECT 
+        US.State,
         SUM(ISNULL(CD.Amount, 0)) AS ClaimRedeemAmt,
         SUM(ISNULL(UPI.Amount, 0)) AS UpiRedeemAmt,
         MAX(CD.action_date) AS LastActionDate
-    FROM CTE_AllUsers AU
-    LEFT JOIN ClaimDetails CD
-        ON CD.MobileNo = AU.MobileNo
-       AND CD.Comp_id = @CompId
+    INTO #Redeem
+    FROM #UserState US
+    LEFT JOIN ClaimDetails CD WITH (NOLOCK)
+        ON CD.MobileNo = US.MobileNo
+       AND CD.Comp_id = @ActualCompId
        AND CD.Isapproved = 1
        AND CD.action_date >= @CompRegDate
-       AND CAST(CD.action_date AS DATE) BETWEEN @StartDate AND @EndDate
-    LEFT JOIN tblUPITransactionDetails UPI
-        ON UPI.M_Consumerid = AU.M_ConsumerId
-       AND UPI.Comp_Id = @CompId
-       AND UPI.Status = 'Success'
-	   AND LEN(UPI.Code1)>2
-       AND UPI.ReqDate >= @CompRegDate
-       AND CAST(UPI.ReqDate AS DATE) BETWEEN @StartDate AND @EndDate
-    LEFT JOIN CTE_UserState US
-        ON US.M_ConsumerId = AU.M_ConsumerId
-    GROUP BY US.[State]
-),
-CTE_ActiveUsers AS (
-    SELECT 
-        US.[State],
-        COUNT(DISTINCT AU.M_ConsumerId) AS ActiveUsers
-    FROM CTE_AllUsers AU
-    INNER JOIN CTE_UserState US ON US.M_ConsumerId = AU.M_ConsumerId
-    WHERE US.[State] IS NOT NULL
-    GROUP BY US.[State]
-)
+       AND CD.action_date >= @StartDate
+       AND CD.action_date < DATEADD(DAY, 1, @EndDate)
+    LEFT JOIN Transactions UPI WITH (NOLOCK)
+        ON UPI.M_CounserID = US.M_ConsumerId
+       AND UPI.CompId = REPLACE(@ActualCompId, 'Comp-', '')
+       AND UPI.Issuccess = 1
+       AND UPI.TransactionDate >= @CompRegDate
+       AND UPI.TransactionDate >= @StartDate
+       AND UPI.TransactionDate < DATEADD(DAY, 1, @EndDate)
+    GROUP BY US.State;
 
-SELECT Top 5
-    COALESCE(AU.[State], B.[State], R.[State]) AS [State],
-    ISNULL(AU.ActiveUsers, 0) AS ActiveUsers,
-    ISNULL(B.TotalEarnedPoints, 0) AS TotalEarnedPoints,
-    ISNULL(R.ClaimRedeemAmt, 0) + ISNULL(R.UpiRedeemAmt, 0) AS RedeemAmount,
-    CASE 
-        WHEN ISNULL(B.TotalEarnedPoints, 0) = 0 THEN 0
-        ELSE (
-             (ISNULL(R.ClaimRedeemAmt, 0) + ISNULL(R.UpiRedeemAmt, 0)) * 100.0
-             / NULLIF(B.TotalEarnedPoints, 0)
-        )
-    END AS GrowthPercentage,
-    R.LastActionDate
-FROM CTE_BLE B
-FULL JOIN CTE_Redeem R ON R.[State] = B.[State]
-FULL JOIN CTE_ActiveUsers AU ON AU.[State] = COALESCE(B.[State], R.[State])
-WHERE COALESCE(AU.[State], B.[State], R.[State]) IS NOT NULL
-ORDER BY TotalEarnedPoints DESC;
+    IF OBJECT_ID('tempdb..#ActiveUsers') IS NOT NULL DROP TABLE #ActiveUsers;
+
+    SELECT 
+        State,
+        COUNT(DISTINCT M_ConsumerId) AS ActiveUsers
+    INTO #ActiveUsers
+    FROM #UserState
+    WHERE State <> ''
+    GROUP BY State;
+
+    SELECT TOP 5
+        COALESCE(AU.State, B.State, R.State) AS [State],
+        ISNULL(AU.ActiveUsers, 0) AS ActiveUsers,
+        ISNULL(B.TotalEarnedPoints, 0) AS TotalEarnedPoints,
+        ISNULL(R.ClaimRedeemAmt, 0) + ISNULL(R.UpiRedeemAmt, 0) AS RedeemAmount,
+        CASE 
+            WHEN ISNULL(B.TotalEarnedPoints, 0) = 0 THEN 0
+            ELSE (
+                 (ISNULL(R.ClaimRedeemAmt, 0) + ISNULL(R.UpiRedeemAmt, 0)) * 100.0
+                 / NULLIF(B.TotalEarnedPoints, 0)
+            )
+        END AS GrowthPercentage,
+        R.LastActionDate
+    FROM #ActiveUsers AU
+    FULL JOIN #BLE B ON B.State = AU.State
+    FULL JOIN #Redeem R ON R.State = COALESCE(AU.State, B.State)
+    WHERE COALESCE(AU.State, B.State, R.State) IS NOT NULL AND COALESCE(AU.State, B.State, R.State) <> ''
+    ORDER BY TotalEarnedPoints DESC;
 END

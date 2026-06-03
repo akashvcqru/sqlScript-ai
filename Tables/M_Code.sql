@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[M_Code]    Script Date: 3/2/2026 12:27:10 PM ******/
+/****** Object:  Table [dbo].[M_Code]    Script Date: 3/2/2026 12:27:10 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -24,6 +24,8 @@ CREATE TABLE [dbo].[M_Code](
 	[LabelRequestId] [nvarchar](15) NULL,
 	[IsCouponUsed] [bit] NULL,
 	[QRCodeStatus] [bit] NULL,
+	[blockCodeStatus] [int] NULL CONSTRAINT [DF_M_Code_blockCodeStatus] DEFAULT ((0)),
+	[Block_Code_Date] [datetime] NULL,
  CONSTRAINT [PK_M_Code] PRIMARY KEY NONCLUSTERED 
 (
 	[Row_ID] ASC
