@@ -13,7 +13,11 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_ScanWarrantyCode_BLApp_AI]
     @MobileNo VARCHAR(20),
     @Email VARCHAR(100) = NULL,
     @Remark NVARCHAR(MAX) = NULL,
-    @AlternateMobileNo VARCHAR(20) = NULL
+    @AlternateMobileNo VARCHAR(20) = NULL,
+    @PurchaseDate DATETIME = NULL,
+    @ImagePathBill NVARCHAR(200) = NULL,
+    @ImagePath NVARCHAR(400) = NULL,
+    @Comp_id VARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -43,14 +47,14 @@ BEGIN
     END
 
     DECLARE @Pro_ID VARCHAR(50) = NULL;
-    DECLARE @Comp_ID VARCHAR(50) = NULL;
+    DECLARE @ResolvedCompID VARCHAR(50) = NULL;
     DECLARE @TableName NVARCHAR(50) = 'M_Code';
 
     -- 2. Identify code source table and get Pro_ID and Comp_ID
     IF EXISTS (SELECT 1 FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2 AND (ScrapeFlag = 0 OR ScrapeFlag IS NULL))
     BEGIN
         SET @TableName = 'M_Code';
-        SELECT TOP 1 @Pro_ID = M.Pro_ID, @Comp_ID = P.Comp_ID
+        SELECT TOP 1 @Pro_ID = M.Pro_ID, @ResolvedCompID = P.Comp_ID
         FROM M_Code M
         INNER JOIN Pro_Reg P ON M.Pro_ID = P.Pro_ID
         WHERE M.Code1 = @Code1 AND M.Code2 = @Code2;
@@ -58,7 +62,7 @@ BEGIN
     ELSE IF EXISTS (SELECT 1 FROM M_Code_PFL WHERE Code1 = @Code1 AND Code2 = @Code2 AND (ScrapeFlag = 0 OR ScrapeFlag IS NULL))
     BEGIN
         SET @TableName = 'M_Code_PFL';
-        SELECT TOP 1 @Pro_ID = M.Pro_ID, @Comp_ID = P.Comp_ID
+        SELECT TOP 1 @Pro_ID = M.Pro_ID, @ResolvedCompID = P.Comp_ID
         FROM M_Code_PFL M
         INNER JOIN Pro_Reg P ON M.Pro_ID = P.Pro_ID
         WHERE M.Code1 = @Code1 AND M.Code2 = @Code2;
@@ -122,22 +126,22 @@ BEGIN
 
         DECLARE @ExpirationDate DATETIME = DATEADD(MONTH, @WarrantyPeriod, GETDATE());
         DECLARE @Brand VARCHAR(200) = NULL;
-        SELECT TOP 1 @Brand = Comp_Name FROM Comp_Reg WHERE Comp_ID = @Comp_ID;
+        SELECT TOP 1 @Brand = Comp_Name FROM Comp_Reg WHERE Comp_ID = @ResolvedCompID;
 
         INSERT INTO [dbo].[WarrentyDetails] (
             Code, Mobile, Email, WarrantyPeriod, ExpirationDate, 
             PurchaseDate, Comment, IsWarrantyClaimed, VendorClaimStatus, 
-            claimdate, AlternateMobileNo, Brand
+            claimdate, AlternateMobileNo, Brand, ImagePathBill, ImagePath, Comp_id
         )
         VALUES (
             @CodeKey, @MobileNo, @Email, CAST(@WarrantyPeriod AS VARCHAR(50)), @ExpirationDate, 
-            GETDATE(), @Remark, NULL, NULL, 
-            GETDATE(), @AlternateMobileNo, @Brand
+            ISNULL(@PurchaseDate, GETDATE()), @Remark, NULL, NULL, 
+            GETDATE(), @AlternateMobileNo, @Brand, @ImagePathBill, @ImagePath, ISNULL(@Comp_id, @ResolvedCompID)
         );
 
         -- Also record inquiry to track code checks
         INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID)
-        VALUES (@Code1, @Code2, RIGHT(@MobileNo, 10), 'BLApp', 'Warranty Registration', '1', GETDATE(), @Comp_ID);
+        VALUES (@Code1, @Code2, RIGHT(@MobileNo, 10), 'BLApp', 'Warranty Registration', '1', GETDATE(), @ResolvedCompID);
 
         -- Increment code check count
         IF @TableName = 'M_Code'

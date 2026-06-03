@@ -34,6 +34,7 @@ CREATE TABLE [dbo].[WarrentyDetails](
 	[batryType] [varchar](50) NULL,
 	[OldSerialno] [varchar](50) NULL,
 	[AlternateMobileNo] [varchar](20) NULL,
+	[Comp_id] [varchar](50) NULL,
 PRIMARY KEY CLUSTERED 
 (
 	[id] ASC
