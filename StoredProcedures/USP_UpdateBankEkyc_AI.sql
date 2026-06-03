@@ -51,8 +51,17 @@ BEGIN
         WHERE mc.M_ConsumerId = @M_ConsumerId
           AND mc.bankekycStatus IS NULL
           AND ISNULL(mba.Account_HolderNm, '') <> ''
-          AND UPPER(REPLACE(mba.Account_HolderNm, ' ', ''))
-              = UPPER(REPLACE(mc.ConsumerName, ' ', ''))
+          AND ISNULL(mc.ConsumerName, '') <> ''
+          AND NOT EXISTS (
+              SELECT value FROM STRING_SPLIT(UPPER(mba.Account_HolderNm), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+              EXCEPT
+              SELECT value FROM STRING_SPLIT(UPPER(mc.ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+          )
+          AND NOT EXISTS (
+              SELECT value FROM STRING_SPLIT(UPPER(mc.ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+              EXCEPT
+              SELECT value FROM STRING_SPLIT(UPPER(mba.Account_HolderNm), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+          )
           AND NOT EXISTS
           (
               SELECT 1

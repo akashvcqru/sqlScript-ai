@@ -55,8 +55,18 @@ BEGIN
           AND a.panekycStatus IS NULL
           AND a.pancard_number <> ''
           AND a.pancard_number LIKE '[A-Z][A-Z][A-Z][A-Z][A-Z][0-9][0-9][0-9][0-9][A-Z]'
-          AND UPPER(REPLACE(ISNULL(a.PanHolderName, ''), ' ', ''))
-              = UPPER(REPLACE(ISNULL(a.ConsumerName, ''), ' ', ''))
+          AND ISNULL(a.PanHolderName, '') <> ''
+          AND ISNULL(a.ConsumerName, '') <> ''
+          AND NOT EXISTS (
+              SELECT value FROM STRING_SPLIT(UPPER(a.PanHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+              EXCEPT
+              SELECT value FROM STRING_SPLIT(UPPER(a.ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+          )
+          AND NOT EXISTS (
+              SELECT value FROM STRING_SPLIT(UPPER(a.ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+              EXCEPT
+              SELECT value FROM STRING_SPLIT(UPPER(a.PanHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+          )
           AND NOT EXISTS
           (
               SELECT 1
