@@ -210,7 +210,8 @@ BEGIN
                 pe.MobileNo AS ConsumerMobile,
                 NULL AS ConsumerName,
                 pe.Latitude,
-                pe.Longitude
+                pe.Longitude,
+                ISNULL(pe.IsVerified, 0) AS ImageVerified
             FROM pfl_codecheckData pe WITH (NOLOCK)
             WHERE pe.Enq_Date >= @StartDate
               AND pe.Enq_Date < @EndDate
@@ -248,6 +249,7 @@ BEGIN
             ConsumerName,
             Latitude,
             Longitude,
+            ImageVerified,
             COUNT(*) OVER() AS TotalRecords
         FROM ResultCTE
         WHERE (@CodeStatusFilter IS NULL OR ScanResult = @CodeStatusFilter)
@@ -289,7 +291,8 @@ BEGIN
                 pe.MobileNo AS ConsumerMobile,
                 mcn.ConsumerName,
                 pe.Latitude,
-                pe.Longitude
+                pe.Longitude,
+                ISNULL(pe.IsVerified, 0) AS ImageVerified
             FROM Pro_Enq pe WITH (NOLOCK)
             LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
                   AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
@@ -333,6 +336,7 @@ BEGIN
             ConsumerName,
             Latitude,
             Longitude,
+            ImageVerified,
             COUNT(*) OVER() AS TotalRecords
         FROM ResultCTE
         WHERE (@CodeStatusFilter IS NULL OR ScanResult = @CodeStatusFilter)
