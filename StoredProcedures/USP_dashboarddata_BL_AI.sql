@@ -32,26 +32,51 @@ BEGIN
     END
     ELSE
     BEGIN
-        IF @compid = 'Comp-1274'
-            SELECT @TotalCash = ISNULL(SUM(Cash), 0) * 1.10 FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_consumerid AND compid = @compid;
-        ELSE
-            SELECT @TotalCash = ISNULL(SUM(Cash), 0) FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_consumerid AND (compid = @compid or (@compid IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567') ) );
+        DECLARE @MobileNo VARCHAR(20)
+        SELECT @MobileNo = MobileNo FROM M_Consumer WHERE M_Consumerid = @M_consumerid AND IsDelete = 0;
+
+        -- Calculate from Config
+        SELECT 
+            @TotalCash = SUM(ConfigCash)
+        FROM (
+            SELECT 
+                MAX(CAST(
+                    CASE 
+                        WHEN @compid = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
+                        ELSE ISNULL(SST.IsCash, 0)
+                    END 
+                AS DECIMAL(18,2))) AS ConfigCash
+            FROM Pro_Enq PE WITH (NOLOCK)
+            INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
+            INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
+            INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = M.Pro_ID
+            INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+            WHERE PE.MobileNo = @MobileNo
+              AND PE.Is_Success = '1'
+              AND (PR.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND PR.Comp_ID IN ('Comp-1650', 'Comp-1567')))
+              AND SS.IsActive = 1 AND SS.IsDelete = 0
+              AND SST.IsActive = 1 AND SST.IsDelete = 0
+              AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
+              AND (
+                  M.Series_Order > SS.start_order 
+                  OR (M.Series_Order = SS.start_order AND M.Series_Serial >= SS.start_series)
+              )
+              AND (
+                  M.Series_Order < SS.end_order 
+                  OR (M.Series_Order = SS.end_order AND M.Series_Serial <= SS.end_series)
+              )
+            GROUP BY M.Row_ID
+        ) t;
 
         SELECT @TotalSuccessCheck = COUNT(Pro_Enq.Received_Code1)  
         FROM M_Consumer AS mc  
         INNER JOIN Pro_Enq ON Pro_Enq.MobileNo = mc.MobileNo  
-        INNER JOIN M_Code ON M_Code.Code1 = Pro_Enq.Received_Code1 AND M_Code.Code2 = Pro_Enq.Received_Code2  
-        INNER JOIN Pro_Reg ON Pro_Reg.Pro_ID = M_Code.Pro_ID  
-        INNER JOIN Comp_Reg ON Comp_Reg.Comp_ID = Pro_Reg.Comp_ID  
-        WHERE (Comp_Reg.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND Comp_Reg.Comp_ID IN ('Comp-1650', 'Comp-1567') ) ) AND mc.M_Consumerid = @M_consumerid AND Is_Success = 1;
+        WHERE (Pro_Enq.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND Pro_Enq.Comp_ID IN ('Comp-1650', 'Comp-1567') ) ) AND mc.M_Consumerid = @M_consumerid AND Is_Success = 1;
 
         SELECT @TotalCodeCheck = COUNT(Pro_Enq.Received_Code1)  
         FROM M_Consumer AS mc  
         INNER JOIN Pro_Enq ON Pro_Enq.MobileNo = mc.MobileNo  
-        INNER JOIN M_Code ON M_Code.Code1 = Pro_Enq.Received_Code1 AND M_Code.Code2 = Pro_Enq.Received_Code2  
-        INNER JOIN Pro_Reg ON Pro_Reg.Pro_ID = M_Code.Pro_ID  
-        INNER JOIN Comp_Reg ON Comp_Reg.Comp_ID = Pro_Reg.Comp_ID  
-        WHERE (Comp_Reg.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND Comp_Reg.Comp_ID IN ('Comp-1650', 'Comp-1567') ) ) AND mc.M_Consumerid = @M_consumerid;
+        WHERE (Pro_Enq.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND Pro_Enq.Comp_ID IN ('Comp-1650', 'Comp-1567') ) ) AND mc.M_Consumerid = @M_consumerid;
     END
 
     -- Result 0: Total Code Check

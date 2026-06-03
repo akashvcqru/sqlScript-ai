@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[WarrentyDetails]    Script Date: 3/2/2026 12:27:10 PM ******/
+/****** Object:  Table [dbo].[WarrentyDetails]    Script Date: 3/2/2026 12:27:10 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -33,6 +33,8 @@ CREATE TABLE [dbo].[WarrentyDetails](
 	[Model] [nvarchar](50) NULL,
 	[batryType] [varchar](50) NULL,
 	[OldSerialno] [varchar](50) NULL,
+	[AlternateMobileNo] [varchar](20) NULL,
+	[Comp_id] [varchar](50) NULL,
 PRIMARY KEY CLUSTERED 
 (
 	[id] ASC

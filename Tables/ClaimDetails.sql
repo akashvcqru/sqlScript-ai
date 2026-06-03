@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[ClaimDetails]    Script Date: 3/2/2026 12:27:11 PM ******/
+/****** Object:  Table [dbo].[ClaimDetails]    Script Date: 3/2/2026 12:27:11 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -31,6 +31,10 @@ CREATE TABLE [dbo].[ClaimDetails](
 	[TDSDeduction_Date] [datetime] NOT NULL,
 	[tdsAmount] [float] NULL,
 	[tdsper] [int] NULL,
-	[Claim_mode] [nvarchar](200) NULL
+	[Claim_mode] [nvarchar](200) NULL,
+	[SupervisorValue] [decimal](18, 2) NULL,
+	[SupervisorGet] [varchar](50) NULL,
+	[SupervisorValueType] [varchar](50) NULL,
+	[SupervisorMobileNo] [varchar](50) NULL
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO

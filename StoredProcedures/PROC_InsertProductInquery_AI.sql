@@ -37,6 +37,7 @@ AS
 BEGIN  
 Declare @M_Consumerid int  
 DECLARE @MConsumerMCodeid NUMERIC(18, 0) = 0;
+DECLARE @v_ProName NVARCHAR(100), @v_ServiceID NVARCHAR(50), @v_EmpID NVARCHAR(50), @v_DistID NVARCHAR(50);
 declare @scp int=null  
 declare @frstcnt int  
 declare @compid1 nvarchar(50)  
@@ -222,7 +223,21 @@ begin
  insert into enq_dealerid(enq_id,dealerid,dealer_mobile,createddate) values(@scp,@dealerid,@dealer_mobile,@Enq_Date)  
 end  
 end   
+end
+  
+IF ISNULL(@scp, 0) > 0 AND UPPER(@Compid) = 'COMP-1152'
+BEGIN
+    SELECT @v_ProName = Pro_Name FROM Pro_Reg (NOLOCK) WHERE Pro_ID = @Proid;
+    SELECT @v_ServiceID = ss.Service_ID FROM M_ServiceSubscription ss (NOLOCK) INNER JOIN M_ServiceSubscriptionTrans sst (NOLOCK) ON ss.Subscribe_Id = sst.Subscribe_Id WHERE sst.SST_Id = @SST_ID;
+    SELECT @v_EmpID = employeeID, @v_DistID = distributorID FROM m_consumer (NOLOCK) WHERE M_Consumerid = @M_Consumerid;
+
+    INSERT INTO [dbo].[ConsumerPointsCashDetails]
+    (MobileNo, Code1, Code2, Enq_Date, SST_Id, Points, Cash, Pro_id, Comp_id, M_ConsumerId, Is_Success, Pro_Name, Service_ID, Latitude, Longitude, PE_ID, Dial_Mode, employeedid, distributedid, expireCodeAmount)
+    VALUES
+    (@MobileNo, @Received_Code1, @Received_Code2, @Enq_Date, @SST_ID, 0, 0, @Proid, @Compid, @M_Consumerid, @Is_Success, @v_ProName, @v_ServiceID, @Latitude, @Longitude, @scp, @Dial_Mode, @v_EmpID, @v_DistID, 0);
+END
   
 SELECT @M_Consumerid =M_Consumerid FROM [M_Consumer] where [MobileNo] = @MobileNo  
+SELECT ISNULL(@scp, 0) AS Row_ID;
 END
 GO

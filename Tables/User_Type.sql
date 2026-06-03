@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[User_Type]    Script Date: 3/2/2026 12:27:13 PM ******/
+/****** Object:  Table [dbo].[User_Type]    Script Date: 3/2/2026 12:27:13 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -22,6 +22,10 @@ CREATE TABLE [dbo].[User_Type](
 	[CanSeePoints] [bit] NOT NULL,
 	[isClaimTypeDealer] [bit] NOT NULL,
 	[isNeedsDealer] [bit] NOT NULL,
+	[IsSupervisorApprovalRequired] [bit] NULL,
+	[SupervisorValue] [decimal](18, 2) NULL,
+	[SupervisorGet] [varchar](50) NULL,
+	[SupervisorValueType] [varchar](50) NULL,
 PRIMARY KEY CLUSTERED 
 (
 	[Row_ID] ASC

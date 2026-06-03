@@ -36,6 +36,18 @@ BEGIN
         SELECT @M_Consumerid = m_consumerid, @ccompid = Compid, @Pro_ID = Pro_id   
         FROM M_Consumer_M_Code (NOLOCK) WHERE M_Consumer_MCodeid = @intM_Consumer_MCode;  
   
+        IF @M_Consumerid IS NULL
+        BEGIN
+            SELECT TOP 1 @M_Consumerid = mc.M_Consumerid
+            FROM Pro_Enq pe (NOLOCK)
+            INNER JOIN m_consumer mc (NOLOCK) ON RIGHT(pe.MobileNo, 10) = RIGHT(mc.MobileNo, 10)
+            WHERE pe.Row_id = @intM_Consumer_MCode AND mc.IsDelete = 0
+            ORDER BY mc.Entry_Date DESC;
+        END
+        IF @ccompid IS NULL OR @Pro_ID IS NULL
+        BEGIN
+            SELECT TOP 1 @ccompid = comp_id, @Pro_ID = Pro_ID FROM M_Code (NOLOCK) WHERE Code1 = @code1 AND Code2 = @code2;
+        END
         INSERT INTO BuiltLoyaltyMCodeCheck (sst_id, M_Consumer_MCOdeid, M_Cunsumerid, Createdate)  
         VALUES (@SST_Id, @intM_Consumer_MCode, @M_Consumerid, GETDATE());  
   
@@ -76,6 +88,13 @@ BEGIN
 
             INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Points, Cash, ServiceName)  
             VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @Points, @IsCash, @Service_ID);  
+
+            UPDATE [dbo].[ConsumerPointsCashDetails]
+            SET Points = ISNULL(Points, 0) + @Points, 
+                Cash = ISNULL(Cash, 0) + @IsCash,
+                SST_Id = @SST_Id,
+                Service_ID = @Service_ID
+            WHERE PE_ID = @intM_Consumer_MCode;
   
             SET @BLoyalty_PointEarnedID = SCOPE_IDENTITY();  
   
@@ -88,8 +107,7 @@ BEGIN
             ELSE IF (@Service_ID = 'SRV1005')  
             BEGIN  
                 UPDATE BLoyaltyPointsEarned 
-                SET Cash = ISNULL(Cash, 0) + @IsCash, 
-                    ServiceName = CASE WHEN ServiceName IS NULL OR ServiceName = '' THEN 'cash' ELSE ServiceName END 
+                SET ServiceName = 'cash' 
                 WHERE BLoyalty_PointEarnedID = @BLoyalty_PointEarnedID;  
             END  
   

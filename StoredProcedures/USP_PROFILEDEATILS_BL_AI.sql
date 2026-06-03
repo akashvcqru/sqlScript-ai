@@ -34,10 +34,12 @@ END AS User_Type
             WHEN m.Other_Role IS not NULL THEN m.Other_Role
             ELSE ''
         END
- AS Vrkabel_User_Type
+ AS Vrkabel_User_Type,
+ (SELECT TOP 1 ConsumerName FROM M_Consumer WHERE M_Consumerid = v.Dealer_M_consumerid) AS DealerName,
+ (SELECT TOP 1 MobileNo FROM M_Consumer WHERE M_Consumerid = v.Dealer_M_consumerid) AS DealerMobileNo
 
  from M_Consumer m    
- left join tbl_Vendorvisekycstatus v on v.M_consumerId=m.M_Consumerid
+ left join tbl_Vendorvisekycstatus v on v.M_consumerId=m.M_Consumerid AND v.Comp_id = @Comp_Id
  left join User_Type u on v.Vrkabel_User_Type=u.Row_ID    
  left join User_Type k on m.Vrkabel_User_Type=k.Row_ID    
  left join Profile_images pic on pic.m_consumerid=m.M_Consumerid  

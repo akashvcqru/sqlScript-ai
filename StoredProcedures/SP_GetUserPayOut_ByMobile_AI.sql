@@ -18,7 +18,8 @@ BEGIN
         NetPaid,  
   tdsAmount,  
         payStatus AS TransactionStatus,  
-        ISNULL(CONVERT(VARCHAR(19), TransactionDate, 120), '') AS TransactionDate  
+        ISNULL(CONVERT(VARCHAR(19), TransactionDate, 120), '') AS TransactionDate,
+        completecode AS CompleteCode
     FROM TBL_M_Star_Codeverification  
     WHERE Mobile_Number = @MobileNumber  
       AND Comp_Id = @CompId;  
