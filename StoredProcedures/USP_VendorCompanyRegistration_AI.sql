@@ -5,7 +5,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_VendorCompanyRegistration_AI]
     @Mobile NVARCHAR(50),
     @LogoPath NVARCHAR(MAX) = NULL,
     @Password NVARCHAR(50) = NULL,
-    @AcceptedPolicy BIT = 0
+    @AcceptedPolicy BIT = 0,
+    @SalesPersonName NVARCHAR(200) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -62,7 +63,8 @@ BEGIN
         Comp_Type, 
         Delete_Flag,
         logo_path,
-        Password
+        Password,
+        SalesPersonName
     )
     VALUES (
         @CompID, 
@@ -77,7 +79,8 @@ BEGIN
         'L', -- Comp_Type 'L' as per legacy code
         1, -- Delete_Flag 1: Active (per legacy logic)
         @LogoPath,
-        @Password
+        @Password,
+        @SalesPersonName
     );
 
     -- 4. Increment Code_Gen
