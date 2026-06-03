@@ -119,6 +119,46 @@ BEGIN
         WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
           AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
     END
+    ELSE IF @ActualCompId = 'Comp-1152'
+    BEGIN
+        DECLARE @IsSBUTeam INT = 0;
+        IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_ID AND SubCompTypeType = 'SBUTEAM')
+        BEGIN
+            SET @IsSBUTeam = 1;
+        END
+
+        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified)
+        SELECT 
+            CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified
+        FROM (
+            SELECT
+                CASE WHEN pc.Is_Success = 1 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
+                CAST(CASE WHEN pc.Is_Success = 1 THEN CASE WHEN pc.Points IS NULL OR pc.Points = 0 THEN ISNULL(pc.Cash, 0) ELSE pc.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
+                ISNULL(pc.Cash, 0) AS IsCash,
+                pc.Enq_Date,
+                ISNULL(pc.Code1, '') + ISNULL(pc.Code2, '') AS UniqueCode,
+                pc.MobileNo,
+                ISNULL(pc.Dial_Mode, 'Web') AS Dial_Mode,
+                ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name) AS Pro_Name,
+                mcd.Batch_No,
+                0 AS ImageVerified,
+                ROW_NUMBER() OVER (
+                    PARTITION BY pc.Code1, pc.Code2
+                    ORDER BY pc.Enq_Date DESC
+                ) AS rn
+            FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
+            LEFT JOIN dbo.UserData_MHCroneJob mc WITH (NOLOCK) ON mc.m_consumerid = pc.m_consumerid
+            LEFT JOIN dbo.M_Code mcd WITH (NOLOCK) ON mcd.Code1 = pc.Code1 AND mcd.Code2 = pc.Code2
+            LEFT JOIN dbo.Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mcd.Pro_ID
+            WHERE RIGHT(pc.MobileNo, 10) = @NormalizedMobile
+              AND pc.Comp_Id = @ActualCompId
+              AND (
+                  (@IsSBUTeam = 0 AND (pc.distributedid <> 'SBUTEAM' OR pc.distributedid IS NULL) AND (mc.DealerCode <> 'SBUTEAM' OR mc.DealerCode IS NULL)) OR
+                  (@IsSBUTeam = 1 AND (pc.distributedid = 'SBUTEAM' OR mc.DealerCode = 'SBUTEAM'))
+              )
+        ) x
+        WHERE x.rn = 1;
+    END
     ELSE
     BEGIN
         INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified)

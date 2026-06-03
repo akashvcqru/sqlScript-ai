@@ -189,7 +189,7 @@ BEGIN
             ELSE 'ACTIVE' 
         END AS SchemeStatus,
         ROW_NUMBER() OVER (
-            PARTITION BY pc.Code1, pc.Code2, pc.Enq_Date
+            PARTITION BY pc.Code1, pc.Code2
             ORDER BY pc.Enq_Date DESC
         ) AS rn
     INTO #FilteredData
