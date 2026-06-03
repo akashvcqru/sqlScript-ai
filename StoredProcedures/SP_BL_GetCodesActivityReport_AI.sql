@@ -352,7 +352,7 @@ BEGIN
           AND (
                 @CodeStatusFilter IS NULL OR
                 (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1)) OR
-                (@CodeStatusFilter = 'Already Scanned' AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
+                ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
                 (@CodeStatusFilter = 'Invalid' AND E.Is_Success NOT IN (1,2))
           )
           AND (
@@ -411,7 +411,7 @@ BEGIN
             AND (
                 @CodeStatusFilter IS NULL OR
                 (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1)) OR
-                (@CodeStatusFilter = 'Already Scanned' AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
+                ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
                 (@CodeStatusFilter = 'Invalid' AND E.Is_Success NOT IN (1,2))
             )
             AND (
@@ -452,7 +452,7 @@ BEGIN
             AND (
                 @CodeStatusFilter IS NULL OR
                 (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1)) OR
-                (@CodeStatusFilter = 'Already Scanned' AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
+                ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
                 (@CodeStatusFilter = 'Invalid' AND E.Is_Success NOT IN (1,2))
             )
             AND (

@@ -144,7 +144,7 @@ BEGIN
         pc.Comp_id,
         pc.M_ConsumerId,
         pc.Enq_Date,
-        pc.Pro_Name,
+        ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name) AS Pro_Name,
         pc.Code1,
         pc.Code2,
         CONCAT(pc.Code1, pc.Code2) AS uniquecode,
@@ -196,6 +196,8 @@ BEGIN
     FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
     LEFT JOIN dbo.UserData_MHCroneJob mc WITH (NOLOCK) ON mc.m_consumerid = pc.m_consumerid
     LEFT JOIN dbo.GeoLocationData gc WITH (NOLOCK) ON gc.Code1 = pc.Code1 AND gc.Code2 = pc.Code2
+    LEFT JOIN dbo.M_Code mcd WITH (NOLOCK) ON mcd.Code1 = pc.Code1 AND mcd.Code2 = pc.Code2
+    LEFT JOIN dbo.Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mcd.Pro_ID
     WHERE
         pc.Comp_Id = @ActualCompId
         AND (
@@ -204,13 +206,13 @@ BEGIN
         )
         AND (@StartDate IS NULL OR pc.Enq_Date >= @StartDate)
         AND (@EndDate IS NULL OR pc.Enq_Date < DATEADD(DAY, 1, @EndDate))
-        AND (@Scheme IS NULL OR pc.Pro_Name LIKE '%' + @Scheme + '%')
+        AND (@Scheme IS NULL OR ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name) LIKE '%' + @Scheme + '%')
         AND (@DialModeFilter IS NULL OR pc.Dial_Mode = @DialModeFilter)
         AND (@StateFilter IS NULL OR gc.State = @StateFilter)
         AND (
             @CodeStatusFilter IS NULL
             OR (@CodeStatusFilter = 'Verified' AND pc.Is_Success = 1)
-            OR (@CodeStatusFilter = 'Already Scanned' AND pc.Is_Success = 2)
+            OR ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND pc.Is_Success = 2)
             OR (@CodeStatusFilter = 'Invalid' AND pc.Is_Success NOT IN (1,2))
         )
         AND (
