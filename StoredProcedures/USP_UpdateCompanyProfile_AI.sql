@@ -16,7 +16,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_UpdateCompanyProfile_AI]
     @gst_TradeName NVARCHAR(200) = NULL,
     @gst_RegistrationDate NVARCHAR(50) = NULL,
     @comp_pan_type NVARCHAR(50) = NULL,
-    @comp_pan_status NVARCHAR(50) = NULL
+    @comp_pan_status NVARCHAR(50) = NULL,
+    @Industry_Type NVARCHAR(100) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -40,6 +41,7 @@ BEGIN
         gst_RegistrationDate = ISNULL(@gst_RegistrationDate, gst_RegistrationDate),
         comp_pan_type = ISNULL(@comp_pan_type, comp_pan_type),
         comp_pan_status = ISNULL(@comp_pan_status, comp_pan_status),
+        Industry_Type = ISNULL(@Industry_Type, Industry_Type),
         Update_Flag = 1
     WHERE Comp_ID = @Comp_ID;
 

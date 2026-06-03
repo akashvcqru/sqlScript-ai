@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[Tbl_Login_History]    Script Date: 3/2/2026 12:27:12 PM ******/
+/****** Object:  Table [dbo].[Tbl_Login_History]    Script Date: 3/2/2026 12:27:12 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -14,6 +14,8 @@ CREATE TABLE [dbo].[Tbl_Login_History](
 	[OperatingSystem] [varchar](200) NULL,
 	[IsSuccess] [bit] NULL,
 	[Message] [varchar](200) NULL,
+	[Latitude] [varchar](50) NULL,
+	[Longitude] [varchar](50) NULL,
 PRIMARY KEY CLUSTERED 
 (
 	[Id] ASC
