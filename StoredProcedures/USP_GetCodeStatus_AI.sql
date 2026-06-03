@@ -289,12 +289,13 @@ BEGIN
                 MS.ServiceName,
                 ss.DateFrom AS ServiceAssignDate,
                 @ExpireCodeDate AS CodeExpiryDate,
-                pr.Pro_Name,
+                PE.Pro_Name AS Pro_Name,
                 CASE WHEN MC.Use_Count >= 1 THEN 'Used' ELSE 'Un Used' END AS CodeCheckStatus,
                 PE.Enq_Date,
                 (SELECT COUNT(1) FROM pfl_codecheckData WHERE Code1V = @RecievedCode1 AND Code2V = @RecievedCode2) AS CodeCheckCount,
                 @CodeServiceSetingStatus AS CodeActiveStatus,
-                CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points
+                CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points,
+                ISNULL(NULLIF(PE.Batch_No, ''), 'Not Assigned') AS Batch_No
             FROM pfl_codecheckData PE WITH (NOLOCK)
             INNER JOIN M_Code_PFL mc WITH (NOLOCK)
                 ON mc.Code1 = PE.Code1V
@@ -330,12 +331,13 @@ BEGIN
                 MS.ServiceName,
                 ss.DateFrom AS ServiceAssignDate,
                 @ExpireCodeDate AS CodeExpiryDate,
-                pr.Pro_Name,
+                pr.Pro_Name AS Pro_Name,
                 CASE WHEN MC.Use_Count >= 1 THEN 'Used' ELSE 'Un Used' END AS CodeCheckStatus,
                 PE.Enq_Date,
                 (SELECT COUNT(1) FROM Pro_Enq WHERE Received_Code1 = @RecievedCode1 AND Received_Code2 = @RecievedCode2) AS CodeCheckCount,
                 @CodeServiceSetingStatus AS CodeActiveStatus,
-                CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points
+                CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points,
+                ISNULL(NULLIF(mc.Batch_No, ''), 'Not Assigned') AS Batch_No
             FROM Pro_Enq PE WITH (NOLOCK)
             INNER JOIN M_Code mc WITH (NOLOCK)
                 ON mc.Code1 = PE.Received_Code1

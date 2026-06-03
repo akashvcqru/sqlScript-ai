@@ -207,45 +207,84 @@ BEGIN
     ---------------------------------------------------------
     IF (@Type IS NULL OR @Type = '' OR @Type = 'SUMMARY')
     BEGIN
-        SELECT TOP 1
-            ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS ThirteenDigitCode,
-            MS.ServiceName,
-            ss.DateFrom AS ServiceAssignDate,
-            ss.DateTo AS CodeExpiryDate,
-            pr.Pro_Name,
-            CASE WHEN MC.Use_Count >= 1 THEN 'Used' ELSE 'Un Used' END AS CodeCheckStatus,
-            PE.Enq_Date,
-            (SELECT COUNT(1) FROM Pro_Enq WHERE Received_Code1 = @RecievedCode1 AND Received_Code2 = @RecievedCode2) AS CodeCheckCount,
-            CASE WHEN sst.IsActive = 1 AND ss.IsActive = 1 AND ss.IsDelete = 0 AND sst.IsDelete = 0 THEN 'Active' ELSE 'In Active' END AS CodeActiveStatus,
-            CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points
-        FROM Pro_Enq PE
-        INNER JOIN (
-            SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code WHERE @ActualCompId <> 'Comp-1693'
-            UNION ALL
-            SELECT Pro_ID, Code1, Code2, Series_Order, Series_Serial, Use_Count FROM M_Code_PFL WHERE @ActualCompId = 'Comp-1693'
-        ) mc 
-            ON mc.Code1 = PE.Received_Code1
-           AND mc.Code2 = PE.Received_Code2
-        INNER JOIN Pro_Reg pr 
-            ON pr.Pro_ID = mc.Pro_ID      
-        INNER JOIN M_ServiceSubscription ss 
-            ON ss.Pro_ID = pr.Pro_ID
-            AND CONCAT(
-                FORMAT(mc.Series_Order, '000#'),
-                FORMAT(mc.Series_Serial, '000#')
-            )
-            BETWEEN 
-            CONCAT(FORMAT(ss.start_order, '000#'), FORMAT(ss.start_series, '000#'))
-            AND 
-            CONCAT(FORMAT(ss.end_order, '000#'), FORMAT(ss.end_series, '000#'))
-        LEFT JOIN M_ServiceSubscriptionTrans sst
-            ON sst.Subscribe_Id = ss.Subscribe_Id
-        INNER JOIN M_Service MS 
-            ON MS.Service_ID = ss.Service_ID
-        WHERE PE.Received_Code1 = @RecievedCode1
-          AND PE.Received_Code2 = @RecievedCode2
-          AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))       
-        ORDER BY PE.Enq_Date DESC;
+        IF @ActualCompId = 'Comp-1693'
+        BEGIN
+            SELECT TOP 1
+                ISNULL(PE.Code1V, '') + ISNULL(PE.Code2V, '') AS ThirteenDigitCode,
+                MS.ServiceName,
+                ss.DateFrom AS ServiceAssignDate,
+                ss.DateTo AS CodeExpiryDate,
+                PE.Pro_Name AS Pro_Name,
+                CASE WHEN MC.Use_Count >= 1 THEN 'Used' ELSE 'Un Used' END AS CodeCheckStatus,
+                PE.Enq_Date,
+                (SELECT COUNT(1) FROM pfl_codecheckData WHERE Code1V = @RecievedCode1 AND Code2V = @RecievedCode2) AS CodeCheckCount,
+                CASE WHEN sst.IsActive = 1 AND ss.IsActive = 1 AND ss.IsDelete = 0 AND sst.IsDelete = 0 THEN 'Active' ELSE 'In Active' END AS CodeActiveStatus,
+                CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points,
+                ISNULL(NULLIF(PE.Batch_No, ''), 'Not Assigned') AS Batch_No
+            FROM pfl_codecheckData PE WITH (NOLOCK)
+            INNER JOIN M_Code_PFL mc WITH (NOLOCK)
+                ON mc.Code1 = PE.Code1V
+               AND mc.Code2 = PE.Code2V
+            INNER JOIN Pro_Reg pr WITH (NOLOCK)
+                ON pr.Pro_ID = mc.Pro_ID      
+            INNER JOIN M_ServiceSubscription ss WITH (NOLOCK)
+                ON ss.Pro_ID = pr.Pro_ID
+                AND CONCAT(
+                    FORMAT(mc.Series_Order, '000#'),
+                    FORMAT(mc.Series_Serial, '000#')
+                )
+                BETWEEN 
+                CONCAT(FORMAT(ss.start_order, '000#'), FORMAT(ss.start_series, '000#'))
+                AND 
+                CONCAT(FORMAT(ss.end_order, '000#'), FORMAT(ss.end_series, '000#'))
+            LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK)
+                ON sst.Subscribe_Id = ss.Subscribe_Id
+            INNER JOIN M_Service MS WITH (NOLOCK)
+                ON MS.Service_ID = ss.Service_ID
+            WHERE PE.Code1V = @RecievedCode1
+              AND PE.Code2V = @RecievedCode2
+              AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))       
+            ORDER BY PE.Enq_Date DESC;
+        END
+        ELSE
+        BEGIN
+            SELECT TOP 1
+                ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS ThirteenDigitCode,
+                MS.ServiceName,
+                ss.DateFrom AS ServiceAssignDate,
+                ss.DateTo AS CodeExpiryDate,
+                pr.Pro_Name AS Pro_Name,
+                CASE WHEN MC.Use_Count >= 1 THEN 'Used' ELSE 'Un Used' END AS CodeCheckStatus,
+                PE.Enq_Date,
+                (SELECT COUNT(1) FROM Pro_Enq WHERE Received_Code1 = @RecievedCode1 AND Received_Code2 = @RecievedCode2) AS CodeCheckCount,
+                CASE WHEN sst.IsActive = 1 AND ss.IsActive = 1 AND ss.IsDelete = 0 AND sst.IsDelete = 0 THEN 'Active' ELSE 'In Active' END AS CodeActiveStatus,
+                CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points,
+                ISNULL(NULLIF(mc.Batch_No, ''), 'Not Assigned') AS Batch_No
+            FROM Pro_Enq PE WITH (NOLOCK)
+            INNER JOIN M_Code mc WITH (NOLOCK)
+                ON mc.Code1 = PE.Received_Code1
+               AND mc.Code2 = PE.Received_Code2
+            INNER JOIN Pro_Reg pr WITH (NOLOCK)
+                ON pr.Pro_ID = mc.Pro_ID      
+            INNER JOIN M_ServiceSubscription ss WITH (NOLOCK)
+                ON ss.Pro_ID = pr.Pro_ID
+                AND CONCAT(
+                    FORMAT(mc.Series_Order, '000#'),
+                    FORMAT(mc.Series_Serial, '000#')
+                )
+                BETWEEN 
+                CONCAT(FORMAT(ss.start_order, '000#'), FORMAT(ss.start_series, '000#'))
+                AND 
+                CONCAT(FORMAT(ss.end_order, '000#'), FORMAT(ss.end_series, '000#'))
+            LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK)
+                ON sst.Subscribe_Id = ss.Subscribe_Id
+            INNER JOIN M_Service MS WITH (NOLOCK)
+                ON MS.Service_ID = ss.Service_ID
+            WHERE PE.Received_Code1 = @RecievedCode1
+              AND PE.Received_Code2 = @RecievedCode2
+              AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))       
+            ORDER BY PE.Enq_Date DESC;
+        END
     END
 END
 GO
