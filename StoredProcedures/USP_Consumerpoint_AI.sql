@@ -1,10 +1,11 @@
 USE [Vcqru]
 GO
+/****** Object:  StoredProcedure [dbo].[USP_Consumerpoint_AI]    Script Date: 5/20/2026 7:28:19 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [dbo].[USP_Consumerpoint_AI]
+ALTER   PROCEDURE [dbo].[USP_Consumerpoint_AI]
 @CompId varchar(50),
 @M_Consumerid varchar(50)
 AS
@@ -45,9 +46,14 @@ BEGIN
           AND SS.IsActive = 1 AND SS.IsDelete = 0
           AND SST.IsActive = 1 AND SST.IsDelete = 0
           AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
-          AND CONCAT(FORMAT(M.Series_Order, '000#'), FORMAT(M.Series_Serial, '000#')) 
-              BETWEEN CONCAT(FORMAT(SS.start_order, '000#'), FORMAT(SS.start_series, '000#')) 
-                  AND CONCAT(FORMAT(SS.end_order, '000#'), FORMAT(SS.end_series, '000#'))
+          AND (
+              M.Series_Order > SS.start_order 
+              OR (M.Series_Order = SS.start_order AND M.Series_Serial >= SS.start_series)
+          )
+          AND (
+              M.Series_Order < SS.end_order 
+              OR (M.Series_Order = SS.end_order AND M.Series_Serial <= SS.end_series)
+          )
         GROUP BY M.Row_ID
     ) t;
 
@@ -57,7 +63,7 @@ BEGIN
     FROM BLoyaltyPointsEarned
     WHERE M_Consumerid = @M_Consumerid 
       AND (compid = @CompId OR (@CompId IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567')))
-      AND ServiceName IN ('Referral', 'KYCRewards');
+      AND ServiceName IN ('Referral', 'KYCRewards', 'InvoiceBenifit', 'InvoiceRewards');
 
     -- 3. Extra Amount for specific company (if still needed)
     DECLARE @ExtraAmount DECIMAL(18,2) = 0;

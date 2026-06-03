@@ -38,7 +38,11 @@ BEGIN
             b.Gift_desc,       
             b.Gift_image,       
             b.gift_id,       
-            a.Row_id AS claimid         
+            a.Row_id AS claimid,
+            a.SupervisorValue,
+            a.SupervisorGet,
+            a.SupervisorValueType,
+            a.SupervisorMobileNo
         FROM ClaimDetails a        
         INNER JOIN Claim_gift b ON a.Gift_id = b.gift_id       
         WHERE a.Comp_id = b.CompID       
@@ -59,7 +63,11 @@ BEGIN
             '' AS Gift_desc,       
             'images/Gift/new/Cash_transfer.png' AS Gift_image,       
             '' AS gift_id,       
-            Row_id AS claimid         
+            Row_id AS claimid,
+            SupervisorValue,
+            SupervisorGet,
+            SupervisorValueType,
+            SupervisorMobileNo
         FROM ClaimDetails       
         WHERE Gift_id IS NULL      
           AND Mobileno = @Mobileno       

@@ -33,6 +33,7 @@ CREATE TABLE [dbo].[BrandSettings_AI](
 	[Multiuserregistrationfield] [nvarchar](max) NULL,
 	[Dashboardiconsmultiuser] [nvarchar](max) NULL,
 	[InvoiceAmountPercentage] [decimal](18, 2) NULL,
+	[ClaimDateSetting] [nvarchar](max) NULL,
  CONSTRAINT [PK__BrandSet_AI] PRIMARY KEY CLUSTERED 
 (
 	[row_ID] ASC

@@ -17,10 +17,17 @@ AS
 BEGIN
     SET NOCOUNT ON;
 	DECLARE @UserTypeName VARCHAR(50);
+	DECLARE @UserTypeInt INT = TRY_CAST(@UserType AS INT);
 
-	    SELECT @UserTypeName = User_Type 
+	IF (@UserTypeInt IS NULL)
+	BEGIN
+		SELECT 'Please Select Valid User Type' AS Status;
+		RETURN;
+	END
+
+	SELECT @UserTypeName = User_Type 
     FROM User_Type 
-    WHERE Row_id = @UserType;
+    WHERE Row_id = @UserTypeInt;
 
 	IF (@Comp_id <> 'Comp-1152' OR @DealerCode IS   NULL OR LTRIM(RTRIM(@DealerCode)) = '')
     BEGIN
@@ -117,11 +124,11 @@ BEGIN
           END
        	   UPDATE M_Consumer
            SET 
-               Vrkabel_User_Type = @UserType
+               Vrkabel_User_Type = @UserTypeInt
            WHERE M_ConsumerID = @ConsumerId;
        	 UPDATE tbl_Vendorvisekycstatus
            SET 
-               Vrkabel_User_Type = @UserType
+               Vrkabel_User_Type = @UserTypeInt
            WHERE M_ConsumerID = @ConsumerId; 
 		   select 'Success' as Status
        	  return
@@ -152,11 +159,11 @@ BEGIN
     BEGIN
 	     UPDATE M_Consumer
          SET 
-             Vrkabel_User_Type = @UserType
+             Vrkabel_User_Type = @UserTypeInt
          WHERE M_ConsumerID = @ConsumerId;
 	     UPDATE tbl_Vendorvisekycstatus
          SET 
-            Vrkabel_User_Type = @UserType
+            Vrkabel_User_Type = @UserTypeInt
           WHERE M_ConsumerID = @ConsumerId;
 
 
@@ -295,11 +302,11 @@ BEGIN
     SET 
         distributorID = @DealerCode,
         employeeID = @TechMasterId,
-        Vrkabel_User_Type = @UserType
+        Vrkabel_User_Type = @UserTypeInt
     WHERE M_ConsumerID = @ConsumerId;
 	UPDATE tbl_Vendorvisekycstatus
     SET 
-        Vrkabel_User_Type = @UserType
+        Vrkabel_User_Type = @UserTypeInt
     WHERE M_ConsumerID = @ConsumerId;
 
     SELECT 'Success' AS Status;

@@ -42,9 +42,14 @@ BEGIN
           AND SS.IsActive = 1 AND SS.IsDelete = 0
           AND SST.IsActive = 1 AND SST.IsDelete = 0
           AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
-          AND CONCAT(FORMAT(M.Series_Order, '000#'), FORMAT(M.Series_Serial, '000#')) 
-              BETWEEN CONCAT(FORMAT(SS.start_order, '000#'), FORMAT(SS.start_series, '000#')) 
-                  AND CONCAT(FORMAT(SS.end_order, '000#'), FORMAT(SS.end_series, '000#'))
+          AND (
+              M.Series_Order > SS.start_order 
+              OR (M.Series_Order = SS.start_order AND M.Series_Serial >= SS.start_series)
+          )
+          AND (
+              M.Series_Order < SS.end_order 
+              OR (M.Series_Order = SS.end_order AND M.Series_Serial <= SS.end_series)
+          )
         GROUP BY M.Row_ID, PR.Brand_Code
     ) t
 	GROUP BY Brand_Code;

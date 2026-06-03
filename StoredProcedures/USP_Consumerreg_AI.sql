@@ -11,6 +11,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_Consumerreg_AI]
     @IsActive BIT,        
     @IsDelete BIT,     
 	@Comp_id nvarchar(100)=null,
+	@Addedfrom INT = NULL,
     @User_ID NVARCHAR(50) OUTPUT,        
     @M_Consumerid NVARCHAR(50) OUTPUT        
 AS        
@@ -28,9 +29,9 @@ BEGIN
     EXEC GetCodeGenValue 'Consumer', @User_ID OUTPUT;        
        
     INSERT INTO [M_Consumer]       
-        ([User_ID],[Comp_ID], MobileNo, [Password], [Entry_Date], [IsActive], [IsDelete])        
+        ([User_ID],[Comp_ID], MobileNo, [Password], [Entry_Date], [IsActive], [IsDelete], Addedfrom)        
     VALUES       
-        (@User_ID, @Comp_id, @MobileNo, @Password, ISNULL(@Entry_Date, GETDATE()), @IsActive, @IsDelete);        
+        (@User_ID, @Comp_id, @MobileNo, @Password, ISNULL(@Entry_Date, GETDATE()), @IsActive, @IsDelete, @Addedfrom);        
       
     SET @M_Consumerid = CAST(SCOPE_IDENTITY() AS NVARCHAR(50));     
 	

@@ -29,7 +29,7 @@ BEGIN
                 FROM BLoyaltyPointsEarned 
                 WHERE M_Consumerid = @M_consumerid 
                   AND compid = @Compid 
-                  AND ServiceName = 'Referral'
+                  AND ServiceName IN ('Referral', 'InvoiceBenifit', 'InvoiceRewards')
             ), 0)
         ) AS point,
         (
@@ -491,7 +491,7 @@ SELECT COALESCE(SUM(CAST(bp.Points AS INT)), 0) +
            (SELECT COALESCE(SUM(CAST(bp2.Points AS INT)), 0)
             FROM BLoyaltyPointsEarned bp2
             WHERE bp2.M_Consumerid = @M_Consumerid AND (bp2.compid = @CompId   or (@compid IN ('Comp-1650', 'Comp-1567') and bp2.compid IN ('Comp-1650', 'Comp-1567') )) 
-			AND bp2.ServiceName in ('Referral') 
+			AND bp2.ServiceName in ('Referral', 'InvoiceBenifit', 'InvoiceRewards') 
            ), 0
        ) + isnull((select points from BLoyaltyPointsEarned bp3 where bp3.M_Consumerid = @M_consumerid and bp3.ServiceName = 'KYCRewards'),0) AS TotalPoints
 FROM BLoyaltyPointsEarned bp
