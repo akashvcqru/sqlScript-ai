@@ -81,7 +81,8 @@ BEGIN
         ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS UniqueCode,
         PE.MobileNo,
         ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
-        pr.Pro_Name
+        pr.Pro_Name,
+        ISNULL(PE.IsVerified, 0) AS ImageVerified
     INTO #FinalData
     FROM Pro_Enq PE
     INNER JOIN (

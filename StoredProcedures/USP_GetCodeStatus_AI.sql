@@ -156,12 +156,13 @@ BEGIN
         MobileNo VARCHAR(50),
         Dial_Mode VARCHAR(50),
         ExpireCodeDate DATETIME,
-        CodeServiceSetingStatus VARCHAR(20)
+        CodeServiceSetingStatus VARCHAR(20),
+        ImageVerified INT
     );
 
     IF @ActualCompId = 'Comp-1693'
     BEGIN
-        INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, ExpireCodeDate, CodeServiceSetingStatus)
+        INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, ExpireCodeDate, CodeServiceSetingStatus, ImageVerified)
         SELECT
             CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
             CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
@@ -171,7 +172,8 @@ BEGIN
             PE.MobileNo,
             ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
             @ExpireCodeDate AS ExpireCodeDate,
-            @CodeServiceSetingStatus AS CodeServiceSetingStatus
+            @CodeServiceSetingStatus AS CodeServiceSetingStatus,
+            ISNULL(PE.IsVerified, 0) AS ImageVerified
         FROM (
             SELECT 
                 Code1V AS Received_Code1,
@@ -180,6 +182,7 @@ BEGIN
                 Enq_Date,
                 MobileNo,
                 Dial_Mode,
+                IsVerified,
                 ROW_NUMBER() OVER (
                     PARTITION BY Code1V, Code2V, CASE WHEN Status = 'Authenticate' THEN 1 WHEN Status = 'Re-Authenticate' THEN 2 ELSE 0 END 
                     ORDER BY Enq_Date ASC
@@ -199,7 +202,7 @@ BEGIN
     END
     ELSE
     BEGIN
-        INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, ExpireCodeDate, CodeServiceSetingStatus)
+        INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, ExpireCodeDate, CodeServiceSetingStatus, ImageVerified)
         SELECT
             CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
             CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END ELSE 0 END AS DECIMAL(18,2)) AS Points,
@@ -209,7 +212,8 @@ BEGIN
             PE.MobileNo,
             ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
             @ExpireCodeDate AS ExpireCodeDate,
-            @CodeServiceSetingStatus AS CodeServiceSetingStatus
+            @CodeServiceSetingStatus AS CodeServiceSetingStatus,
+            ISNULL(PE.IsVerified, 0) AS ImageVerified
         FROM (
             SELECT *,
                    ROW_NUMBER() OVER (
