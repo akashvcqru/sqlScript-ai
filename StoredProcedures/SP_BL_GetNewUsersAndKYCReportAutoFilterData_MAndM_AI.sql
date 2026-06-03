@@ -1,4 +1,6 @@
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData_MAndM_AI]    Script Date: 3/2/2026 12:27:18 PM ******/
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData_MAndM_AI]    Script Date: 5/19/2026 2:46:37 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -26,6 +28,18 @@ BEGIN
    SET NOCOUNT ON;
 
     ------------------------------------------------------
+    -- SBU Company Check Logic
+    ------------------------------------------------------
+    DECLARE @ActualCompId VARCHAR(15) = @Comp_Id;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
+
+    ------------------------------------------------------
     -- Pagination Defaults
     ------------------------------------------------------
     IF @Page IS NULL OR @Page <= 0 SET @Page = 1;
@@ -38,7 +52,7 @@ BEGIN
     -- Date Range
     ------------------------------------------------------
     DECLARE @CompanyStartDate DATETIME;
-    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @ActualCompId AND Status = 1;
 
     DECLARE @StartDate DATE = NULL;
     DECLARE @EndDate   DATE = NULL;
@@ -52,6 +66,18 @@ BEGIN
         SET @datePreset = NULL;
     ELSE
         SET @datePreset = UPPER(LTRIM(RTRIM(@datePreset)));
+
+    -- Normalize KYCStatusFilter
+    IF @KYCStatusFilter IS NOT NULL
+    BEGIN
+        SET @KYCStatusFilter = UPPER(LTRIM(RTRIM(@KYCStatusFilter)));
+        IF @KYCStatusFilter IN ('1', 'APPROVED', 'APPROVE')
+            SET @KYCStatusFilter = 'APPROVED';
+        ELSE IF @KYCStatusFilter IN ('2', 'REJECTED', 'REJECT')
+            SET @KYCStatusFilter = 'REJECTED';
+        ELSE IF @KYCStatusFilter IN ('0', 'PENDING', '3')
+            SET @KYCStatusFilter = 'PENDING';
+    END
 
     -- Explicit date range overrides datePreset
     IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
@@ -118,13 +144,37 @@ BEGIN
         END
     END
 
+	IF OBJECT_ID('tempdb..#TempDealerMaster') IS NOT NULL
+    DROP TABLE #TempDealerMaster;
+	SELECT 
+    DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType
+INTO #TempDealerMaster
+FROM
+(
+    SELECT  DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType 
+    FROM m_dealermaster 
+    WHERE Comp_id = @ActualCompId 
+      AND (
+            (@IsSBUTeam = 0 AND DealerCode != 'SBUTEAM') OR
+            (@IsSBUTeam = 1 AND DealerCode = 'SBUTEAM')
+          )
+    UNION
+    SELECT  DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType FROM m_dealermaster_mahindra_emp where Comp_id = @ActualCompId
+) AS A;
+
 
     ------------------------------------------------------
     -- Base WHERE clause
     ------------------------------------------------------
     DECLARE @BaseWhere NVARCHAR(MAX) = N'
         WHERE VKS.Comp_ID = @Comp_Id
-          AND MC.IsDelete = 0';
+          AND VKS.rn = 1
+          AND MC.IsDelete = 0
+		  AND MC.distributorID is not null
+          AND (
+                (' + CAST(@IsSBUTeam AS VARCHAR(1)) + ' = 0 AND (MC.distributorID != ''SBUTEAM'' OR MC.distributorID IS NULL)) OR
+                (' + CAST(@IsSBUTeam AS VARCHAR(1)) + ' = 1 AND MC.distributorID = ''SBUTEAM'')
+              )';
 
     IF @StartDate IS NOT NULL
         SET @BaseWhere += N' AND CAST(VKS.Entry_Date AS DATE) BETWEEN @StartDate AND @EndDate';
@@ -134,7 +184,7 @@ BEGIN
         AND (
             (@KYCStatusFilter = ''APPROVED'' AND VKS.VRKbl_KYC_status = 1) OR
             (@KYCStatusFilter = ''REJECTED'' AND VKS.VRKbl_KYC_status = 2) OR
-            (@KYCStatusFilter = ''PENDING'' AND (VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL))
+            (@KYCStatusFilter = ''PENDING'' AND (VKS.VRKbl_KYC_status NOT IN (1, 2) OR VKS.VRKbl_KYC_status IS NULL))
         )';
 
     IF @StateFilter IS NOT NULL AND LTRIM(RTRIM(@StateFilter)) <> ''
@@ -149,58 +199,35 @@ BEGIN
     ------------------------------------------------------
     -- Data Query
     ------------------------------------------------------
+ 
     DECLARE @SQLData NVARCHAR(MAX) = N'
     SELECT
         MC.ConsumerName,
         MC.MobileNo,
-        MC.Email,
         MC.City,
-        MC.cin_number,
-        MC.ref_cin_number,
         MC.PinCode,
-        MC.[State] AS state,
-        MC.Other_Role,
-
-        -- Determine User Type based on Vrkabel_User_Type
-        CASE
-            WHEN MC.Vrkabel_User_Type = ''1'' THEN ''Agent''
-            WHEN MC.Vrkabel_User_Type = ''2'' THEN ''Distributor''
-            WHEN MC.Vrkabel_User_Type = ''3'' THEN ''Mechanic''
-            ELSE ''Unknown''
-        END AS Vrkabel_User_Type,
-
-        -- Determine KYC Status
-        CASE 
-            WHEN VKS.VRKbl_KYC_status = 1 THEN ''Approved''
-            WHEN VKS.VRKbl_KYC_status = 2 THEN ''Rejected''
-            WHEN VKS.VRKbl_KYC_status = 3 THEN ''Send Request again''
-            ELSE ''Pending''
-        END AS VRKbl_KYC_status,
-
-        -- Legacy KYCStatus for compatibility
+        TD.D_state AS state,
+		TD.DealerLocation, TD.DealerType,
+        -- KYC Status
         CASE 
             WHEN VKS.VRKbl_KYC_status = 1 THEN ''KYC Approved''
             WHEN VKS.VRKbl_KYC_status = 2 THEN ''KYC Rejected''
+            WHEN VKS.VRKbl_KYC_status = 3 THEN ''Send Request again''
             ELSE ''KYC Pending''
         END AS KYCStatus,
 
         -- KYC channel-wise statuses
         CASE WHEN MC.panekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.panekycStatus, '''') END AS panekycStatus,
-        CASE WHEN MC.aadharkycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.aadharkycStatus, '''') END AS aadharkycStatus,
         CASE WHEN MC.bankekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
-        MC.dob,
-        MC.aadharNumber,
         MC.pancard_number,
-        MC.gst_number,
-        MC.gender,
-        MC.aadharFile,
-        MC.aadharback,
-        MC.pan_card_file,
-        MC.shop_file,
-        MC.AddressProof,
-        VKS.kycremark AS remark,
-        VKS.kycremark, -- Keep original name too
+        VKS.kycremark,
+
+        -- Mahindra Specific Fields
+        MC.employeeID AS techmasterID,
+        MC.MstarID,
+        MC.distributorID AS Dealercode,
+        MC.designation AS Designation,
 
         -- Bank Information (Latest Bank Record)
         MB.[Bank_Name] AS bankName,
@@ -208,22 +235,16 @@ BEGIN
         MB.Account_No,
         MB.Branch,
         MB.IFSC_Code,
-        MB.passbook_source AS passBook,
-        MB.chkPassbook,
-
-        -- Shop Information (Workplace Address)
-        MC.Shop_address AS Workplacestate,
 
         -- Additional Details
-        MC.UPIId,
-        MC.UpiidImage,
-        MC.Selfie_image,
-        MC.UPIKYCSTATUS,
-        MC.teslapayoutmode,
         VKS.Entry_Date,
         MC.M_Consumerid
-    FROM tbl_Vendorvisekycstatus VKS
+    FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
+        FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+    ) VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
+	LEFT JOIN #TempDealerMaster TD ON MC.employeeID=TD.DealerTechnicianId AND MC.distributorID=TD.DealerCode
     OUTER APPLY (
         SELECT TOP 1 *
         FROM M_BankAccount MB
@@ -249,7 +270,10 @@ BEGIN
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM tbl_Vendorvisekycstatus VKS
+        FROM (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
+            FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+        ) VKS
         INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
         ' + @BaseWhere;
     END
@@ -272,7 +296,7 @@ BEGIN
                 @Limit INT,
                 @Page INT
             ',
-            @Comp_Id,
+            @ActualCompId,
             @StartDate,
             @EndDate,
             @KYCStatusFilter,
@@ -300,7 +324,7 @@ BEGIN
                 @Limit INT,
                 @Page INT
             ',
-            @Comp_Id,
+            @ActualCompId,
             @StartDate,
             @EndDate,
             @KYCStatusFilter,
@@ -311,4 +335,3 @@ BEGIN
             @Page;
     END
 END
-GO

@@ -248,24 +248,56 @@ BEGIN
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#CodeConfigPoints') IS NOT NULL DROP TABLE #CodeConfigPoints;
 
+    WITH RankedConfig AS (
+        SELECT 
+            MC.M_Codeid,
+            SS.Service_ID,
+            SST.Frequency,
+            CAST(
+                CASE 
+                    WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
+                    ELSE CASE WHEN SST.Points IS NULL OR SST.Points = 0 THEN ISNULL(SST.IsCash, 0) ELSE SST.Points END
+                END 
+            AS DECIMAL(18,2)) AS ConfigPoints,
+            ROW_NUMBER() OVER (
+                PARTITION BY MC.M_Codeid, SS.Service_ID 
+                ORDER BY SST.Entry_Date DESC, SST.SST_Id DESC
+            ) AS rn_service,
+            SST.Entry_Date,
+            SST.SST_Id
+        FROM #MCode MC
+        INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = MC.Pro_ID
+        INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+        WHERE SS.Comp_ID = @Comp_Id 
+          AND SS.IsActive = 1 AND SS.IsDelete = 0
+          AND SST.IsActive = 1 AND SST.IsDelete = 0
+          AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
+          AND (MC.Series_Order > SS.start_order OR (MC.Series_Order = SS.start_order AND MC.Series_Serial >= SS.start_series))
+          AND (MC.Series_Order < SS.end_order OR (MC.Series_Order = SS.end_order AND MC.Series_Serial <= SS.end_series))
+    ),
+    UniqueServiceConfig AS (
+        SELECT * 
+        FROM RankedConfig 
+        WHERE rn_service = 1
+    ),
+    FinalRankedConfig AS (
+        SELECT 
+            M_Codeid,
+            Frequency,
+            ConfigPoints,
+            ROW_NUMBER() OVER (
+                PARTITION BY M_Codeid 
+                ORDER BY Entry_Date DESC, SST_Id DESC
+            ) AS rn_final
+        FROM UniqueServiceConfig
+    )
     SELECT 
-        MC.M_Codeid,
-        CAST(
-            CASE 
-                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
-                ELSE ISNULL(SST.Points, 0)
-            END 
-        AS DECIMAL(18,2)) AS ConfigPoints
+        M_Codeid,
+        Frequency,
+        ConfigPoints
     INTO #CodeConfigPoints
-    FROM #MCode MC
-    INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = MC.Pro_ID
-    INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
-    WHERE SS.Comp_ID = @Comp_Id 
-      AND SS.IsActive = 1 AND SS.IsDelete = 0
-      AND SST.IsActive = 1 AND SST.IsDelete = 0
-      AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
-      AND (MC.Series_Order > SS.start_order OR (MC.Series_Order = SS.start_order AND MC.Series_Serial >= SS.start_series))
-      AND (MC.Series_Order < SS.end_order OR (MC.Series_Order = SS.end_order AND MC.Series_Serial <= SS.end_series));
+    FROM FinalRankedConfig
+    WHERE rn_final = 1;
 
     CREATE INDEX IX_CodeConfigPoints_MCodeid ON #CodeConfigPoints(M_Codeid);
 
@@ -279,8 +311,6 @@ BEGIN
             E.Enq_Date,
             E.Dial_Mode,
             MC.ConsumerName,
-            --MC.MobileNo,
-			--case when LEN(MC.MobileNo)<10 THEN E.MobileNo ELSE MC.MobileNo END MobileNo,
 			CASE 
 				WHEN LEN(ISNULL(MC.MobileNo,'')) < 10 
 					 THEN ISNULL(E.MobileNo,'')
@@ -290,17 +320,16 @@ BEGIN
             G.City,
             PR.Pro_Name,
             CASE 
-                WHEN E.Is_Success = 1 AND E.rn = 1 THEN ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0)) 
+                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0)) 
                 ELSE 0 
             END AS Points,
             CASE 
-                WHEN E.Is_Success = 1 THEN 'Verified'
-                WHEN E.Is_Success = 2 THEN 'Already Scanned'
+                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Verified'
+                WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Already Scanned'
                 ELSE 'Invalid'
             END AS Result,
 			E.Latitude,
 			E.Longitude
-        --FROM #Enq E
 		FROM
 		(
 			SELECT *,
@@ -318,21 +347,20 @@ BEGIN
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
         WHERE
-		 E.rn = 1
-          AND  (@StateFilter IS NULL OR G.State = @StateFilter)
-            AND (
+		  (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
+          AND (@StateFilter IS NULL OR G.State = @StateFilter)
+          AND (
                 @CodeStatusFilter IS NULL OR
-                (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1) OR
-                (@CodeStatusFilter = 'Already Scanned' AND E.Is_Success = 2) OR
+                (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1)) OR
+                ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
                 (@CodeStatusFilter = 'Invalid' AND E.Is_Success NOT IN (1,2))
-            )
-            AND (
-               -- @Search IS NULL OR MC.MobileNo LIKE '%' + @Search + '%'
-			   	 @Search IS NULL
+          )
+          AND (
+				 @Search IS NULL
 				 OR LTRIM(RTRIM(@Search)) = ''
-               OR @Search IS NULL OR E.MobileNo LIKE '%' + @Search + '%'
-              OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
-            )
+				 OR E.MobileNo LIKE '%' + @Search + '%'
+				 OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
+          )
         ORDER BY E.Enq_Date DESC;
     END
     ELSE
@@ -351,12 +379,12 @@ BEGIN
             G.City,
             PR.Pro_Name,
             CASE 
-                WHEN E.Is_Success = 1 AND E.rn = 1 THEN ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0)) 
+                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0)) 
                 ELSE 0 
             END AS Points,
             CASE 
-                WHEN E.Is_Success = 1 THEN 'Verified'
-                WHEN E.Is_Success = 2 THEN 'Already Scanned'
+                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Verified'
+                WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Already Scanned'
                 ELSE 'Invalid'
             END AS Result,
 			E.Latitude,
@@ -378,18 +406,19 @@ BEGIN
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
         WHERE
-            (@StateFilter IS NULL OR G.State = @StateFilter)
+		    (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
+            AND (@StateFilter IS NULL OR G.State = @StateFilter)
             AND (
                 @CodeStatusFilter IS NULL OR
-                (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1) OR
-                (@CodeStatusFilter = 'Already Scanned' AND E.Is_Success = 2) OR
+                (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1)) OR
+                ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
                 (@CodeStatusFilter = 'Invalid' AND E.Is_Success NOT IN (1,2))
             )
             AND (
 				 @Search IS NULL
 				 OR LTRIM(RTRIM(@Search)) = ''
-               OR E.MobileNo LIKE '%' + @Search + '%'
-               OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
+				 OR E.MobileNo LIKE '%' + @Search + '%'
+				 OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
             )
         ORDER BY E.Enq_Date DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
@@ -416,19 +445,21 @@ BEGIN
             ON G.Code1 = E.Received_Code1
            AND G.Code2 = E.Received_Code2
            AND G.MobileNo = E.MobileNo
+        LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
         WHERE
-            (@StateFilter IS NULL OR G.State = @StateFilter)
+		    (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
+            AND (@StateFilter IS NULL OR G.State = @StateFilter)
             AND (
                 @CodeStatusFilter IS NULL OR
-                (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1) OR
-                (@CodeStatusFilter = 'Already Scanned' AND E.Is_Success = 2) OR
+                (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1)) OR
+                ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
                 (@CodeStatusFilter = 'Invalid' AND E.Is_Success NOT IN (1,2))
             )
             AND (
 				 @Search IS NULL
 				 OR LTRIM(RTRIM(@Search)) = ''
-               OR E.MobileNo LIKE '%' + @Search + '%'
-               OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
+				 OR E.MobileNo LIKE '%' + @Search + '%'
+				 OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
             );
     END
 END

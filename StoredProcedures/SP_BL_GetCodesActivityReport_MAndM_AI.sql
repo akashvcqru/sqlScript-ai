@@ -11,7 +11,8 @@ GO
 -- exec [dbo].[SP_BL_GetCodesActivityReport_MAndM_AI] 'Comp-1152','MONTH',null,null,null,null,1,10,0
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_MAndM_AI]
 (
-    @CompId NVARCHAR(15),
+    @Comp_Id NVARCHAR(15) = NULL,
+    @CompId NVARCHAR(15) = NULL,
     @datePreset NVARCHAR(20) = NULL,
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
@@ -27,6 +28,22 @@ CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_MAndM_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -- Normalize company ID parameter name
+    IF @Comp_Id IS NULL AND @CompId IS NOT NULL
+        SET @Comp_Id = @CompId;
+
+    ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(15) = @Comp_Id;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
 
     ---------------------------------------------------------
     -- Normalize
@@ -74,7 +91,7 @@ BEGIN
         IF (@Win = 'TODAY')
             SET @StartDate = @EndDate;
 
-        ELSE IF (@Win = 'YESTERDAY')
+        ELSE IF (@Win = 'YESTERDAY' OR @Win = 'LASTDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, @EndDate);
             SET @EndDate   = DATEADD(DAY, -1, @EndDate);
@@ -127,11 +144,11 @@ BEGIN
         pc.Comp_id,
         pc.M_ConsumerId,
         pc.Enq_Date,
-        pc.Pro_Name,
+        ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name) AS Pro_Name,
         pc.Code1,
         pc.Code2,
         CONCAT(pc.Code1, pc.Code2) AS uniquecode,
-        pc.Cash AS amount_won,
+        CASE WHEN pc.Points IS NULL OR pc.Points = 0 THEN ISNULL(pc.Cash, 0) ELSE pc.Points END AS amount_won,
         CASE 
             WHEN pc.Is_Success = 1 THEN 'Verified'
             WHEN pc.Is_Success = 2 THEN 'Already Scanned'
@@ -179,17 +196,23 @@ BEGIN
     FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
     LEFT JOIN dbo.UserData_MHCroneJob mc WITH (NOLOCK) ON mc.m_consumerid = pc.m_consumerid
     LEFT JOIN dbo.GeoLocationData gc WITH (NOLOCK) ON gc.Code1 = pc.Code1 AND gc.Code2 = pc.Code2
+    LEFT JOIN dbo.M_Code mcd WITH (NOLOCK) ON mcd.Code1 = pc.Code1 AND mcd.Code2 = pc.Code2
+    LEFT JOIN dbo.Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mcd.Pro_ID
     WHERE
-        pc.Comp_Id = @CompId
+        pc.Comp_Id = @ActualCompId
+        AND (
+            (@IsSBUTeam = 0 AND (pc.distributedid <> 'SBUTEAM' OR pc.distributedid IS NULL) AND (mc.DealerCode <> 'SBUTEAM' OR mc.DealerCode IS NULL)) OR
+            (@IsSBUTeam = 1 AND (pc.distributedid = 'SBUTEAM' OR mc.DealerCode = 'SBUTEAM'))
+        )
         AND (@StartDate IS NULL OR pc.Enq_Date >= @StartDate)
         AND (@EndDate IS NULL OR pc.Enq_Date < DATEADD(DAY, 1, @EndDate))
-        AND (@Scheme IS NULL OR pc.Pro_Name LIKE '%' + @Scheme + '%')
+        AND (@Scheme IS NULL OR ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name) LIKE '%' + @Scheme + '%')
         AND (@DialModeFilter IS NULL OR pc.Dial_Mode = @DialModeFilter)
         AND (@StateFilter IS NULL OR gc.State = @StateFilter)
         AND (
             @CodeStatusFilter IS NULL
             OR (@CodeStatusFilter = 'Verified' AND pc.Is_Success = 1)
-            OR (@CodeStatusFilter = 'Already Scanned' AND pc.Is_Success = 2)
+            OR ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND pc.Is_Success = 2)
             OR (@CodeStatusFilter = 'Invalid' AND pc.Is_Success NOT IN (1,2))
         )
         AND (

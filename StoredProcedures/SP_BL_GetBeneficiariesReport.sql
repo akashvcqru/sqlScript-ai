@@ -227,7 +227,7 @@ BEGIN
         MAX(CAST(
             CASE 
                 WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
-                ELSE ISNULL(SST.Points, 0)
+                ELSE CASE WHEN SST.Points IS NULL OR SST.Points = 0 THEN ISNULL(SST.IsCash, 0) ELSE SST.Points END
             END 
         AS DECIMAL(18,2))) AS ConfigPoints
     INTO #ConfigPoints

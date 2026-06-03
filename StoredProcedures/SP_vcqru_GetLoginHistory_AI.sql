@@ -71,7 +71,6 @@ BEGIN
     BEGIN
         SELECT 
             Email,
-            Comp_ID,
             LoginTime,
             IPAddress,
             BrowserInfo,
@@ -106,7 +105,6 @@ BEGIN
     ----------------------------------------------------
     SELECT 
         Email,
-        Comp_ID,
         LoginTime,
         IPAddress,
         BrowserInfo,

@@ -18,6 +18,18 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    ---------------------------------------------------------
+    -- SBU Company Check Logic
+    ---------------------------------------------------------
+    DECLARE @ActualCompId NVARCHAR(50) = @CompId;
+    DECLARE @IsSBUTeam INT = 0;
+
+    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM')
+    BEGIN
+        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @CompId AND SubCompTypeType = 'SBUTEAM';
+        SET @IsSBUTeam = 1;
+    END
+
     DECLARE 
         @StartDate DATE,
         @EndDate DATE,
@@ -39,7 +51,7 @@ BEGIN
     DECLARE @CompRegDate DATE;
     SELECT TOP 1 @CompRegDate = CAST(Reg_Date AS DATE) 
     FROM Comp_Reg WITH (NOLOCK) 
-    WHERE Comp_ID = @CompId AND Status = 1;
+    WHERE Comp_ID = @ActualCompId AND Status = 1;
 
     IF @CompRegDate IS NULL 
         SET @CompRegDate = '2023-01-01'; -- Fallback
@@ -53,7 +65,7 @@ BEGIN
         SET @PrevStartDate = DATEADD(DAY, -1, @EndDate);
         SET @PrevEndDate = DATEADD(DAY, -1, @EndDate);
     END
-    ELSE IF @Win = 'YESTERDAY'
+    ELSE IF @Win = 'YESTERDAY' OR @Win = 'LASTDAY'
     BEGIN
         SET @StartDate = DATEADD(DAY, -1, @EndDate);
         SET @EndDate = DATEADD(DAY, -1, @EndDate);
@@ -109,24 +121,54 @@ BEGIN
     -- Ensure we don't go before registration
     IF @StartDate < @CompRegDate SET @StartDate = @CompRegDate;
 
+    ---------------------------------------------------------
+    -- SBU Team Temp Tables for Performance Optimization
+    ---------------------------------------------------------
+    IF OBJECT_ID('tempdb..#SBUTeamConsumerIds') IS NOT NULL DROP TABLE #SBUTeamConsumerIds;
+    SELECT M_Consumerid
+    INTO #SBUTeamConsumerIds
+    FROM M_Consumer WITH (NOLOCK) 
+    WHERE distributorID = 'SBUTEAM' AND IsDelete = 0;
+
+    CREATE UNIQUE CLUSTERED INDEX IX_SBUTeamConsumerIds_Id ON #SBUTeamConsumerIds(M_Consumerid);
+
     ---------------------------------------------------------------
     -- ACTUAL CASH BURN DATA (Using Mahindra specific filters)
     ---------------------------------------------------------------
     IF OBJECT_ID('tempdb..#CashBurn') IS NOT NULL DROP TABLE #CashBurn;
+    CREATE TABLE #CashBurn (
+        CashBurn DECIMAL(18,2),
+        BurnDate DATE
+    );
 
-    SELECT 
-        SUM(ut.Amount + ISNULL(ut.tdsAmount, 0)) AS CashBurn, 
-        CAST(ut.ReqDate AS DATE) AS BurnDate
-    INTO #CashBurn
-    FROM tblUPITransactionDetails ut WITH (NOLOCK) 
-    WHERE ut.Status = 'Success' 
-      AND ut.Comp_Id = @CompId
-      AND ut.ReqDate >= @StartDate
-      AND ut.ReqDate < DATEADD(DAY, 1, @EndDate)
-      -- Mahindra specific exclusions
-      AND ut.Code1 NOT IN ('76106','28480','63762')
-      AND ut.Code2 NOT IN ('53123003','81708028','45063737')
-    GROUP BY CAST(ut.ReqDate AS DATE);
+    IF @IsSBUTeam = 1
+    BEGIN
+        INSERT INTO #CashBurn (CashBurn, BurnDate)
+        SELECT 
+            SUM(CAST(ut.Amount AS DECIMAL(18,2))), 
+            CAST(ut.TransactionDate AS DATE)
+        FROM Transactions ut WITH (NOLOCK) 
+        WHERE ut.Issuccess = 1 
+          AND ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
+          AND ut.TransactionDate >= @StartDate
+          AND ut.TransactionDate < DATEADD(DAY, 1, @EndDate)
+          AND ut.M_CounserID IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds)
+        GROUP BY CAST(ut.TransactionDate AS DATE);
+    END
+    ELSE
+    BEGIN
+        INSERT INTO #CashBurn (CashBurn, BurnDate)
+        SELECT 
+            SUM(CAST(ut.Amount AS DECIMAL(18,2))), 
+            CAST(ut.TransactionDate AS DATE)
+        FROM Transactions ut WITH (NOLOCK) 
+        WHERE ut.Issuccess = 1 
+          AND ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
+          AND ut.TransactionDate >= @StartDate
+          AND ut.TransactionDate < DATEADD(DAY, 1, @EndDate)
+          AND ut.M_CounserID NOT IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds)
+        GROUP BY CAST(ut.TransactionDate AS DATE);
+    END
 
     ---------------------------------------------------------------
     -- Generate Date Series for Gap Filling
@@ -226,15 +268,28 @@ BEGIN
             @PrevAvgBurn DECIMAL(18,2), 
             @PrevPeakBurn DECIMAL(18,2);
 
-    SELECT 
-        @PrevTotalBurn = SUM(ut.Amount + ISNULL(ut.tdsAmount, 0))
-    FROM tblUPITransactionDetails ut WITH (NOLOCK) 
-    WHERE ut.Status = 'Success' 
-      AND ut.Comp_Id = @CompId
-      AND ut.ReqDate >= @PrevStartDate
-      AND ut.ReqDate < DATEADD(DAY, 1, @PrevEndDate)
-      AND ut.Code1 NOT IN ('76106','28480','63762')
-      AND ut.Code2 NOT IN ('53123003','81708028','45063737');
+    IF @IsSBUTeam = 1
+    BEGIN
+        SELECT 
+            @PrevTotalBurn = SUM(CAST(ut.Amount AS DECIMAL(18,2)))
+        FROM Transactions ut WITH (NOLOCK) 
+        WHERE ut.Issuccess = 1 
+          AND ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
+          AND ut.TransactionDate >= @PrevStartDate
+          AND ut.TransactionDate < DATEADD(DAY, 1, @PrevEndDate)
+          AND ut.M_CounserID IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
+    END
+    ELSE
+    BEGIN
+        SELECT 
+            @PrevTotalBurn = SUM(CAST(ut.Amount AS DECIMAL(18,2)))
+        FROM Transactions ut WITH (NOLOCK) 
+        WHERE ut.Issuccess = 1 
+          AND ut.CompId = REPLACE(@ActualCompId, 'Comp-', '')
+          AND ut.TransactionDate >= @PrevStartDate
+          AND ut.TransactionDate < DATEADD(DAY, 1, @PrevEndDate)
+          AND ut.M_CounserID NOT IN (SELECT M_Consumerid FROM #SBUTeamConsumerIds);
+    END
 
     -- Simpler peak/avg for prev window from raw aggregated if needed, but Total is most important
     SET @PrevTotalBurn = ISNULL(@PrevTotalBurn, 0);

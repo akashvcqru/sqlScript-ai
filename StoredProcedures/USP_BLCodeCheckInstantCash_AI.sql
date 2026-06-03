@@ -149,8 +149,14 @@ BEGIN
 
         IF @M_Consumerid IS NULL
         BEGIN
-            INSERT INTO M_Consumer (MobileNo, ConsumerName, Email, City, [state], PinCode, [Address], Entry_Date, IsActive, IsDelete, Other_Role, designation, Vrkabel_User_Type, UPIId, gender, Agegroup, ReferralCode, pancard_number, aadharNumber)
-            VALUES (@MobileNo, @ConsumerName, @Email, @City, @State, @PinCode, @Address, GETDATE(), 1, 0, @Other_Role, @Other_Role, 0, @UPI, @Gender, @Age, @ReferralCode, @PanCardNumber, @AadharNumber);
+            DECLARE @NewUser_ID NVARCHAR(50);
+            DECLARE @NewPassword NVARCHAR(50);
+            
+            EXEC GetCodeGenValue 'Consumer', @NewUser_ID OUTPUT;
+            SET @NewPassword = CAST((RAND(CHECKSUM(NEWID())) * 90000 + 10000) AS INT);
+
+            INSERT INTO M_Consumer (User_ID, Password, MobileNo, ConsumerName, Email, City, [state], PinCode, [Address], Entry_Date, IsActive, IsDelete, Other_Role, designation, Vrkabel_User_Type, UPIId, gender, Agegroup, ReferralCode, pancard_number, aadharNumber)
+            VALUES (@NewUser_ID, @NewPassword, @MobileNo, @ConsumerName, @Email, @City, @State, @PinCode, @Address, GETDATE(), 1, 0, @Other_Role, @Other_Role, 0, @UPI, @Gender, @Age, @ReferralCode, @PanCardNumber, @AadharNumber);
             
             SET @M_Consumerid = SCOPE_IDENTITY();
         END

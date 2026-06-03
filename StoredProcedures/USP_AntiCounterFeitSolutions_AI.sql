@@ -97,23 +97,50 @@ BEGIN
     -- Step 1: Pre-filter M_Code (Deduplicated per code pair)
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
-    
-    ;WITH DistinctCodes AS (
-        SELECT 
-            a.Code1, 
-            a.Code2, 
-            a.Pro_ID,
-            a.Use_Count,
-            ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-        FROM M_Code a 
-        INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
-        WHERE b.Comp_ID = @Comp_Id 
-          AND a.Use_Count > 0
-    )
-    SELECT Code1, Code2, Pro_ID
-    INTO #tempM_Code 
-    FROM DistinctCodes
-    WHERE rn = 1;
+    CREATE TABLE #tempM_Code (
+        Code1 VARCHAR(100),
+        Code2 VARCHAR(100),
+        Pro_ID VARCHAR(50)
+    );
+
+    IF @Comp_Id = 'Comp-1693'
+    BEGIN
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, 
+                a.Code2, 
+                a.Pro_ID,
+                a.Use_Count,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            FROM M_Code_PFL a 
+            INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @Comp_Id 
+              AND a.Use_Count > 0
+        )
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID)
+        SELECT Code1, Code2, Pro_ID
+        FROM DistinctCodes
+        WHERE rn = 1;
+    END
+    ELSE
+    BEGIN
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, 
+                a.Code2, 
+                a.Pro_ID,
+                a.Use_Count,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            FROM M_Code a 
+            INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @Comp_Id 
+              AND a.Use_Count > 0
+        )
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID)
+        SELECT Code1, Code2, Pro_ID
+        FROM DistinctCodes
+        WHERE rn = 1;
+    END
 
     CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
 

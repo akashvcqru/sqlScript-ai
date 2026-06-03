@@ -89,11 +89,10 @@ BEGIN
         SET @EndDate   = DATEADD(DAY, 1, @Today);
     END
 
-    -- 1️⃣ Filter Pro_Enq and compute FullCode
+    -- 1️⃣ Filter Pro_Enq
     SELECT 
         PE.Received_Code1,
         PE.Received_Code2,
-        CAST(PE.Received_Code1 AS NVARCHAR(50)) + CAST(PE.Received_Code2 AS NVARCHAR(50)) AS FullCode,
         PE.Is_Success,
         PE.Comp_ID,
         PE.Enq_Date
@@ -111,8 +110,18 @@ BEGIN
     INTO #MergedData
     FROM #FilteredEnq FE
     --INNER JOIN M_Code MC
-	INNER JOIN (select * from M_Code WITH (NOLOCK) where pro_id in (SELECT Pro_ID from Pro_Reg PR WITH (NOLOCK) where PR.Comp_ID = @Comp_Id) and Gen_Date>=@CompanyStartDate) MC 
-        ON FE.FullCode = CAST(MC.Code1 AS NVARCHAR(50)) + CAST(MC.Code2 AS NVARCHAR(50))
+	INNER JOIN (
+	    SELECT Code1, Code2, Pro_ID, Use_Count FROM M_Code WITH (NOLOCK) 
+	    WHERE @Comp_Id <> 'Comp-1693' 
+	      AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id) 
+	      AND Gen_Date >= @CompanyStartDate
+	    UNION ALL
+	    SELECT Code1, Code2, Pro_ID, Use_Count FROM M_Code_PFL WITH (NOLOCK) 
+	    WHERE @Comp_Id = 'Comp-1693' 
+	      AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id)
+	) MC 
+        ON LTRIM(RTRIM(CAST(MC.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(FE.Received_Code1 AS VARCHAR(50))))
+       AND LTRIM(RTRIM(CAST(MC.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(FE.Received_Code2 AS VARCHAR(50))))
     INNER JOIN Pro_Reg PR WITH (NOLOCK)
         ON PR.Pro_ID = MC.Pro_ID
        AND PR.Comp_ID = @Comp_Id;
