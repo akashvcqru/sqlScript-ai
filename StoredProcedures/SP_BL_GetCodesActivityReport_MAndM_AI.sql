@@ -189,7 +189,7 @@ BEGIN
             ELSE 'ACTIVE' 
         END AS SchemeStatus,
         ROW_NUMBER() OVER (
-            PARTITION BY pc.Code1, pc.Code2, pc.Enq_Date
+            PARTITION BY pc.Code1, pc.Code2
             ORDER BY pc.Enq_Date DESC
         ) AS rn
     INTO #FilteredData
@@ -204,7 +204,7 @@ BEGIN
             (@IsSBUTeam = 0 AND (pc.distributedid <> 'SBUTEAM' OR pc.distributedid IS NULL) AND (mc.DealerCode <> 'SBUTEAM' OR mc.DealerCode IS NULL)) OR
             (@IsSBUTeam = 1 AND (pc.distributedid = 'SBUTEAM' OR mc.DealerCode = 'SBUTEAM'))
         )
-        AND (@StartDate IS NULL OR pc.Enq_Date >= @StartDate)
+        AND (@StartDate IS NULL OR pc.Enq_Date >= @StartDate)  and PC.Enq_Date >='2022-11-25 00:00:00.000'
         AND (@EndDate IS NULL OR pc.Enq_Date < DATEADD(DAY, 1, @EndDate))
         AND (@Scheme IS NULL OR ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name) LIKE '%' + @Scheme + '%')
         AND (@DialModeFilter IS NULL OR pc.Dial_Mode = @DialModeFilter)
