@@ -148,10 +148,10 @@ BEGIN
              WHERE IsSuccess = 1
                AND M_CounserID = @M_Consumerid
                AND 'Comp-' + CAST(CompId AS VARCHAR) = @CompID
-              -- AND TransactionDate >= '2022-11-25 00:00:00.000'
+              -- AND TransactionDate >= '2022-08-04 00:00:00.000'
 			   AND (
             (@CompID = 'Comp-1152' 
-             AND TransactionDate >= '2022-11-25 00:00:00.000')
+             AND TransactionDate >= '2022-08-04 00:00:00.000')
             OR
             (@CompID <> 'Comp-1152')
           )
