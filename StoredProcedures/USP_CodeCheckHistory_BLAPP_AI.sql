@@ -43,7 +43,7 @@ BEGIN
         LEFT JOIN M_Service ms ON ms.Service_ID = bl.Service_ID
         WHERE bl.MobileNo = @MobileNo
           AND (@Year IS NULL OR YEAR(bl.Enq_Date) = @Year)
-          AND (@Month IS NULL OR MONTH(bl.Enq_Date) = @Month)
+          AND (@Month IS NULL OR MONTH(bl.Enq_Date) = @Month) and Enq_Date >='2022-08-04 00:00:00.000'
         ORDER BY bl.Enq_Date DESC;
         RETURN;
     END
