@@ -51,7 +51,7 @@ BEGIN
     DECLARE @CompanyStartDate DATETIME;
     SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @ActualCompId AND Status = 1;
 
-    DECLARE @StartDate DATETIME = NULL;
+    DECLARE @StartDate DATETIME = '2022-11-25 00:00:00.000';
     DECLARE @EndDate   DATETIME = NULL;
 
     -- Normalize datePreset
@@ -119,7 +119,7 @@ BEGIN
     -- ALL / NULL
     ELSE
     BEGIN
-        SET @StartDate = CAST(@CompanyStartDate AS DATE);
+       -- SET @StartDate = CAST(@CompanyStartDate AS DATE);
         SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
     END
 
