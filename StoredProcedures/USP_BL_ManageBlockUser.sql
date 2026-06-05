@@ -10,10 +10,87 @@ ALTER PROCEDURE [dbo].[USP_BL_ManageBlockUser]
     @Search VARCHAR(100) = NULL,
     @Page INT = 1,
     @Limit INT = 10,
-    @IsExport BIT = 0
+    @IsExport BIT = 0,
+    @DatePreset NVARCHAR(20) = NULL,
+    @FromDate DATETIME = NULL,
+    @ToDate DATETIME = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -------------------------------------------------
+    -- Construct Date Range
+    -------------------------------------------------
+    DECLARE @StartDate DATE, @EndDate DATE;
+    DECLARE @Today DATE = CAST(GETDATE() AS DATE);
+    DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@DatePreset,''))));
+    
+    IF @Win = '' OR @Win = 'NULL' SET @Win = 'ALL';
+
+    IF @Win = 'TODAY'
+    BEGIN
+        SET @StartDate = @Today;
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'YESTERDAY'
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -1, @Today);
+        SET @EndDate   = @Today;
+    END
+    ELSE IF @Win = 'WEEK'
+    BEGIN
+        SET DATEFIRST 1; -- Monday
+        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTWEEK'
+    BEGIN
+        SET DATEFIRST 1;
+        DECLARE @ThisWeekStart DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
+        SET @StartDate = DATEADD(DAY, -7, @ThisWeekStart);
+        SET @EndDate   = @ThisWeekStart;
+    END
+    ELSE IF @Win = 'MONTH'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTMONTH'
+    BEGIN
+        DECLARE @ThisMonthStart DATE = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @StartDate = DATEADD(MONTH, -1, @ThisMonthStart);
+        SET @EndDate   = @ThisMonthStart;
+    END
+    ELSE IF @Win = 'QUARTER'
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -90, @Today);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'YEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today), 1, 1);
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'LASTYEAR'
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(@Today) - 1, 1, 1);
+        SET @EndDate   = DATEFROMPARTS(YEAR(@Today), 1, 1);
+    END
+    ELSE IF @Win = 'ALL'
+    BEGIN
+        SET @StartDate = '1900-01-01';
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
+    ELSE IF @Win = 'CUSTOM'
+    BEGIN
+        SET @StartDate = ISNULL(CAST(@FromDate AS DATE), '1900-01-01');
+        SET @EndDate   = DATEADD(DAY, 1, ISNULL(CAST(@ToDate AS DATE), @Today));
+    END
+    ELSE
+    BEGIN
+        SET @StartDate = '1900-01-01';
+        SET @EndDate   = DATEADD(DAY, 1, @Today);
+    END
 
     IF @Action = 'GET'
     BEGIN
@@ -32,6 +109,10 @@ BEGIN
               AND (
                   (mc.IsActive = '1' AND mc.IsDelete = '1')
                   OR (vks.IsActive = 1 AND vks.IsDelete = 1)
+              )
+              AND (
+                  (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
+                  OR (mc.block_date IS NULL AND @Win = 'ALL')
               )
               AND (
                   @Search IS NULL 
@@ -57,6 +138,10 @@ BEGIN
                   OR (vks.IsActive = 1 AND vks.IsDelete = 1)
               )
               AND (
+                  (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
+                  OR (mc.block_date IS NULL AND @Win = 'ALL')
+              )
+              AND (
                   @Search IS NULL 
                   OR mc.ConsumerName LIKE '%' + @Search + '%' 
                   OR mc.MobileNo LIKE '%' + @Search + '%'
@@ -76,6 +161,10 @@ BEGIN
               AND (
                   (mc.IsActive = '1' AND mc.IsDelete = '1')
                   OR (vks.IsActive = 1 AND vks.IsDelete = 1)
+              )
+              AND (
+                  (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
+                  OR (mc.block_date IS NULL AND @Win = 'ALL')
               )
               AND (
                   @Search IS NULL 
