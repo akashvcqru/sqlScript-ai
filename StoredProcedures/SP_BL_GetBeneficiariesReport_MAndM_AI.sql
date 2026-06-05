@@ -51,7 +51,7 @@ BEGIN
     DECLARE @CompanyStartDate DATETIME;
     SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @ActualCompId AND Status = 1;
 
-    DECLARE @StartDate DATETIME = NULL;
+    DECLARE @StartDate DATETIME = null -- '2022-11-25 00:00:00.000';
     DECLARE @EndDate   DATETIME = NULL;
 
     -- Normalize datePreset
@@ -119,7 +119,7 @@ BEGIN
     -- ALL / NULL
     ELSE
     BEGIN
-        SET @StartDate = CAST(@CompanyStartDate AS DATE);
+       -- SET @StartDate = CAST(@CompanyStartDate AS DATE);
         SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
     END
 
@@ -195,7 +195,7 @@ BEGIN
     INTO #Benefit
     FROM dbo.ConsumerPointsCashDetails BL WITH (NOLOCK)
     WHERE BL.Comp_id = @ActualCompId
-      AND (@StartDate IS NULL OR BL.Enq_Date >= @StartDate)
+      AND (@StartDate IS NULL OR BL.Enq_Date >= @StartDate) and BL.Enq_Date >  '2022-08-04 00:00:00.000'
       AND (@EndDate   IS NULL OR BL.Enq_Date <  @EndDate)
       AND BL.M_ConsumerId IN (SELECT M_ConsumerId FROM #Users)
     GROUP BY BL.M_ConsumerId;
@@ -228,6 +228,14 @@ BEGIN
     FROM Transactions WITH (NOLOCK)
     WHERE CompId = REPLACE(@ActualCompId, 'Comp-', '')
       AND Issuccess = 1
+
+	   AND (
+            (@Comp_Id = 'Comp-1152' 
+             AND TransactionDate >= '2022-11-25 00:00:00.000')
+            OR
+            (@Comp_Id <> 'Comp-1152')
+          )
+
       AND (@StartDate IS NULL OR TransactionDate >= @StartDate)
       AND (@EndDate   IS NULL OR TransactionDate <  @EndDate)
     GROUP BY M_CounserID;

@@ -19,7 +19,7 @@ BEGIN
     BEGIN
         SELECT COALESCE(SUM(CAST(cash AS INT)), 0) as TotalPoints
         FROM ConsumerPointsCashDetails
-        WHERE M_Consumerid = @M_Consumerid;
+        WHERE M_Consumerid = @M_Consumerid and Enq_Date >='2022-11-25 00:00:00.000';
         RETURN;
     END
 

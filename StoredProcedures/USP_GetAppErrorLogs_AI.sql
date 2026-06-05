@@ -1,4 +1,4 @@
-CREATE PROCEDURE [dbo].[USP_GetAppErrorLogs_AI]
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetAppErrorLogs_AI]
 (
     @Page            INT = 1,
     @Limit           INT = 10,
@@ -72,30 +72,40 @@ BEGIN
     -- RESULT SET 1 : PAGINATED DATA
     ----------------------------------------------------
     SELECT 
-        Id,
-        DeviceInfo,
-        ApiResponse,
-        ApiName,
-        Username,
-        UserMobile,
-        PageName,
-        ErrorResponse,
-        ApplicationType,
-        CreatedAt
-    FROM dbo.tbl_AppErrorLog
+        el.Id,
+        el.DeviceInfo,
+        el.ApiResponse,
+        el.ApiName,
+        el.Username,
+        el.UserMobile,
+        el.PageName,
+        el.ErrorResponse,
+        el.ApplicationType,
+        el.CreatedAt,
+        mc.Comp_id AS CompId,
+        cr.Comp_Name AS CompName
+    FROM dbo.tbl_AppErrorLog el WITH (NOLOCK)
+    OUTER APPLY (
+        SELECT TOP 1 mc.Comp_id 
+        FROM dbo.M_Consumer mc WITH (NOLOCK) 
+        WHERE mc.IsDelete = 0 AND RIGHT(mc.MobileNo, 10) = RIGHT(el.UserMobile, 10)
+    ) mc
+    LEFT JOIN dbo.Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = mc.Comp_id
     WHERE 
-        (@StartDate IS NULL OR CreatedAt >= @StartDate)
-        AND (@EndDate IS NULL OR CreatedAt <= @EndDate)
-        AND (@ApplicationType IS NULL OR LTRIM(RTRIM(@ApplicationType)) = '' OR ApplicationType = @ApplicationType)
+        (@StartDate IS NULL OR el.CreatedAt >= @StartDate)
+        AND (@EndDate IS NULL OR el.CreatedAt <= @EndDate)
+        AND (@ApplicationType IS NULL OR LTRIM(RTRIM(@ApplicationType)) = '' OR el.ApplicationType = @ApplicationType)
         AND (@SearchPattern IS NULL OR 
-             Username LIKE @SearchPattern 
-             OR UserMobile LIKE @SearchPattern 
-             OR ApiName LIKE @SearchPattern 
-             OR PageName LIKE @SearchPattern 
-             OR ErrorResponse LIKE @SearchPattern
-             OR DeviceInfo LIKE @SearchPattern
-             OR ApiResponse LIKE @SearchPattern)
-    ORDER BY CreatedAt DESC
+             el.Username LIKE @SearchPattern 
+             OR el.UserMobile LIKE @SearchPattern 
+             OR el.ApiName LIKE @SearchPattern 
+             OR el.PageName LIKE @SearchPattern 
+             OR el.ErrorResponse LIKE @SearchPattern
+             OR el.DeviceInfo LIKE @SearchPattern
+             OR el.ApiResponse LIKE @SearchPattern
+             OR mc.Comp_id LIKE @SearchPattern
+             OR cr.Comp_Name LIKE @SearchPattern)
+    ORDER BY el.CreatedAt DESC
     OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
     ----------------------------------------------------
@@ -106,18 +116,26 @@ BEGIN
         @Page AS CurrentPage,
         @Limit AS [Limit],
         CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-    FROM dbo.tbl_AppErrorLog
+    FROM dbo.tbl_AppErrorLog el WITH (NOLOCK)
+    OUTER APPLY (
+        SELECT TOP 1 mc.Comp_id 
+        FROM dbo.M_Consumer mc WITH (NOLOCK) 
+        WHERE mc.IsDelete = 0 AND RIGHT(mc.MobileNo, 10) = RIGHT(el.UserMobile, 10)
+    ) mc
+    LEFT JOIN dbo.Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = mc.Comp_id
     WHERE 
-        (@StartDate IS NULL OR CreatedAt >= @StartDate)
-        AND (@EndDate IS NULL OR CreatedAt <= @EndDate)
-        AND (@ApplicationType IS NULL OR LTRIM(RTRIM(@ApplicationType)) = '' OR ApplicationType = @ApplicationType)
+        (@StartDate IS NULL OR el.CreatedAt >= @StartDate)
+        AND (@EndDate IS NULL OR el.CreatedAt <= @EndDate)
+        AND (@ApplicationType IS NULL OR LTRIM(RTRIM(@ApplicationType)) = '' OR el.ApplicationType = @ApplicationType)
         AND (@SearchPattern IS NULL OR 
-             Username LIKE @SearchPattern 
-             OR UserMobile LIKE @SearchPattern 
-             OR ApiName LIKE @SearchPattern 
-             OR PageName LIKE @SearchPattern 
-             OR ErrorResponse LIKE @SearchPattern
-             OR DeviceInfo LIKE @SearchPattern
-             OR ApiResponse LIKE @SearchPattern);
+             el.Username LIKE @SearchPattern 
+             OR el.UserMobile LIKE @SearchPattern 
+             OR el.ApiName LIKE @SearchPattern 
+             OR el.PageName LIKE @SearchPattern 
+             OR el.ErrorResponse LIKE @SearchPattern
+             OR el.DeviceInfo LIKE @SearchPattern
+             OR el.ApiResponse LIKE @SearchPattern
+             OR mc.Comp_id LIKE @SearchPattern
+             OR cr.Comp_Name LIKE @SearchPattern);
 END
 GO
