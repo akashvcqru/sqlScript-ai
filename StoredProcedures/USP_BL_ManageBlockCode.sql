@@ -33,7 +33,7 @@ BEGIN
         SET @StartDate = @Today;
         SET @EndDate   = DATEADD(DAY, 1, @Today);
     END
-    ELSE IF @Win = 'YESTERDAY'
+    ELSE IF @Win = 'YESTERDAY' OR @Win = 'LASTDAY'
     BEGIN
         SET @StartDate = DATEADD(DAY, -1, @Today);
         SET @EndDate   = @Today;
