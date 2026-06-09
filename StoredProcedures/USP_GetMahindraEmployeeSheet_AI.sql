@@ -14,7 +14,8 @@ CREATE PROCEDURE USP_GetMahindraEmployeeSheet_AI
     @IsExport   BIT = 0,
     @datePreset NVARCHAR(20) = NULL,
     @FromDate   DATETIME = NULL,
-    @ToDate     DATETIME = NULL
+    @ToDate     DATETIME = NULL,
+    @Status     NVARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -114,6 +115,7 @@ BEGIN
         WHERE Comp_id = @Comp_id
           AND (@StartDate IS NULL OR Created_Date >= @StartDate)
           AND (@EndDate IS NULL OR Created_Date < DATEADD(DAY, 1, @EndDate))
+          AND (@Status IS NULL OR @Status = '' OR Status = @Status)
           AND (@Search IS NULL OR @Search = ''
                OR EmpName LIKE '%' + @Search + '%'
                OR EmpCode LIKE '%' + @Search + '%'
