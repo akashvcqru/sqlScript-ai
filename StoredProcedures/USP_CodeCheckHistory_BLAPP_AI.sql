@@ -1,6 +1,7 @@
 USE [Vcqru]
 GO
- SET ANSI_NULLS ON
+/****** Object:  StoredProcedure [dbo].[USP_CodeCheckHistory_BLAPP_AI]    Script Date: 6/9/2026 10:18:24 PM ******/
+SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
@@ -133,20 +134,25 @@ BEGIN
             ON cr.Comp_ID = pr.Comp_ID  
         WHERE pe.MobileNo = @MobileNo   
           AND pe.Comp_ID = @Comp_ID  
-    ),  
-    ConsumerData AS (  
+    )
+    --ConsumerData AS (  
         SELECT   
             t.*,  
             mc.M_Consumerid   
-        FROM EnquiryData t  
+       into #ConsumerData FROM EnquiryData t  
         INNER JOIN M_Consumer mc   
             ON mc.MobileNo = t.MobileNo   
         WHERE mc.IsDelete = 0  
-    )  
+    --)  
   
     SELECT   
         t2.*,  
-        CONCAT('+', bl.Points) AS Points,  
+        --CONCAT('+', bl.Points) AS Points,  
+		CASE
+    WHEN bl.Points IS NOT NULL and bl.Points <> ''
+        THEN CONCAT('+', bl.Points)
+    ELSE CONCAT('+', bl.cash)
+END AS Points,
         bl.ServiceName,  
         c.ServiceName AS ServiceNameNew,
         CASE  
@@ -155,7 +161,7 @@ BEGIN
             ELSE 'Red'  
         END AS ColourCode,
         CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
-    FROM ConsumerData t2  
+    FROM #ConsumerData t2  
     INNER JOIN BLoyaltyPointsEarned bl ON t2.M_Consumerid = bl.M_Consumerid
     INNER JOIN M_ServiceSubscriptionTrans a ON bl.SST_id = a.SST_Id 
     INNER JOIN M_ServiceSubscription b ON a.Subscribe_Id = b.Subscribe_Id 
@@ -164,6 +170,40 @@ BEGIN
       AND t2.Code1 = bl.Code1   
       AND t2.Code2 = bl.Code2  
   
+    UNION
+
+	SELECT   
+    t2.*,   
+    CONCAT('+', 0) AS Points,   
+    s.ServiceName AS ServiceName,  
+    s.ServiceName AS ServiceNameNew,
+    CASE  
+        WHEN t2.Status = 'Success' THEN 'Green'  
+        WHEN t2.Status = 'Pending' THEN 'Yellow'  
+        ELSE 'Red'  
+    END AS ColourCode,
+    CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
+FROM #ConsumerData t2  
+INNER JOIN M_Code m 
+    ON t2.Code1 = m.Code1
+    AND t2.Code2 = m.Code2
+INNER JOIN M_ServiceSubscription ss 
+    ON m.Pro_id = ss.Pro_id 
+    AND ss.IsActive = 1 
+    AND ss.IsDelete = 0
+    --AND (
+    --    m.Series_Order > ss.start_order 
+    --    OR (m.Series_Order = ss.start_order AND m.Series_Serial >= ss.start_series)
+    --)
+    --AND (
+    --    m.Series_Order < ss.end_order 
+    --    OR (m.Series_Order = ss.end_order AND m.Series_Serial <= ss.end_series)
+    --)
+INNER JOIN M_Service s 
+    ON ss.Service_ID = s.Service_ID
+WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
+	 
+
     UNION  
   
     SELECT   
@@ -177,7 +217,7 @@ BEGIN
             ELSE 'Red'  
         END AS ColourCode,
         CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
-    FROM ConsumerData t2  
+    FROM #ConsumerData t2  
     WHERE t2.Status IN ('Invalid', 'Unsuccess')  
   
     UNION  
@@ -219,4 +259,3 @@ BEGIN
   
     ORDER BY Enq_Date DESC;  
 END
-GO
