@@ -238,7 +238,13 @@ FROM
 
         -- Additional Details
         VKS.Entry_Date,
-        MC.M_Consumerid
+        MC.M_Consumerid,
+
+        -- IspanOperative Status
+        CASE 
+            WHEN MC.IspanOperative = 1 THEN ''InOperative''
+            ELSE ''Operative''
+        END AS IspanOperative
     FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
         FROM tbl_Vendorvisekycstatus WITH (NOLOCK)

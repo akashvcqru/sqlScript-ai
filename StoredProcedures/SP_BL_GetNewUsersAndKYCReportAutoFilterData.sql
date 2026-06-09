@@ -222,7 +222,13 @@ BEGIN
         MC.UPIId,
         MC.Selfie_image,
         VKS.Entry_Date,
-        MC.M_Consumerid
+        MC.M_Consumerid,
+
+        -- IspanOperative Status
+        CASE 
+            WHEN MC.IspanOperative = 1 THEN ''InOperative''
+            ELSE ''Operative''
+        END AS IspanOperative
     FROM tbl_Vendorvisekycstatus VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
     OUTER APPLY (
