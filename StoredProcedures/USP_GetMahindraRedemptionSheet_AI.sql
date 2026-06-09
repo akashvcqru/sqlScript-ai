@@ -29,7 +29,6 @@ BEGIN
             TransactionsId,
             M_CounserID,
             CustomerName,
-            BankAddress,
             BankName,
             AccountNumber,
             IFSCCode,
@@ -37,13 +36,9 @@ BEGIN
             TransctionNumber,
             TransactionProcessDate,
             TransactionDate,
-            CompId,
             MobileNumber,
             Branch,
-            City,
-            RTGS_Code,
-            Issuccess,
-            created_date
+            Issuccess
         FROM Transactions WITH (NOLOCK)
         WHERE CompId = @StrippedCompId
           AND (@Search IS NULL OR @Search = ''

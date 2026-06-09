@@ -28,9 +28,9 @@ BEGIN
     -- CTE for filtered search data
     ;WITH FilteredStatus AS (
         SELECT DISTINCT
-            ts.Complete_code,
-            ts.Transaction_Status,
-            ts.Transaction_date
+            ts.Complete_code AS CompleteCode,
+            ts.Transaction_Status AS TransactionStatus,
+            ts.Transaction_date AS TransactionDate
         FROM Transaction_status ts WITH (NOLOCK)
         INNER JOIN ConsumerPointsCashDetails pc WITH (NOLOCK) ON CAST(ts.Complete_code AS NVARCHAR(13)) = CONCAT(pc.Code1, pc.Code2)
         WHERE (pc.Comp_Id = @CompIdWithPrefix OR pc.Comp_Id = @CompIdWithoutPrefix)
@@ -45,12 +45,12 @@ BEGIN
 
     IF @IsExport = 1
     BEGIN
-        SELECT * FROM #TempResults ORDER BY Transaction_date DESC;
+        SELECT * FROM #TempResults ORDER BY TransactionDate DESC;
     END
     ELSE
     BEGIN
         SELECT * FROM #TempResults 
-        ORDER BY Transaction_date DESC
+        ORDER BY TransactionDate DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
         -- Metadata output
