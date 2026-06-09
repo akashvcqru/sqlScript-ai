@@ -16,8 +16,7 @@ ALTER PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]
     @Page INT = NULL,                    
     @Limit INT = NULL,
     @IsExport BIT =NULL,
-    @Search nvarchar(30) = null,
-    @IspanOperative NVARCHAR(15) = NULL
+    @Search nvarchar(30) = null
   
 AS
 BEGIN
@@ -189,28 +188,10 @@ BEGIN
         SET @BaseWhere += N' AND MC.[State] = @StateFilter';
 
     ------------------------------------------------------
-    -- Mobile Number / Status Search
+    -- Mobile Number Search
     ------------------------------------------------------
     IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
-    BEGIN
-        IF UPPER(LTRIM(RTRIM(@Search))) = 'INOPERATIVE'
-            SET @BaseWhere += N' AND MC.IspanOperative = 1';
-        ELSE IF UPPER(LTRIM(RTRIM(@Search))) = 'OPERATIVE'
-            SET @BaseWhere += N' AND ISNULL(MC.IspanOperative, 0) = 0';
-        ELSE
-            SET @BaseWhere += N' AND MC.MobileNo LIKE ''%'' + @Search + ''%''';
-    END
-
-    ------------------------------------------------------
-    -- PAN Operative Filter
-    ------------------------------------------------------
-    IF @IspanOperative IS NOT NULL AND LTRIM(RTRIM(@IspanOperative)) <> ''
-    BEGIN
-        IF @IspanOperative = '1' OR UPPER(LTRIM(RTRIM(@IspanOperative))) = 'INOPERATIVE'
-            SET @BaseWhere += N' AND MC.IspanOperative = 1';
-        ELSE IF @IspanOperative = '0' OR UPPER(LTRIM(RTRIM(@IspanOperative))) = 'OPERATIVE'
-            SET @BaseWhere += N' AND ISNULL(MC.IspanOperative, 0) = 0';
-    END
+        SET @BaseWhere += N' AND MC.MobileNo LIKE ''%'' + @Search + ''%''';
 
     ------------------------------------------------------
     -- Data Query
@@ -261,7 +242,6 @@ BEGIN
         CASE WHEN (MC.bankekycStatus IN (''1'', ''Online'') OR EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
         MC.pancard_number,
-        CASE WHEN MC.IspanOperative = 1 THEN ''InOperative'' ELSE ''Operative'' END AS IspanOperative,
         MC.gender,
         MC.shop_file,
         VKS.kycremark AS remark,
