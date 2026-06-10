@@ -1,6 +1,6 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_CodeCheckHistory_BLAPP_AI]    Script Date: 6/9/2026 10:18:24 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_CodeCheckHistory_BLAPP_AI]    Script Date: 6/10/2026 6:24:01 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -201,7 +201,7 @@ INNER JOIN M_ServiceSubscription ss
     --)
 INNER JOIN M_Service s 
     ON ss.Service_ID = s.Service_ID
-WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
+WHERE t2.Status IN ('Invalid', 'Unsuccess','success')  and s.Service_ID = 'SRV1018'
 	 
 
     UNION  
