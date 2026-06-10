@@ -64,8 +64,8 @@ BEGIN
     ---------------------------------------------------------
     -- Date range calculation
     ---------------------------------------------------------
-    DECLARE @StartDate DATE = NULL;
-    DECLARE @EndDate   DATE = NULL;
+    DECLARE @StartDate DATETIME = NULL;
+    DECLARE @EndDate   DATETIME = NULL;
 
     IF (
            @datePreset IS NULL
@@ -189,8 +189,8 @@ BEGIN
             ELSE 'ACTIVE' 
         END AS SchemeStatus,
         ROW_NUMBER() OVER (
-            PARTITION BY pc.Code1, pc.Code2
-            ORDER BY pc.Enq_Date DESC
+            PARTITION BY pc.Code1, pc.Code2, pc.Enq_Date
+            ORDER BY pc.Enq_Date DESC, mc.dealer_state, mc.pancard_number, mc.aadharNumber, pc.Dial_Mode DESC
         ) AS rn
     INTO #FilteredData
     FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
@@ -204,7 +204,7 @@ BEGIN
             (@IsSBUTeam = 0 AND (pc.distributedid <> 'SBUTEAM' OR pc.distributedid IS NULL) AND (mc.DealerCode <> 'SBUTEAM' OR mc.DealerCode IS NULL)) OR
             (@IsSBUTeam = 1 AND (pc.distributedid = 'SBUTEAM' OR mc.DealerCode = 'SBUTEAM'))
         )
-        AND (@StartDate IS NULL OR pc.Enq_Date >= @StartDate)
+        AND (pc.Enq_Date >= ISNULL(@StartDate, '2022-08-04 07:48:02.000'))
         AND (@EndDate IS NULL OR pc.Enq_Date < DATEADD(DAY, 1, @EndDate))
         AND (@Scheme IS NULL OR ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name) LIKE '%' + @Scheme + '%')
         AND (@DialModeFilter IS NULL OR pc.Dial_Mode = @DialModeFilter)
