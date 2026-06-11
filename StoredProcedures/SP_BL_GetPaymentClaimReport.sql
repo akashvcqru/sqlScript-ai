@@ -167,12 +167,15 @@ BEGIN
     SELECT
         CD.Row_id AS Claim_id,
         CD.Claim_date,
-        CD.Amount AS Points,
         CASE 
-            WHEN CAST(ISNULL(CD.PointsValue, 0) AS INT) < 1
-            THEN CD.Amount 
-        ELSE CD.PointsValue 
-    END AS PointsValue,
+            WHEN CD.Comp_id = ''Comp-1466'' THEN ISNULL(CD.RequestAmmount, CD.Amount)
+            ELSE CD.Amount 
+        END AS Points,
+        CASE 
+            WHEN CD.Comp_id = ''Comp-1466'' THEN ISNULL(CD.RequestAmmount, CD.Amount)
+            WHEN CAST(ISNULL(CD.PointsValue, 0) AS INT) < 1 THEN CD.Amount 
+            ELSE CD.PointsValue 
+        END AS PointsValue,
         CD.tdsAmount,
         CD.tdsper,
         MC.ConsumerName,
