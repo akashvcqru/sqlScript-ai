@@ -1,66 +1,113 @@
 USE [Vcqru]
 GO
+/****** Object:  StoredProcedure [dbo].[SP_ValidateMAndMUser_AI]    Script Date: 6/8/2026 10:15:41 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [dbo].[SP_ValidateMAndMUser_AI]
+ALTER PROCEDURE [dbo].[SP_ValidateMAndMUser_AI]
     @DealerCode VARCHAR(50),
     @TechId VARCHAR(50),
-    @UserType INT
+    @UserType VARCHAR(50)
 AS
 BEGIN
-    SET NOCOUNT ON;
-    DECLARE @UserTypeName VARCHAR(50), @Exists INT, @Used INT;
+    DECLARE @UserTypeName VARCHAR(50),
+            @Exists INT,
+			@Used INT;
 
-    -- Check if ID and Dealer Code are already used
-    SELECT @Used = COUNT(*) FROM M_Consumer WHERE employeeID = @TechId AND distributorID = @DealerCode;
-    IF (@Used > 0)
-    BEGIN
-        SELECT 'Invalid Id and Dealer Code, It is Already Used' AS Status;
-        RETURN;
-    END
+    
 
-    SELECT @UserTypeName = User_Type FROM User_Type WHERE Row_id = @UserType;
+	    SELECT @Used = COUNT(*)
+        FROM M_Consumer 
+        WHERE employeeID = @TechId 
+          AND distributorID = @DealerCode;
+	    
+        IF (@Used > 0)
+        BEGIN
+            SELECT 'Invalid Id and Dealer Code, It is Already Used' AS Status;
+            RETURN;
+        END
+
+
+    SELECT @UserTypeName = User_Type 
+    FROM User_Type 
+    WHERE Row_id = @UserType;
 
     IF (@UserTypeName <> 'M Star')
     BEGIN
-        IF (@UserTypeName = 'Tech Master')
+        
+		IF (@UserTypeName = 'Tech Master')
         BEGIN 
-            SELECT @Exists = COUNT(*) FROM m_dealermaster WHERE DealerCode = @DealerCode AND DealerTechnicianId = @TechId AND DealerCode <> 'SBUTEAM';
-            IF (@Exists = 0)
-            BEGIN
-                SELECT 'Invalid Tech Master Id and Dealer Code' AS Status;
-                RETURN;
-            END
-            ELSE
-            BEGIN
-                SELECT 'True' AS Status;
-                RETURN;
-            END
-        END
+		   
+			SELECT @Exists = COUNT(*) 
+			FROM m_dealermaster  
+			WHERE DealerCode = @DealerCode 
+			  AND DealerTechnicianId = @TechId
+			  and DealerCode <> 'SBUTEAM'
+			  AND @UserTypeName = 'Tech Master';
 
-        IF (@UserTypeName = 'SBU')
+			IF (@Exists = 0)
+			BEGIN
+				SELECT 'Techmaster ID or Dealer Code is incorrect. Please check and try again.' AS Status;
+				RETURN;
+			END
+			ELSE
+			BEGIN
+				SELECT 'True' AS Status;
+				RETURN;
+			END
+
+		END
+
+		IF (@UserTypeName = 'SBU')
         BEGIN 
-            SELECT @Exists = COUNT(*) FROM m_dealermaster WHERE DealerCode = @DealerCode AND DealerTechnicianId = @TechId AND DealerCode = 'SBUTEAM';
-            IF (@Exists = 0)
-            BEGIN
-                SELECT 'Invalid SBU Id and Dealer Code' AS Status;
-                RETURN;
-            END
-            ELSE
-            BEGIN
-                SELECT 'True' AS Status;
-                RETURN;
-            END
-        END
+		   
+			SELECT @Exists = COUNT(*) 
+			FROM m_dealermaster  
+			WHERE DealerCode = @DealerCode 
+			  AND DealerTechnicianId = @TechId
+			  AND DealerCode = 'SBUTEAM';
+
+			IF (@Exists = 0)
+			BEGIN
+				SELECT 'Dealer Code or SBU ID is incorrect. Please check and try again.' AS Status;
+				RETURN;
+			END
+			ELSE
+			BEGIN
+				SELECT 'True' AS Status;
+				RETURN;
+			END
+
+		END
+		
+		--SELECT @Exists = COUNT(*) 
+  --      FROM m_dealermaster  
+  --      WHERE DealerCode = @DealerCode 
+  --        AND DealerTechnicianId = @TechId;
+
+  --      IF (@Exists = 0)
+  --      BEGIN
+  --          SELECT 'Invalid SBU Id and Dealer Code' AS Status;
+  --          RETURN;
+  --      END
+  --      ELSE
+  --      BEGIN
+  --          SELECT 'True' AS Status;
+  --          RETURN;
+  --      END
     END
+
     ELSE
     BEGIN
-        SELECT @Exists = COUNT(*) FROM m_dealermaster_mahindra_emp WHERE DealerCode = @DealerCode AND DealerTechnicianId = @TechId;
+        SELECT @Exists = COUNT(*) 
+        FROM m_dealermaster_mahindra_emp  
+        WHERE DealerCode = @DealerCode 
+          AND DealerTechnicianId = @TechId;
+
         IF (@Exists = 0)
         BEGIN
-            SELECT 'Invalid M Star and Dealer Code' AS Status;
+            SELECT 'MStar ID or Dealer Code is incorrect. Please check and try again.' AS Status;
             RETURN;
         END
         ELSE
@@ -70,4 +117,16 @@ BEGIN
         END
     END
 END
-GO
+
+
+
+
+
+
+
+
+
+
+
+
+

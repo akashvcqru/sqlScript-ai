@@ -9,6 +9,46 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    DECLARE @ConsumerName NVARCHAR(200);
+    DECLARE @AccountHolderName NVARCHAR(200);
+    DECLARE @AccountNo VARCHAR(50);
+    DECLARE @IfscCode VARCHAR(20);
+
+    SELECT TOP 1 
+        @ConsumerName = mc.ConsumerName,
+        @AccountHolderName = mba.Account_HolderNm,
+        @AccountNo = mba.Account_No,
+        @IfscCode = mba.IFSC_Code
+    FROM M_Consumer mc
+    INNER JOIN M_BankAccount mba ON mc.M_ConsumerId = mba.M_ConsumerId
+    WHERE mc.M_ConsumerId = @M_ConsumerId;
+
+    -- If Bank Details are valid
+    IF @AccountNo IS NOT NULL AND LTRIM(RTRIM(@AccountNo)) <> '' AND @AccountNo NOT LIKE '%[^0-9]%'
+       AND @IfscCode IS NOT NULL AND LTRIM(RTRIM(@IfscCode)) <> '' AND UPPER(@IfscCode) LIKE '[A-Z][A-Z][A-Z][A-Z]0[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]'
+       AND ISNULL(@AccountHolderName, '') <> '' AND ISNULL(@ConsumerName, '') <> ''
+    BEGIN
+        -- Check name mismatch (using the exact token check from the insert query)
+        IF EXISTS (
+            SELECT value FROM STRING_SPLIT(UPPER(@AccountHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+            EXCEPT
+            SELECT value FROM STRING_SPLIT(UPPER(@ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+        ) OR EXISTS (
+            SELECT value FROM STRING_SPLIT(UPPER(@ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+            EXCEPT
+            SELECT value FROM STRING_SPLIT(UPPER(@AccountHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+        )
+        BEGIN
+            -- Reject KYC
+            UPDATE tbl_Vendorvisekycstatus
+            SET VRKbl_KYC_status = 2, kycremark = 'Name mismatch with Bank Account'
+            WHERE M_consumerId = @M_ConsumerId;
+
+            SELECT 'Bank KYC Rejected due to name mismatch' AS Message, 2 AS Success;
+            RETURN;
+        END
+    END
+
     BEGIN TRY
         BEGIN TRAN;
 
