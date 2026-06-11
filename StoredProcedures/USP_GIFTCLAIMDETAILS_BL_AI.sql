@@ -17,7 +17,7 @@ BEGIN
         a.Mobileno,     
         a.vendor_comment AS Message,      
         b.Gift_name,     
-    a.Amount as Gift_value,   
+        a.Amount as Gift_value,   
       --  b.Gift_value,     
         b.Gift_desc,      aa.Service_ID ,aa.ServiceName,
         b.Gift_image,     
@@ -26,7 +26,8 @@ BEGIN
         a.SupervisorValue,
         a.SupervisorGet,
         a.SupervisorValueType,
-        a.SupervisorMobileNo
+        a.SupervisorMobileNo,
+        a.RequestAmmount
     FROM ClaimDetails a      
     INNER JOIN Claim_gift b ON a.Gift_id = b.gift_id   	left join M_Service aa on aa.Service_ID = a.Service_ID  
     WHERE a.Comp_id = b.CompID     
@@ -51,7 +52,8 @@ BEGIN
         a.SupervisorValue,
         a.SupervisorGet,
         a.SupervisorValueType,
-        a.SupervisorMobileNo
+        a.SupervisorMobileNo,
+        a.RequestAmmount
     FROM ClaimDetails     a 	left join M_Service aa on aa.Service_ID = a.Service_ID
   WHERE Gift_id IS NULL  
       AND a.Mobileno = @Mobileno   
@@ -60,7 +62,7 @@ BEGIN
   and (a.Comp_id = @Comp_id or (@Comp_id IN ('Comp-1650', 'Comp-1567') and a.Comp_id IN ('Comp-1650', 'Comp-1567') ) )   
     
     UNION ALL
-
+ 
     -- Transaction records for specific companies (e.g., Comp-1152)
     SELECT 
         FORMAT(TransactionDate, 'dd MMM yyyy HH:mm tt') AS Date,
@@ -79,7 +81,8 @@ BEGIN
         NULL AS SupervisorValue,
         NULL AS SupervisorGet,
         NULL AS SupervisorValueType,
-        NULL AS SupervisorMobileNo
+        NULL AS SupervisorMobileNo,
+        Amount AS RequestAmmount
     FROM [dbo].[Transactions] WITH (NOLOCK)
     WHERE (MobileNumber = @Mobileno OR RIGHT(MobileNumber, 10) = RIGHT(@Mobileno, 10))
       AND ('Comp-' + CAST(CompId AS VARCHAR) = @Comp_id OR CAST(CompId AS VARCHAR) = @Comp_id)

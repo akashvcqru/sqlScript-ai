@@ -42,7 +42,8 @@ BEGIN
             a.SupervisorValue,
             a.SupervisorGet,
             a.SupervisorValueType,
-            a.SupervisorMobileNo
+            a.SupervisorMobileNo,
+            a.RequestAmmount
         FROM ClaimDetails a        
         INNER JOIN Claim_gift b ON a.Gift_id = b.gift_id       
         WHERE a.Comp_id = b.CompID       
@@ -67,7 +68,8 @@ BEGIN
             SupervisorValue,
             SupervisorGet,
             SupervisorValueType,
-            SupervisorMobileNo
+            SupervisorMobileNo,
+            RequestAmmount
         FROM ClaimDetails       
         WHERE Gift_id IS NULL      
           AND Mobileno = @Mobileno       
