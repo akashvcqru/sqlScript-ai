@@ -34,8 +34,7 @@ BEGIN
     ---------------------------------------------------------
     -- DATE RANGE
     ---------------------------------------------------------
-    DECLARE @CompanyStartDate DATETIME;
-    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+    DECLARE @CompanyStartDate DATETIME = '2015-01-01';
 
     DECLARE @StartDate DATE = NULL;
     DECLARE @EndDate   DATE = NULL;
@@ -138,10 +137,7 @@ BEGIN
     ---------------------------------------------------------
 
     DECLARE @BaseWhere NVARCHAR(MAX) = N'
-    WHERE (
-            (CD.Comp_id = @Comp_Id) OR 
-            (@Comp_Id IN (''Comp-1567'',''Comp-1650'') AND CD.Comp_id IN (''Comp-1567'',''Comp-1650''))
-          )
+    WHERE CD.Comp_id = @Comp_Id
       AND (@StartDate IS NULL OR CD.Claim_Date >= @StartDate)
       AND (@EndDate   IS NULL OR CD.Claim_Date <  DATEADD(DAY, 1, @EndDate))
 ';
