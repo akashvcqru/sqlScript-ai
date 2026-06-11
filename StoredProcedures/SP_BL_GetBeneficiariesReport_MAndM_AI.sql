@@ -286,7 +286,8 @@ BEGIN
     LEFT JOIN #UPI     UU ON UU.M_Consumerid = CAST(U.M_ConsumerId AS VARCHAR(50))
     LEFT JOIN #BPoints BP ON BP.RedeemBy    = U.M_ConsumerId
     WHERE
-        (@StateFilter IS NULL OR ISNULL(S.State, U.State) = @StateFilter)
+        ISNULL(B.Benefit, 0) > 0
+        AND (@StateFilter IS NULL OR ISNULL(S.State, U.State) = @StateFilter)
         AND (
             @KYCStatusFilter IS NULL OR
             (@KYCStatusFilter = 'Approved' AND U.VRKbl_KYC_status = 1) OR

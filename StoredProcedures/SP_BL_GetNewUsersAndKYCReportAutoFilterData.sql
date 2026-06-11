@@ -16,8 +16,7 @@ ALTER PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]
     @Page INT = NULL,                    
     @Limit INT = NULL,
     @IsExport BIT =NULL,
-    @Search nvarchar(30) = null,
-    @IspanOperative NVARCHAR(15) = NULL
+    @Search nvarchar(30) = null
   
 AS
 BEGIN
@@ -32,24 +31,7 @@ BEGIN
 
     DECLARE @Offset INT = (@Page - 1) * @Limit;
 
-    ------------------------------------------------------
-    -- Fetch Brand Settings for KYC Requirements
-    ------------------------------------------------------
-    DECLARE @AadharReq VARCHAR(10) = 'No';
-    DECLARE @PanReq VARCHAR(10) = 'No';
-    DECLARE @BankReq VARCHAR(10) = 'No';
-    DECLARE @UpiReq VARCHAR(10) = 'No';
-    DECLARE @kyc_Details NVARCHAR(MAX);
 
-    SELECT TOP 1 @kyc_Details = kyc_Details FROM BrandSettings_AI WHERE Comp_ID = @Comp_Id;
-
-    IF @kyc_Details IS NOT NULL AND ISJSON(@kyc_Details) > 0
-    BEGIN
-        SET @AadharReq = ISNULL(JSON_VALUE(@kyc_Details, '$.AadharCard'), 'No');
-        SET @PanReq = ISNULL(JSON_VALUE(@kyc_Details, '$.PANCard'), 'No');
-        SET @BankReq = ISNULL(JSON_VALUE(@kyc_Details, '$.AccountDetails'), 'No');
-        SET @UpiReq = ISNULL(JSON_VALUE(@kyc_Details, '$.UPI'), 'No');
-    END
 
 
     ------------------------------------------------------
@@ -166,22 +148,8 @@ BEGIN
         SET @BaseWhere += N'
         AND (
             (@KYCStatusFilter = ''REJECTED'' AND VKS.VRKbl_KYC_status = 2) OR
-            (@KYCStatusFilter = ''PENDING'' AND (
-                VKS.VRKbl_KYC_status = 0 OR 
-                VKS.VRKbl_KYC_status IS NULL OR 
-                (VKS.VRKbl_KYC_status NOT IN (0,2) AND (
-                    (''' + @AadharReq + ''' = ''Yes'' AND ISNULL(MC.aadharkycStatus, ''0'') <> ''1'') OR
-                    (''' + @PanReq + ''' = ''Yes'' AND ISNULL(MC.panekycStatus, ''0'') <> ''1'') OR
-                    (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'' AND NOT EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) OR
-                    (''' + @UpiReq + ''' = ''Yes'' AND ISNULL(MC.UPIKYCSTATUS, ''0'') <> ''1'')
-                ))
-            )) OR
-            (@KYCStatusFilter = ''APPROVED'' AND VKS.VRKbl_KYC_status NOT IN (0,2) AND 
-                (''' + @AadharReq + ''' <> ''Yes'' OR ISNULL(MC.aadharkycStatus, ''0'') = ''1'') AND
-                (''' + @PanReq + ''' <> ''Yes'' OR ISNULL(MC.panekycStatus, ''0'') = ''1'') AND
-                (''' + @BankReq + ''' <> ''Yes'' OR ISNULL(MC.bankekycStatus, ''0'') = ''1'' OR EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) AND
-                (''' + @UpiReq + ''' <> ''Yes'' OR ISNULL(MC.UPIKYCSTATUS, ''0'') = ''1'')
-            )
+            (@KYCStatusFilter = ''PENDING'' AND (VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL)) OR
+            (@KYCStatusFilter = ''APPROVED'' AND VKS.VRKbl_KYC_status = 1)
         )';
     END
 
@@ -189,28 +157,10 @@ BEGIN
         SET @BaseWhere += N' AND MC.[State] = @StateFilter';
 
     ------------------------------------------------------
-    -- Mobile Number / Status Search
+    -- Mobile Number Search
     ------------------------------------------------------
     IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
-    BEGIN
-        IF UPPER(LTRIM(RTRIM(@Search))) = 'INOPERATIVE'
-            SET @BaseWhere += N' AND MC.IspanOperative = 1';
-        ELSE IF UPPER(LTRIM(RTRIM(@Search))) = 'OPERATIVE'
-            SET @BaseWhere += N' AND ISNULL(MC.IspanOperative, 0) = 0';
-        ELSE
-            SET @BaseWhere += N' AND MC.MobileNo LIKE ''%'' + @Search + ''%''';
-    END
-
-    ------------------------------------------------------
-    -- PAN Operative Filter
-    ------------------------------------------------------
-    IF @IspanOperative IS NOT NULL AND LTRIM(RTRIM(@IspanOperative)) <> ''
-    BEGIN
-        IF @IspanOperative = '1' OR UPPER(LTRIM(RTRIM(@IspanOperative))) = 'INOPERATIVE'
-            SET @BaseWhere += N' AND MC.IspanOperative = 1';
-        ELSE IF @IspanOperative = '0' OR UPPER(LTRIM(RTRIM(@IspanOperative))) = 'OPERATIVE'
-            SET @BaseWhere += N' AND ISNULL(MC.IspanOperative, 0) = 0';
-    END
+        SET @BaseWhere += N' AND MC.MobileNo LIKE ''%'' + @Search + ''%''';
 
     ------------------------------------------------------
     -- Data Query
@@ -236,22 +186,14 @@ BEGIN
         -- Determine KYC Status
         CASE 
             WHEN VKS.VRKbl_KYC_status = 2 THEN ''Rejected''
-            WHEN VKS.VRKbl_KYC_status = 0 THEN ''Pending''
-            WHEN (''' + @AadharReq + ''' = ''Yes'' AND ISNULL(MC.aadharkycStatus, ''0'') <> ''1'') THEN ''Pending''
-            WHEN (''' + @PanReq + ''' = ''Yes'' AND ISNULL(MC.panekycStatus, ''0'') <> ''1'') THEN ''Pending''
-            WHEN (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'' AND NOT EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) THEN ''Pending''
-            WHEN (''' + @UpiReq + ''' = ''Yes'' AND ISNULL(MC.UPIKYCSTATUS, ''0'') <> ''1'') THEN ''Pending''
+            WHEN VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL THEN ''Pending''
             ELSE ''Approved''
         END AS VRKbl_KYC_status,
 
         -- Legacy KYCStatus for compatibility
         CASE 
             WHEN VKS.VRKbl_KYC_status = 2 THEN ''KYC Rejected''
-            WHEN VKS.VRKbl_KYC_status = 0 THEN ''KYC Pending''
-            WHEN (''' + @AadharReq + ''' = ''Yes'' AND ISNULL(MC.aadharkycStatus, ''0'') <> ''1'') THEN ''KYC Pending''
-            WHEN (''' + @PanReq + ''' = ''Yes'' AND ISNULL(MC.panekycStatus, ''0'') <> ''1'') THEN ''KYC Pending''
-            WHEN (''' + @BankReq + ''' = ''Yes'' AND ISNULL(MC.bankekycStatus, ''0'') <> ''1'' AND NOT EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) THEN ''KYC Pending''
-            WHEN (''' + @UpiReq + ''' = ''Yes'' AND ISNULL(MC.UPIKYCSTATUS, ''0'') <> ''1'') THEN ''KYC Pending''
+            WHEN VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL THEN ''KYC Pending''
             ELSE ''KYC Approved''
         END AS KYCStatus,
 
@@ -261,7 +203,6 @@ BEGIN
         CASE WHEN (MC.bankekycStatus IN (''1'', ''Online'') OR EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
         MC.pancard_number,
-        CASE WHEN MC.IspanOperative = 1 THEN ''InOperative'' ELSE ''Operative'' END AS IspanOperative,
         MC.gender,
         MC.shop_file,
         VKS.kycremark AS remark,
@@ -281,7 +222,13 @@ BEGIN
         MC.UPIId,
         MC.Selfie_image,
         VKS.Entry_Date,
-        MC.M_Consumerid
+        MC.M_Consumerid,
+
+        -- IspanOperative Status
+        CASE 
+            WHEN MC.IspanOperative = 1 THEN ''InOperative''
+            ELSE ''Operative''
+        END AS IspanOperative
     FROM tbl_Vendorvisekycstatus VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
     OUTER APPLY (
