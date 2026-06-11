@@ -9,6 +9,42 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    DECLARE @ConsumerName NVARCHAR(200);
+    DECLARE @PanHolderName NVARCHAR(200);
+    DECLARE @PanCardNumber VARCHAR(20);
+
+    SELECT TOP 1 
+        @ConsumerName = mc.ConsumerName,
+        @PanHolderName = mc.PanHolderName,
+        @PanCardNumber = mc.pancard_number
+    FROM M_Consumer mc
+    WHERE mc.M_ConsumerId = @M_ConsumerId;
+
+    -- If PAN is valid and holder name/consumer name are provided
+    IF @PanCardNumber IS NOT NULL AND @PanCardNumber LIKE '[A-Z][A-Z][A-Z][A-Z][A-Z][0-9][0-9][0-9][0-9][A-Z]'
+       AND ISNULL(@PanHolderName, '') <> '' AND ISNULL(@ConsumerName, '') <> ''
+    BEGIN
+        -- Check name mismatch (using the exact token check from the insert query)
+        IF EXISTS (
+            SELECT value FROM STRING_SPLIT(UPPER(@PanHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+            EXCEPT
+            SELECT value FROM STRING_SPLIT(UPPER(@ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+        ) OR EXISTS (
+            SELECT value FROM STRING_SPLIT(UPPER(@ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+            EXCEPT
+            SELECT value FROM STRING_SPLIT(UPPER(@PanHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+        )
+        BEGIN
+            -- Reject KYC
+            UPDATE tbl_Vendorvisekycstatus
+            SET VRKbl_KYC_status = 2, kycremark = 'Name mismatch with PAN'
+            WHERE M_consumerId = @M_ConsumerId;
+
+            SELECT 'PAN KYC Rejected due to name mismatch' AS Message, 2 AS Success;
+            RETURN;
+        END
+    END
+
     BEGIN TRY
         BEGIN TRAN;
 

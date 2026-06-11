@@ -123,10 +123,10 @@ BEGIN
     INTO #Benefit
     FROM dbo.ConsumerPointsCashDetails BLE WITH (NOLOCK)
     WHERE 
-        BLE.Comp_id = @ActualCompId
+        BLE.Comp_id = @ActualCompId and Enq_Date >='2022-11-25 00:00:00.000'
         AND BLE.Enq_Date >= @CompRegDate
         AND BLE.Enq_Date >= @StartDate
-        AND BLE.Enq_Date < DATEADD(DAY, 1, @EndDate)
+        AND BLE.Enq_Date < DATEADD(DAY, 1, @EndDate) 
         AND BLE.M_ConsumerId IN (SELECT M_ConsumerId FROM #Users)
     GROUP BY BLE.M_ConsumerId; 
 
@@ -151,7 +151,7 @@ BEGIN
     INTO #UPI
     FROM Transactions UPI WITH (NOLOCK)
     WHERE UPI.CompId = REPLACE(@ActualCompId, 'Comp-', '') AND UPI.Issuccess = 1
-      AND UPI.TransactionDate >= @CompRegDate
+      AND UPI.TransactionDate >= @CompRegDate and TransactionDate >='2022-11-25 00:00:00.000'
       AND UPI.TransactionDate >= @StartDate AND UPI.TransactionDate < DATEADD(DAY, 1, @EndDate)
       AND EXISTS (SELECT 1 FROM #Users U WHERE U.M_ConsumerId = UPI.M_CounserID)
     GROUP BY UPI.M_CounserID;

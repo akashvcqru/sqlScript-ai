@@ -115,6 +115,14 @@ BEGIN
         [aadharUploadedate] = GETDATE()
     WHERE [M_Consumerid] = @ActualId AND [MobileNo] = @MobileNo                                
                                 
+    -- Update tbl_Vendorvisekycstatus if Vrkabel_User_Type is updated
+    IF @Vrkabel_User_Type IS NOT NULL AND @Vrkabel_User_Type > 0
+    BEGIN
+        UPDATE tbl_Vendorvisekycstatus
+        SET Vrkabel_User_Type = @Vrkabel_User_Type
+        WHERE M_consumerId = @ActualId AND Comp_id = @Comp_id
+    END
+
     SELECT 'Success' AS Result                                
 END
 GO

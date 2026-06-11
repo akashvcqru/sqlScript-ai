@@ -33,7 +33,7 @@ BEGIN
         SET @StartDate = @Today;
         SET @EndDate   = DATEADD(DAY, 1, @Today);
     END
-    ELSE IF @Win = 'YESTERDAY'
+    ELSE IF @Win = 'YESTERDAY' OR @Win = 'LASTDAY'
     BEGIN
         SET @StartDate = DATEADD(DAY, -1, @Today);
         SET @EndDate   = @Today;
@@ -100,7 +100,9 @@ BEGIN
             SELECT 
                 (CAST(mc.Code1 AS VARCHAR(50)) + CAST(mc.Code2 AS VARCHAR(50))) AS Code,
                 pr.Pro_Name AS ProductName,
-                mc.Block_Code_Date AS Block_Code_Date
+                mc.Block_Code_Date AS Block_Code_Date,
+                pr.Pro_ID AS Pro_ID,
+                pr.Pro_Entry_Date AS Pro_Registration_Date
             FROM M_Code mc WITH (NOLOCK)
             INNER JOIN Pro_Reg pr WITH (NOLOCK) ON mc.Pro_ID = pr.Pro_ID
             WHERE pr.Comp_ID = @Comp_Id 
@@ -120,7 +122,9 @@ BEGIN
             SELECT 
                 (CAST(mc.Code1 AS VARCHAR(50)) + CAST(mc.Code2 AS VARCHAR(50))) AS Code,
                 pr.Pro_Name AS ProductName,
-                mc.Block_Code_Date AS Block_Code_Date
+                mc.Block_Code_Date AS Block_Code_Date,
+                pr.Pro_ID AS Pro_ID,
+                pr.Pro_Entry_Date AS Pro_Registration_Date
             FROM M_Code mc WITH (NOLOCK)
             INNER JOIN Pro_Reg pr WITH (NOLOCK) ON mc.Pro_ID = pr.Pro_ID
             WHERE pr.Comp_ID = @Comp_Id 
