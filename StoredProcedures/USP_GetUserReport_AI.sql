@@ -165,35 +165,7 @@ BEGIN
     ELSE
     BEGIN
         ------------------------------------------------------
-        -- Step 1: Pre-filter Pro_Enq (The largest table)
-        ------------------------------------------------------
-        IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
-        SELECT 
-            Received_Code1, 
-            Received_Code2, 
-            MobileNo,
-            RIGHT(MobileNo, 10) AS MobileLast10,
-            Enq_Date, 
-            Is_Success
-        INTO #tempPro_Enq
-        FROM Pro_Enq WITH (NOLOCK)
-        WHERE Comp_ID = @Comp_ID
-          AND Enq_Date >= @CompanyStartDate
-          AND Enq_Date >= @StartDate
-          AND Enq_Date < @EndDate
-          AND (@DialModeFilter IS NULL OR Dial_Mode = @DialModeFilter)
-          AND (
-              @CodeStatusFilter IS NULL OR
-              (@CodeStatusFilter = 'Verified' AND Is_Success = 1) OR
-              (@CodeStatusFilter = 'Already Scanned' AND Is_Success = 2) OR
-              (@CodeStatusFilter = 'Invalid' AND Is_Success NOT IN (1, 2))
-          );
-
-        CREATE INDEX IX_tempPro_Enq_Codes ON #tempPro_Enq(Received_Code1, Received_Code2);
-        CREATE INDEX IX_tempPro_Enq_Mobile ON #tempPro_Enq(MobileLast10);
-
-        ------------------------------------------------------
-        -- Step 2: Pre-filter M_Code (Deduplicated per code pair)
+        -- Step 1: Pre-filter M_Code (Deduplicated per code pair)
         ------------------------------------------------------
         IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
         
@@ -215,6 +187,36 @@ BEGIN
         WHERE rn = 1;
 
         CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+
+        ------------------------------------------------------
+        -- Step 2: Pre-filter Pro_Enq (The largest table)
+        ------------------------------------------------------
+        IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
+        SELECT 
+            pe.Received_Code1, 
+            pe.Received_Code2, 
+            pe.MobileNo,
+            RIGHT(pe.MobileNo, 10) AS MobileLast10,
+            pe.Enq_Date, 
+            pe.Is_Success
+        INTO #tempPro_Enq
+        FROM Pro_Enq pe WITH (NOLOCK)
+        LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+              AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+        WHERE (pe.Comp_ID = @Comp_ID OR (ISNULL(pe.Comp_ID, '') = '' AND mc.Code1 IS NOT NULL))
+          AND pe.Enq_Date >= @CompanyStartDate
+          AND pe.Enq_Date >= @StartDate
+          AND pe.Enq_Date < @EndDate
+          AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
+          AND (
+              @CodeStatusFilter IS NULL OR
+              (@CodeStatusFilter = 'Verified' AND pe.Is_Success = 1) OR
+              (@CodeStatusFilter = 'Already Scanned' AND pe.Is_Success = 2) OR
+              (@CodeStatusFilter = 'Invalid' AND pe.Is_Success NOT IN (1, 2))
+          );
+
+        CREATE INDEX IX_tempPro_Enq_Codes ON #tempPro_Enq(Received_Code1, Received_Code2);
+        CREATE INDEX IX_tempPro_Enq_Mobile ON #tempPro_Enq(MobileLast10);
 
         ------------------------------------------------------
         -- Main Query (Using optimized temp tables)

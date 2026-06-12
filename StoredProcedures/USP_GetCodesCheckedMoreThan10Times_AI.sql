@@ -32,7 +32,8 @@ BEGIN
         FROM Pro_Enq pe WITH (NOLOCK)
         INNER JOIN M_Code_PFL mc WITH (NOLOCK) ON pe.Received_Code1 = mc.Code1 AND pe.Received_Code2 = mc.Code2
         INNER JOIN Pro_Reg pr WITH (NOLOCK) ON mc.Pro_ID = pr.Pro_ID
-        WHERE pe.Comp_ID = @Comp_Id
+        WHERE pr.Comp_ID = @Comp_Id
+          AND (pe.Comp_ID = @Comp_Id OR ISNULL(pe.Comp_ID, '') = '')
         GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, pe.Received_Code1, pe.Received_Code2
         HAVING COUNT(pe.Enq_Date) > 10
         ORDER BY LastCodeCheckTime DESC;
@@ -49,7 +50,8 @@ BEGIN
         FROM Pro_Enq pe WITH (NOLOCK)
         INNER JOIN M_Code mc WITH (NOLOCK) ON pe.Received_Code1 = mc.Code1 AND pe.Received_Code2 = mc.Code2
         INNER JOIN Pro_Reg pr WITH (NOLOCK) ON mc.Pro_ID = pr.Pro_ID
-        WHERE pe.Comp_ID = @Comp_Id
+        WHERE pr.Comp_ID = @Comp_Id
+          AND (pe.Comp_ID = @Comp_Id OR ISNULL(pe.Comp_ID, '') = '')
         GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, pe.Received_Code1, pe.Received_Code2
         HAVING COUNT(pe.Enq_Date) > 10
         ORDER BY LastCodeCheckTime DESC;

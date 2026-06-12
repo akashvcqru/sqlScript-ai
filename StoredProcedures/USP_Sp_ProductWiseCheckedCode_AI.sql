@@ -97,10 +97,22 @@ BEGIN
         PE.Comp_ID,
         PE.Enq_Date
     INTO #FilteredEnq
-    --FROM Pro_Enq PE WITH (NOLOCK)
-	FROM (select * from Pro_Enq WITH (NOLOCK)  where enq_date>=@StartDate) PE   
-    WHERE PE.Comp_ID = @Comp_Id
-      AND PE.Enq_Date >= @StartDate;
+    FROM (
+        SELECT pe.Received_Code1, pe.Received_Code2, pe.Is_Success, pe.Comp_ID, pe.Enq_Date
+        FROM Pro_Enq pe WITH (NOLOCK)
+        LEFT JOIN (
+            SELECT Code1, Code2, Pro_ID FROM M_Code WITH (NOLOCK) 
+            WHERE @Comp_Id <> 'Comp-1693' 
+              AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id)
+            UNION ALL
+            SELECT Code1, Code2, Pro_ID FROM M_Code_PFL WITH (NOLOCK) 
+            WHERE @Comp_Id = 'Comp-1693' 
+              AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id)
+        ) mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50))))
+            AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+        WHERE pe.Enq_Date >= @StartDate
+          AND (pe.Comp_ID = @Comp_Id OR (ISNULL(pe.Comp_ID, '') = '' AND mc.Code1 IS NOT NULL))
+    ) PE;
 
     -- 2️⃣ Join with M_Code and Pro_Reg, store in temp table
     SELECT 

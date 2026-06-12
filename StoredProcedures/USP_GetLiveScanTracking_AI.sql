@@ -298,7 +298,7 @@ BEGIN
                   AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
             LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mc.Pro_ID
             LEFT JOIN M_Consumer mcn WITH (NOLOCK) ON mcn.MobileNo = pe.MobileNo
-            WHERE pe.Comp_ID = @Comp_ID
+            WHERE (pe.Comp_ID = @Comp_ID OR (ISNULL(pe.Comp_ID, '') = '' AND mc.Code1 IS NOT NULL))
               AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
               AND pe.Enq_Date >= @StartDate
               AND pe.Enq_Date < @EndDate

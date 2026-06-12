@@ -23,7 +23,8 @@ CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_MAndM_AI]
     @IsExport BIT = NULL,
     @CodeStatusFilter NVARCHAR(20) = NULL,
     @StateFilter NVARCHAR(50) = NULL,
-    @DialModeFilter NVARCHAR(50) = NULL
+    @DialModeFilter NVARCHAR(50) = NULL,
+    @Lot NVARCHAR(50) = NULL
 )
 AS
 BEGIN
@@ -32,6 +33,16 @@ BEGIN
     -- Normalize company ID parameter name
     IF @Comp_Id IS NULL AND @CompId IS NOT NULL
         SET @Comp_Id = @CompId;
+
+    -- Normalize Lot parameter name (e.g., 'LOT8', 'Lot 8', 'lot8' -> '8')
+    IF @Lot IS NOT NULL
+    BEGIN
+        SET @Lot = LTRIM(RTRIM(@Lot));
+        IF UPPER(@Lot) LIKE 'LOT%'
+        BEGIN
+            SET @Lot = LTRIM(RTRIM(SUBSTRING(@Lot, 4, LEN(@Lot))));
+        END
+    END
 
     ---------------------------------------------------------
     -- SBU Company Check Logic
@@ -245,7 +256,17 @@ BEGIN
             @Search IS NULL
             OR pc.MobileNo LIKE '%' + @Search + '%'
             OR (pc.Code1 + pc.Code2) LIKE '%' + @Search + '%'
-        );
+        )
+        AND (
+            @Lot IS NULL
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 4) = @Lot
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 4) = 'MCS' + @Lot
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 4) = 'mcs' + @Lot
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 5) = '_' + @Lot
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 5) = '_MCS' + @Lot
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 5) = '_mcs' + @Lot
+            OR ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name) LIKE '%' + @Lot
+        ) OPTION (RECOMPILE);
 
     ---------------------------------------------------------
     -- EXPORT MODE
