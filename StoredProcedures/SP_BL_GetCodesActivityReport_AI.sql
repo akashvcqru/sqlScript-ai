@@ -226,13 +226,22 @@ BEGIN
         MAX(CAST(
             CASE 
                 WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(BL.Cash, 0) * 1.10
+                WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0)
                 ELSE ISNULL(BL.Points, 0)
             END 
-        AS DECIMAL(18,2))) AS Points
+        AS DECIMAL(18,2))) AS Points,
+        MAX(CAST(
+            CASE 
+                WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0)
+                ELSE ISNULL(BL.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS WornPoint
     INTO #Points
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
     INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON BL.SST_id = sst.SST_Id
+    LEFT JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
     WHERE 
     (
         (@Comp_Id IN ('Comp-1567','Comp-1650') AND BL.compid IN ('Comp-1567','Comp-1650'))
@@ -256,9 +265,16 @@ BEGIN
             CAST(
                 CASE 
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
+                    WHEN SS.Service_ID = 'SRV1005' THEN ISNULL(SST.IsCash, 0)
                     ELSE CASE WHEN SST.Points IS NULL OR SST.Points = 0 THEN ISNULL(SST.IsCash, 0) ELSE SST.Points END
                 END 
             AS DECIMAL(18,2)) AS ConfigPoints,
+            CAST(
+                CASE 
+                    WHEN SS.Service_ID = 'SRV1005' THEN ISNULL(SST.IsCash, 0)
+                    ELSE ISNULL(SST.Points, 0)
+                END 
+            AS DECIMAL(18,2)) AS AssignPoint,
             ROW_NUMBER() OVER (
                 PARTITION BY MC.M_Codeid, SS.Service_ID 
                 ORDER BY SST.Entry_Date DESC, SST.SST_Id DESC
@@ -285,6 +301,7 @@ BEGIN
             M_Codeid,
             Frequency,
             ConfigPoints,
+            AssignPoint,
             ROW_NUMBER() OVER (
                 PARTITION BY M_Codeid 
                 ORDER BY Entry_Date DESC, SST_Id DESC
@@ -294,7 +311,8 @@ BEGIN
     SELECT 
         M_Codeid,
         Frequency,
-        ConfigPoints
+        ConfigPoints,
+        AssignPoint
     INTO #CodeConfigPoints
     FROM FinalRankedConfig
     WHERE rn_final = 1;
@@ -329,7 +347,15 @@ BEGIN
                 ELSE 'Invalid'
             END AS Result,
 			E.Latitude,
-			E.Longitude
+			E.Longitude,
+            CASE 
+                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.AssignPoint, 0)
+                ELSE 0 
+            END AS AssignPoint,
+            CASE 
+                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.WornPoint, 0)
+                ELSE 0 
+            END AS WornPoint
 		FROM
 		(
 			SELECT *,
@@ -388,7 +414,15 @@ BEGIN
                 ELSE 'Invalid'
             END AS Result,
 			E.Latitude,
-			E.Longitude
+			E.Longitude,
+            CASE 
+                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.AssignPoint, 0)
+                ELSE 0 
+            END AS AssignPoint,
+            CASE 
+                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.WornPoint, 0)
+                ELSE 0 
+            END AS WornPoint
         FROM 
 		(
 			SELECT *,

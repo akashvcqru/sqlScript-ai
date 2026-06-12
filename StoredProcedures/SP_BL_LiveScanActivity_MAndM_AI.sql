@@ -137,7 +137,10 @@ BEGIN
         G.Longitude,
         S.MobileNo,
         CASE WHEN S.Is_Success = 1 THEN 
-            CASE WHEN S.Points IS NULL OR S.Points = 0 THEN ISNULL(S.Cash, 0) ELSE S.Points END 
+            CASE 
+                WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0)
+                ELSE CASE WHEN S.Points IS NULL OR S.Points = 0 THEN ISNULL(S.Cash, 0) ELSE S.Points END
+            END 
             ELSE 0 
         END AS Points,
         CASE 
@@ -146,10 +149,34 @@ BEGIN
             ELSE 'INVALID'
         END AS RESULT,
         (S.Code1 + S.Code2) AS UniqueCode,
-        S.Enq_Date AS ScanDate
+        S.Enq_Date AS ScanDate,
+        CASE 
+            WHEN S.Is_Success = 1 THEN
+                CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(sst.IsCash, 0) ELSE ISNULL(sst.Points, 0) END
+            ELSE 0 
+        END AS AssignPoint,
+        CASE 
+            WHEN S.Is_Success = 1 THEN
+                CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
+            ELSE 0 
+        END AS WornPoint
     FROM #Scans S
     LEFT JOIN dbo.UserData_MHCroneJob mc WITH (NOLOCK) ON mc.m_consumerid = S.M_ConsumerId
     LEFT JOIN GeoLocationData G WITH (NOLOCK) ON G.Code1 = S.Code1 AND G.Code2 = S.Code2 AND G.Comp_Id = @ActualCompId AND G.Enq_Date >= @CompRegDate
+    LEFT JOIN dbo.M_Code mcd WITH (NOLOCK) ON mcd.Code1 = S.Code1 AND mcd.Code2 = S.Code2
+    LEFT JOIN dbo.M_ServiceSubscription ss WITH (NOLOCK) 
+        ON ss.Pro_ID = mcd.Pro_ID
+       AND CONCAT(FORMAT(mcd.Series_Order, '000#'), FORMAT(mcd.Series_Serial, '000#'))
+           BETWEEN CONCAT(FORMAT(ss.start_order, '000#'), FORMAT(ss.start_series, '000#'))
+           AND CONCAT(FORMAT(ss.end_order, '000#'), FORMAT(ss.end_series, '000#'))
+           AND ss.IsActive = 1 AND ss.IsDelete = 0
+    LEFT JOIN dbo.M_ServiceSubscriptionTrans sst WITH (NOLOCK) 
+        ON sst.Subscribe_Id = ss.Subscribe_Id
+       AND sst.IsActive = 1 AND sst.IsDelete = 0
+    LEFT JOIN dbo.BLoyaltyPointsEarned BL WITH (NOLOCK)
+        ON BL.Code1 = S.Code1
+       AND BL.Code2 = S.Code2
+       AND BL.compid = @ActualCompId
     WHERE (@Filter IS NULL OR 
            (@Filter = 'VERIFIED' AND S.Is_Success = 1) OR
            (@Filter = 'DUPLICATE' AND S.Is_Success = 2) OR

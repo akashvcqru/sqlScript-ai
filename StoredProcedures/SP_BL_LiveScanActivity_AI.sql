@@ -88,17 +88,6 @@ BEGIN
       AND PE.Enq_Date >= @StartDate 
       AND PE.Enq_Date < DATEADD(DAY,1,@EndDate);
 
-    IF OBJECT_ID('tempdb..#Points') IS NOT NULL DROP TABLE #Points;
-
-    SELECT 
-        CAST(Code1 AS NVARCHAR(20)) AS Code1,
-        CAST(Code2 AS NVARCHAR(20)) AS Code2,
-        SUM(CASE WHEN Points IS NULL OR Points = 0 THEN ISNULL(Cash,0) ELSE Points END) AS TotalPoints
-    INTO #Points
-    FROM BLoyaltyPointsEarned WITH (NOLOCK)
-    WHERE (CompId = @CompId OR CompId IS NULL) AND UpdateDate >= @CompRegDate
-    GROUP BY Code1, Code2;
-
     -- RESULT 1: Latest Scan Records
     SELECT TOP 50
         ISNULL(MC.ConsumerName, 'Not Registered') AS ConsumerName,
@@ -109,14 +98,31 @@ BEGIN
         G.Latitude,
         G.Longitude,
         S.MobileNo,
-        CASE WHEN S.Is_Success = 1 THEN ISNULL(P.TotalPoints,0) ELSE 0 END AS Points,
+        CASE 
+            WHEN S.Is_Success = 1 THEN 
+                CASE 
+                    WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0)
+                    ELSE ISNULL(BL.Points, 0)
+                END
+            ELSE 0 
+        END AS Points,
         CASE 
             WHEN S.Is_Success = 1 THEN 'VERIFIED'
             WHEN S.Is_Success = 2 THEN 'DUPLICATE'
             ELSE 'INVALID'
         END AS RESULT,
         (S.Code1 + S.Code2) AS UniqueCode,
-        S.Enq_Date AS ScanDate
+        S.Enq_Date AS ScanDate,
+        CASE 
+            WHEN S.Is_Success = 1 THEN
+                CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(sst.IsCash, 0) ELSE ISNULL(sst.Points, 0) END
+            ELSE 0
+        END AS AssignPoint,
+        CASE 
+            WHEN S.Is_Success = 1 THEN
+                CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
+            ELSE 0
+        END AS WornPoint
     FROM #Scans S
     INNER JOIN M_Code MCd WITH (NOLOCK)
             ON S.Code1 = CAST(MCd.Code1 AS NVARCHAR(20))
@@ -124,7 +130,19 @@ BEGIN
     INNER JOIN Pro_Reg PR WITH (NOLOCK)
             ON PR.Pro_ID = MCd.Pro_ID
            AND PR.Comp_ID = @CompId
-    LEFT JOIN #Points P ON P.Code1 = S.Code1 AND P.Code2 = S.Code2
+    LEFT JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) 
+            ON BL.Code1 = S.Code1 
+           AND BL.Code2 = S.Code2 
+           AND (BL.compid = @CompId OR BL.compid IS NULL)
+    LEFT JOIN M_ServiceSubscription ss WITH (NOLOCK)
+            ON ss.Pro_ID = MCd.Pro_ID
+           AND (MCd.Series_Order > ss.start_order OR (MCd.Series_Order = ss.start_order AND MCd.Series_Serial >= ss.start_series))
+           AND (MCd.Series_Order < ss.end_order OR (MCd.Series_Order = ss.end_order AND MCd.Series_Serial <= ss.end_series))
+           AND ss.Comp_ID = @CompId
+           AND ss.IsActive = 1 AND ss.IsDelete = 0
+    LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK)
+            ON sst.Subscribe_Id = ss.Subscribe_Id
+           AND sst.IsActive = 1 AND sst.IsDelete = 0
     LEFT JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = S.MobileNo AND MC.IsDelete = 0 AND MC.Entry_Date >= @CompRegDate
     LEFT JOIN GeoLocationData G WITH (NOLOCK) ON G.Code1 = S.Code1 AND G.Code2 = S.Code2 AND G.Comp_Id = @CompId AND G.Enq_Date >= @CompRegDate
     ORDER BY S.Enq_Date DESC;
