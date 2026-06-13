@@ -251,7 +251,7 @@ BEGIN
             AND g.MobileNo = pe.MobileNo
             AND g.Code1 = pe.Received_Code1
             AND g.Code2 = pe.Received_Code2
-        WHERE pe.Comp_ID = @Comp_ID
+        WHERE (pe.Comp_ID = @Comp_ID OR (ISNULL(pe.Comp_ID, '') = '' AND m.Code1 IS NOT NULL))
           AND pe.Enq_Date >= @CompanyStartDate
           AND pe.Enq_Date >= @StartDate
           AND pe.Enq_Date < @EndDate

@@ -37,16 +37,26 @@ BEGIN
     ;WITH PE_Recent AS
     (
         SELECT TOP 5 
-              Received_Code1
-            , Received_Code2
-            , MobileNo
-            , Enq_Date
-            , Dial_Mode
-            , is_success
-        FROM Pro_Enq PE WITH (NOLOCK)
-        WHERE PE.Comp_Id = @Comp_Id
-          AND PE.Enq_Date >= @CompanyStartDate
-        ORDER BY PE.Enq_Date DESC
+              pe.Received_Code1
+            , pe.Received_Code2
+            , pe.MobileNo
+            , pe.Enq_Date
+            , pe.Dial_Mode
+            , pe.is_success
+        FROM Pro_Enq pe WITH (NOLOCK)
+        WHERE (pe.Comp_Id = @Comp_Id OR (ISNULL(pe.Comp_Id, '') = '' AND EXISTS (
+            SELECT 1 FROM Pro_Reg pr WITH (NOLOCK)
+            INNER JOIN (
+                SELECT Code1, Code2, Pro_ID FROM M_Code WITH (NOLOCK) WHERE @Comp_Id <> 'Comp-1693'
+                UNION ALL
+                SELECT Code1, Code2, Pro_ID FROM M_Code_PFL WITH (NOLOCK) WHERE @Comp_Id = 'Comp-1693'
+            ) mc ON mc.Pro_ID = pr.Pro_ID
+            WHERE pr.Comp_ID = @Comp_Id
+              AND mc.Code1 = pe.Received_Code1
+              AND mc.Code2 = pe.Received_Code2
+        )))
+          AND pe.Enq_Date >= @CompanyStartDate
+        ORDER BY pe.Enq_Date DESC
     ),
 
     -------------------------------------------------
@@ -110,9 +120,7 @@ BEGIN
             , PE.Received_Code2
             , COUNT(*) AS TotalScans
             , COUNT(DISTINCT CONCAT(Latitude, '|', Longitude)) AS DistinctLocations
-        FROM Pro_Enq PE WITH (NOLOCK)
-        WHERE PE.Comp_Id = @Comp_Id
-          AND EXISTS (SELECT 1 FROM PE_Recent R WHERE R.Received_Code1 = PE.Received_Code1 AND R.Received_Code2 = PE.Received_Code2)
+        WHERE EXISTS (SELECT 1 FROM PE_Recent R WHERE R.Received_Code1 = PE.Received_Code1 AND R.Received_Code2 = PE.Received_Code2)
         GROUP BY PE.Received_Code1, PE.Received_Code2
     )
 

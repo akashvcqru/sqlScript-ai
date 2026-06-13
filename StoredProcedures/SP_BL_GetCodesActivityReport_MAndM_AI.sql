@@ -23,7 +23,8 @@ CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_MAndM_AI]
     @IsExport BIT = NULL,
     @CodeStatusFilter NVARCHAR(20) = NULL,
     @StateFilter NVARCHAR(50) = NULL,
-    @DialModeFilter NVARCHAR(50) = NULL
+    @DialModeFilter NVARCHAR(50) = NULL,
+    @Lot NVARCHAR(50) = NULL
 )
 AS
 BEGIN
@@ -32,6 +33,16 @@ BEGIN
     -- Normalize company ID parameter name
     IF @Comp_Id IS NULL AND @CompId IS NOT NULL
         SET @Comp_Id = @CompId;
+
+    -- Normalize Lot parameter name (e.g., 'LOT8', 'Lot 8', 'lot8' -> '8')
+    IF @Lot IS NOT NULL
+    BEGIN
+        SET @Lot = LTRIM(RTRIM(@Lot));
+        IF UPPER(@Lot) LIKE 'LOT%'
+        BEGIN
+            SET @Lot = LTRIM(RTRIM(SUBSTRING(@Lot, 4, LEN(@Lot))));
+        END
+    END
 
     ---------------------------------------------------------
     -- SBU Company Check Logic
@@ -148,7 +159,10 @@ BEGIN
         pc.Code1,
         pc.Code2,
         CONCAT(pc.Code1, pc.Code2) AS uniquecode,
-        CASE WHEN pc.Points IS NULL OR pc.Points = 0 THEN ISNULL(pc.Cash, 0) ELSE pc.Points END AS amount_won,
+        CASE 
+            WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, ISNULL(pc.Cash, 0))
+            ELSE CASE WHEN pc.Points IS NULL OR pc.Points = 0 THEN ISNULL(pc.Cash, 0) ELSE pc.Points END
+        END AS amount_won,
         CASE 
             WHEN pc.Is_Success = 1 THEN 'Verified'
             WHEN pc.Is_Success = 2 THEN 'Already Scanned'
@@ -188,6 +202,16 @@ BEGIN
             WHEN ISNULL(pc.expireCodeAmount, 0) > 0 THEN 'EXPIRED' 
             ELSE 'ACTIVE' 
         END AS SchemeStatus,
+        CASE 
+            WHEN pc.Is_Success = 1 THEN
+                CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(sst.IsCash, 0) ELSE ISNULL(sst.Points, 0) END
+            ELSE 0 
+        END AS AssignPoint,
+        CASE 
+            WHEN pc.Is_Success = 1 THEN
+                CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
+            ELSE 0 
+        END AS WornPoint,
         ROW_NUMBER() OVER (
             PARTITION BY pc.Code1, pc.Code2, pc.Enq_Date
             ORDER BY pc.Enq_Date DESC, mc.dealer_state, mc.pancard_number, mc.aadharNumber, pc.Dial_Mode DESC
@@ -198,6 +222,19 @@ BEGIN
     LEFT JOIN dbo.GeoLocationData gc WITH (NOLOCK) ON gc.Code1 = pc.Code1 AND gc.Code2 = pc.Code2
     LEFT JOIN dbo.M_Code mcd WITH (NOLOCK) ON mcd.Code1 = pc.Code1 AND mcd.Code2 = pc.Code2
     LEFT JOIN dbo.Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mcd.Pro_ID
+    LEFT JOIN dbo.M_ServiceSubscription ss WITH (NOLOCK) 
+        ON ss.Pro_ID = mcd.Pro_ID
+       AND CONCAT(FORMAT(mcd.Series_Order, '000#'), FORMAT(mcd.Series_Serial, '000#'))
+           BETWEEN CONCAT(FORMAT(ss.start_order, '000#'), FORMAT(ss.start_series, '000#'))
+           AND CONCAT(FORMAT(ss.end_order, '000#'), FORMAT(ss.end_series, '000#'))
+           AND ss.IsActive = 1 AND ss.IsDelete = 0
+    LEFT JOIN dbo.M_ServiceSubscriptionTrans sst WITH (NOLOCK) 
+        ON sst.Subscribe_Id = ss.Subscribe_Id
+       AND sst.IsActive = 1 AND sst.IsDelete = 0
+    LEFT JOIN dbo.BLoyaltyPointsEarned BL WITH (NOLOCK)
+        ON BL.Code1 = pc.Code1
+       AND BL.Code2 = pc.Code2
+       AND BL.compid = @ActualCompId
     WHERE
         pc.Comp_Id = @ActualCompId
         AND (
@@ -219,7 +256,17 @@ BEGIN
             @Search IS NULL
             OR pc.MobileNo LIKE '%' + @Search + '%'
             OR (pc.Code1 + pc.Code2) LIKE '%' + @Search + '%'
-        );
+        )
+        AND (
+            @Lot IS NULL
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 4) = @Lot
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 4) = 'MCS' + @Lot
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 4) = 'mcs' + @Lot
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 5) = '_' + @Lot
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 5) = '_MCS' + @Lot
+            OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name), 5) = '_mcs' + @Lot
+            OR ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name) LIKE '%' + @Lot
+        ) OPTION (RECOMPILE);
 
     ---------------------------------------------------------
     -- EXPORT MODE
