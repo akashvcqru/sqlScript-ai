@@ -28,8 +28,8 @@ BEGIN
         pr.Pro_Entry_Date AS ProRegDate
     FROM Pro_Enq pe WITH (NOLOCK)
     INNER JOIN Comp_Reg c WITH (NOLOCK) ON pe.Comp_ID = c.Comp_ID
-    LEFT JOIN M_Code mc WITH (NOLOCK) ON pe.Received_Code1 = mc.Code1 AND pe.Received_Code2 = mc.Code2
-    LEFT JOIN M_Code_PFL mcp WITH (NOLOCK) ON pe.Received_Code1 = mcp.Code1 AND pe.Received_Code2 = mcp.Code2
+    LEFT JOIN M_Code mc WITH (NOLOCK) ON pe.Received_Code1 = CAST(mc.Code1 AS NVARCHAR(20)) AND pe.Received_Code2 = CAST(mc.Code2 AS NVARCHAR(20))
+    LEFT JOIN M_Code_PFL mcp WITH (NOLOCK) ON pe.Received_Code1 = CAST(mcp.Code1 AS NVARCHAR(20)) AND pe.Received_Code2 = CAST(mcp.Code2 AS NVARCHAR(20))
     LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = COALESCE(mc.Pro_ID, mcp.Pro_ID)
     GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, pe.Received_Code1, pe.Received_Code2, pe.Comp_ID, c.Comp_Name
     HAVING COUNT(pe.Enq_Date) > 10
