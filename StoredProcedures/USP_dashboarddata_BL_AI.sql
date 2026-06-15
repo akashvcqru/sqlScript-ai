@@ -53,7 +53,7 @@ BEGIN
             INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
             WHERE PE.MobileNo = @MobileNo
               AND PE.Is_Success = '1'
-              AND (PR.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND PR.Comp_ID IN ('Comp-1650', 'Comp-1567')))
+              AND PR.Comp_ID = @compid --(PR.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND PR.Comp_ID IN ('Comp-1650', 'Comp-1567')))
               AND SS.IsActive = 1 AND SS.IsDelete = 0
               AND SST.IsActive = 1 AND SST.IsDelete = 0
               AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
@@ -71,12 +71,12 @@ BEGIN
         SELECT @TotalSuccessCheck = COUNT(Pro_Enq.Received_Code1)  
         FROM M_Consumer AS mc  
         INNER JOIN Pro_Enq ON Pro_Enq.MobileNo = mc.MobileNo  
-        WHERE (Pro_Enq.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND Pro_Enq.Comp_ID IN ('Comp-1650', 'Comp-1567') ) ) AND mc.M_Consumerid = @M_consumerid AND Is_Success = 1;
+        WHERE Pro_Enq.Comp_ID = @compid-- (Pro_Enq.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND Pro_Enq.Comp_ID IN ('Comp-1650', 'Comp-1567') ) ) AND mc.M_Consumerid = @M_consumerid AND Is_Success = 1;
 
         SELECT @TotalCodeCheck = COUNT(Pro_Enq.Received_Code1)  
         FROM M_Consumer AS mc  
         INNER JOIN Pro_Enq ON Pro_Enq.MobileNo = mc.MobileNo  
-        WHERE (Pro_Enq.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND Pro_Enq.Comp_ID IN ('Comp-1650', 'Comp-1567') ) ) AND mc.M_Consumerid = @M_consumerid;
+        WHERE Pro_Enq.Comp_ID = @compid-- (Pro_Enq.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND Pro_Enq.Comp_ID IN ('Comp-1650', 'Comp-1567') ) ) AND mc.M_Consumerid = @M_consumerid;
     END
 
     -- Result 0: Total Code Check

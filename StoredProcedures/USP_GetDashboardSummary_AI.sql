@@ -29,11 +29,12 @@ BEGIN
     ---------------------------------------------------------
     -- COMPANY FILTER PREPARATION
     ---------------------------------------------------------
-    DECLARE @CompanyList TABLE (Comp_Id VARCHAR(50) PRIMARY KEY);
-    IF @CompID IN ('Comp-1567','Comp-1650')
-        INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
-    ELSE
-        INSERT INTO @CompanyList VALUES (@CompID);
+     DECLARE @CompanyList TABLE (Comp_Id VARCHAR(50) PRIMARY KEY);
+	INSERT INTO @CompanyList VALUES (@CompID);
+    --IF @CompID IN ('Comp-1567','Comp-1650')
+    --    INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
+    --ELSE
+    --    INSERT INTO @CompanyList VALUES (@CompID);
 
     ---------------------------------------------------------
     -- Use Temp Tables instead of CTEs to support multiple result sets
