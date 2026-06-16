@@ -12,7 +12,7 @@ begin
       
 select      
 format(Claim_date,'dd MMM yyyy HH:mm tt') as Date,      
-Row_id as [Transaction id] ,UPIID as [UPI Id],RequestAmmount as [Total Point] ,RequestAmmount as [Point Value in INR] ,ServiceChagrge as [Deducted Amount] ,Amount as [Total Rupees], tdsAmount, tdsper, RequestAmmount,      
+Row_id as [Transaction id] ,UPIID as [UPI Id],RequestAmmount as [Total Point] ,RequestAmmount as [Point Value in INR] ,ServiceChagrge as [Deducted Amount] ,Amount as [Total Rupees], tdsAmount, tdsper, RequestAmmount, a.PointsValue,
 case when  Isapproved=1 then 'Success'      
 when Isapproved=2 then 'Rejected'      
 else 'Pending'      
