@@ -3,7 +3,8 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 ALTER PROCEDURE [dbo].[USP_GetConsumerKYCStatus_BL_AI]
-@MobileNo VARCHAR(15)
+@MobileNo VARCHAR(15),
+@Comp_Id VARCHAR(50) = NULL
 AS
 BEGIN
 SET NOCOUNT ON;
@@ -18,7 +19,7 @@ SELECT
     ISNULL(vc.VRKbl_KYC_status, ISNULL(mc.VRKbl_KYC_status, '0')) AS VRKbl_KYC_status,
     '0' AS Manual_KYC_Status
 FROM M_Consumer mc 
-LEFT JOIN tbl_Vendorvisekycstatus vc ON vc.M_consumerId = mc.M_Consumerid 
+LEFT JOIN tbl_Vendorvisekycstatus vc ON vc.M_consumerId = mc.M_Consumerid AND (vc.Comp_id = @Comp_Id OR @Comp_Id IS NULL)
 WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10) AND mc.IsDelete = 0
 END
 GO
