@@ -174,8 +174,8 @@ BEGIN
         gc.Latitude,
         gc.Longitude,
         mc.PinCode, 
-        mc.Branch,
-        mc.kycremark, 
+        bk.Branch,
+        ts.kycremark, 
         mc.ConsumerName, 
         pc.MobileNo,
         mc.AadharHolderName, 
@@ -183,19 +183,19 @@ BEGIN
         mc.Address,
         mc.PanHolderName, 
         mc.pancard_number,
-        mc.Bank_Name, 
-        mc.Account_HolderNm,
-        mc.Account_No, 
-        mc.IFSC_Code,
-        mc.DealerTechnicianId AS [Mstar_TechMasterId],
-        mc.DealerCode, 
+        bk.Bank_Name, 
+        bk.Account_HolderNm,
+        bk.Account_No, 
+        bk.IFSC_Code,
+        mc.employeeID AS [Mstar_TechMasterId],
+        mc.distributorID AS DealerCode, 
         mc.transaction_status,
         mc.dealer_state, 
         mc.designation, 
         mc.DealerType,
         CASE 
-            WHEN mc.VRKbl_KYC_status = 1 THEN 'APPROVED' 
-            WHEN mc.VRKbl_KYC_status = 2 THEN 'REJECTED' 
+            WHEN ts.VRKbl_KYC_status = 1 THEN 'APPROVED' 
+            WHEN ts.VRKbl_KYC_status = 2 THEN 'REJECTED' 
             ELSE 'PENDING' 
         END AS KycStatus,
         CASE 
@@ -218,7 +218,15 @@ BEGIN
         ) AS rn
     INTO #FilteredData
     FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
-    LEFT JOIN dbo.UserData_MHCroneJob mc WITH (NOLOCK) ON mc.m_consumerid = pc.m_consumerid
+    LEFT JOIN dbo.M_Consumer mc WITH (NOLOCK) ON mc.M_Consumerid = pc.m_consumerid AND mc.IsDelete = 0
+    LEFT JOIN dbo.m_dealermaster md WITH (NOLOCK) ON md.DealerTechnicianId = mc.employeeID AND md.DealerCode = mc.distributorID
+    LEFT JOIN dbo.tbl_VendorViseKYCStatus ts WITH (NOLOCK) ON ts.M_Consumerid = pc.m_consumerid AND ts.Comp_Id = pc.Comp_Id
+    OUTER APPLY (
+        SELECT TOP 1 mb.Bank_Name, mb.Account_HolderNm, mb.Account_No, mb.IFSC_Code, mb.Branch
+        FROM dbo.M_BankAccount mb WITH (NOLOCK)
+        WHERE mb.M_Consumerid = pc.m_consumerid
+        ORDER BY mb.Entry_Date DESC, mb.Row_ID DESC
+    ) bk
     LEFT JOIN dbo.GeoLocationData gc WITH (NOLOCK) ON gc.Code1 = pc.Code1 AND gc.Code2 = pc.Code2
     LEFT JOIN dbo.M_Code mcd WITH (NOLOCK) ON mcd.Code1 = pc.Code1 AND mcd.Code2 = pc.Code2
     LEFT JOIN dbo.Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mcd.Pro_ID
@@ -238,8 +246,8 @@ BEGIN
     WHERE
         pc.Comp_Id = @ActualCompId
         AND (
-            (@IsSBUTeam = 0 AND (pc.distributedid <> 'SBUTEAM' OR pc.distributedid IS NULL) AND (mc.DealerCode <> 'SBUTEAM' OR mc.DealerCode IS NULL)) OR
-            (@IsSBUTeam = 1 AND (pc.distributedid = 'SBUTEAM' OR mc.DealerCode = 'SBUTEAM'))
+            (@IsSBUTeam = 0 AND (pc.distributedid <> 'SBUTEAM' OR pc.distributedid IS NULL) AND (mc.distributorID <> 'SBUTEAM' OR mc.distributorID IS NULL)) OR
+            (@IsSBUTeam = 1 AND (pc.distributedid = 'SBUTEAM' OR mc.distributorID = 'SBUTEAM'))
         )
         AND (@StartDate IS NULL OR pc.Enq_Date >= @StartDate)  and PC.Enq_Date >='2022-08-04 00:00:00.000'
         AND (@EndDate IS NULL OR pc.Enq_Date < DATEADD(DAY, 1, @EndDate))
@@ -273,7 +281,17 @@ BEGIN
     ---------------------------------------------------------
     IF (@IsExport = 1)
     BEGIN
-        SELECT * FROM #FilteredData WHERE rn = 1 ORDER BY Enq_Date DESC;
+        SELECT 
+            Enq_Date, Pro_Name, Code1, Code2, uniquecode, amount_won, Result, 
+            mode_of_verification, City, State, Latitude, Longitude, PinCode, Branch, 
+            kycremark, ConsumerName, MobileNo, AadharHolderName, aadharNumber, 
+            Address, PanHolderName, pancard_number, Bank_Name, Account_HolderNm, 
+            Account_No, IFSC_Code, Mstar_TechMasterId, DealerCode, 
+            transaction_status, dealer_state, designation, DealerType, 
+            KycStatus, SchemeStatus, AssignPoint, WornPoint
+        FROM #FilteredData 
+        WHERE rn = 1 
+        ORDER BY Enq_Date DESC;
         RETURN;
     END
 
