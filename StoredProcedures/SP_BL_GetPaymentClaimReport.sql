@@ -152,7 +152,7 @@ BEGIN
 
     IF @PaymentStatus IS NOT NULL
         SET @BaseWhere += N'
-        AND CD.PaymentStatus = @PaymentStatus';
+        AND (CD.PaymentStatus = @PaymentStatus OR (@PaymentStatus = ''Pending'' AND CD.PaymentStatus IS NULL))';
 
     -- Mobile Search
     IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
@@ -189,7 +189,7 @@ BEGIN
             WHEN CD.Isapproved = 2 THEN ''Rejected''
             ELSE ''Pending''
         END AS Claim_Status,
-        CD.PaymentStatus,
+        ISNULL(CD.PaymentStatus, ''Pending'') AS PaymentStatus,
         CD.BankRefID,
         CD.TransactionDate,
         CD.PaymentRemarks,
