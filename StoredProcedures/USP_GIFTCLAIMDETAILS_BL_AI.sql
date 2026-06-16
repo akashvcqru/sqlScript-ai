@@ -57,9 +57,9 @@ BEGIN
     FROM ClaimDetails     a 	left join M_Service aa on aa.Service_ID = a.Service_ID
   WHERE Gift_id IS NULL  
       AND a.Mobileno = @Mobileno   
-     -- AND a.Comp_id = @Comp_id  
+      AND a.Comp_id = @Comp_id  
 	  and Claim_mode='Manual'  
-  and (a.Comp_id = @Comp_id or (@Comp_id IN ('Comp-1650', 'Comp-1567') and a.Comp_id IN ('Comp-1650', 'Comp-1567') ) )   
+  --and (a.Comp_id = @Comp_id or (@Comp_id IN ('Comp-1650', 'Comp-1567') and a.Comp_id IN ('Comp-1650', 'Comp-1567') ) )   
     
     UNION ALL
  

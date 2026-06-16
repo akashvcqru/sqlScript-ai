@@ -49,7 +49,7 @@ BEGIN
 		INNER JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id
 		INNER JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
         WHERE bp.M_Consumerid = @M_Consumerid
-          AND (bp.compid = @compid or (@compid IN ('Comp-1650', 'Comp-1567') and bp.compid IN ('Comp-1650', 'Comp-1567') ))
+          AND bp.compid = @compid-- (bp.compid = @compid or (@compid IN ('Comp-1650', 'Comp-1567') and bp.compid IN ('Comp-1650', 'Comp-1567') ))
 		  AND (ms.Service_ID = @Service_ID OR @Service_ID IS NULL)
 
         SELECT @TotalCode as TotalCode, @TotalEarnedPoints as TotalEarnedPoints, @SuccessCode as SuccessCode, @TotalCash as TotalCash

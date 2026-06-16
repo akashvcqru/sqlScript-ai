@@ -34,10 +34,11 @@ BEGIN
     -- COMPANY FILTER PREPARATION
     ---------------------------------------------------------
     DECLARE @CompanyList TABLE (Comp_Id VARCHAR(50) PRIMARY KEY);
-    IF @Comp_Id IN ('Comp-1567','Comp-1650')
-        INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
-    ELSE
-        INSERT INTO @CompanyList VALUES (@Comp_Id);
+	INSERT INTO @CompanyList VALUES (@Comp_Id);
+    --IF @Comp_Id IN ('Comp-1567','Comp-1650')
+    --    INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
+    --ELSE
+    --    INSERT INTO @CompanyList VALUES (@Comp_Id);
 
     ---------------------------------------------------------
     -- DATE RANGE

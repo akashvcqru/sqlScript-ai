@@ -55,7 +55,7 @@ BEGIN
         INNER JOIN M_ServiceSubscriptionTrans mss ON mss.SST_Id = bp.SST_id
         INNER JOIN M_ServiceSubscription ms ON ms.Subscribe_Id = mss.Subscribe_Id
         WHERE bp.M_Consumerid = @M_Consumerid 
-          AND (ms.Comp_ID = @Comp_ID OR (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND ms.Comp_ID IN ('Comp-1650', 'Comp-1567') ));
+          AND compid = @Comp_ID-- (ms.Comp_ID = @Comp_ID OR (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND ms.Comp_ID IN ('Comp-1650', 'Comp-1567') ));
     END
 
     -- 2. EarnAmountFY and TdsAmountFY and TotalCash
@@ -80,7 +80,7 @@ BEGIN
         IF @Comp_ID = 'Comp-1274'
             SELECT @TotalCash = ISNULL(SUM(Cash), 0) * 1.10 FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND compid = @Comp_ID;
         ELSE
-            SELECT @TotalCash = ISNULL(SUM(Cash), 0) FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND (compid = @Comp_ID or (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567') ) );
+            SELECT @TotalCash = ISNULL(SUM(Cash), 0) FROM dbo.BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND compid = @Comp_ID-- (compid = @Comp_ID or (@Comp_ID IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567') ) );
     END
 
     SET @TransferredCash = @TotalCash - @TdsAmountFY;
