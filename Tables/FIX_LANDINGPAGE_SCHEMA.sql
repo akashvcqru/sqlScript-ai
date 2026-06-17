@@ -5,6 +5,13 @@ BEGIN
 END
 GO
 
+-- 1b. Check if domainName exists, add if missing
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[LandingPage]') AND name = 'domainName')
+BEGIN
+    ALTER TABLE [dbo].[LandingPage] ADD [domainName] NVARCHAR(255) NULL DEFAULT 'https://app.vcqru.com';
+END
+GO
+
 -- 2. Check if PageId exists, add as IDENTITY if missing
 -- NOTE: If the table already has data but no PageId, adding an IDENTITY column is tricky.
 -- This script assumes PageId might be missing or needs to be added as a primary key.
