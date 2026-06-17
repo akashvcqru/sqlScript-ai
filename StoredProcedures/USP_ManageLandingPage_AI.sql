@@ -24,6 +24,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_ManageLandingPage_AI]
     @ProductImage2 VARCHAR(500) = NULL,
     @ProductImage3 VARCHAR(500) = NULL,
     @ColorCode VARCHAR(50) = NULL,
+    @domainName VARCHAR(255) = 'https://app.vcqru.com',
     @IsActive BIT = 1,
     @FieldConfigJson NVARCHAR(MAX) = NULL
 AS
@@ -42,12 +43,12 @@ BEGIN
         INSERT INTO LandingPage (
             Comp_Id, Service_Id, PageName, BrandName, ServiceType, 
             LogoUrl, BackgroundImageUrl, ProductImage1, ProductImage2, ProductImage3, 
-            ColorCode, IsActive, CreatedDate
+            ColorCode, domainName, IsActive, CreatedDate
         )
         VALUES (
             @Comp_Id, @Service_Id, @PageName, @BrandName, @ServiceType, 
             @LogoUrl, @BackgroundImageUrl, @ProductImage1, @ProductImage2, @ProductImage3, 
-            @ColorCode, @IsActive, GETDATE()
+            @ColorCode, @domainName, @IsActive, GETDATE()
         );
         
         SET @PageId = SCOPE_IDENTITY();
@@ -96,6 +97,7 @@ BEGIN
                 ProductImage2 = @ProductImage2,
                 ProductImage3 = @ProductImage3,
                 ColorCode = @ColorCode,
+                domainName = @domainName,
                 IsActive = @IsActive
             WHERE PageId = @PageId;
 
