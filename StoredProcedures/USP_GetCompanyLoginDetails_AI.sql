@@ -11,13 +11,40 @@ AS
 BEGIN
 	SET NOCOUNT ON;
 
-    -- ── 1. Validate Credentials ─────────────────────────────────────────────
+    -- ── 1. Validate Credentials (Hybrid Approach) ───────────────────────────
     DECLARE @CompID NVARCHAR(50);
-    SELECT @CompID = Comp_ID 
-    FROM Comp_Reg 
-    WHERE LTRIM(RTRIM(Comp_Email)) = LTRIM(RTRIM(@Email)) 
-      AND LTRIM(RTRIM(Password))   = LTRIM(RTRIM(@Password)) 
-      AND (Status = 1 OR Status IS NULL);
+    DECLARE @UserId INT = 0;
+    DECLARE @RoleId INT = 0;
+    DECLARE @AuthUserName NVARCHAR(100);
+    DECLARE @AuthMobile NVARCHAR(20);
+
+    -- Step A: Try logging in with the new Comp_Users table if it exists
+    IF OBJECT_ID('Comp_Users', 'U') IS NOT NULL
+    BEGIN
+        SELECT @CompID = Comp_ID, 
+               @UserId = UserId, 
+               @RoleId = RoleId, 
+               @AuthUserName = ISNULL(FirstName, '') + ' ' + ISNULL(LastName, ''),
+               @AuthMobile = MobileNo
+        FROM Comp_Users 
+        WHERE LTRIM(RTRIM(UserEmail)) = LTRIM(RTRIM(@Email)) 
+          AND LTRIM(RTRIM(Password))  = LTRIM(RTRIM(@Password)) 
+          AND IsActive = 1;
+    END
+
+    -- Step B: Fallback to old Comp_Reg table if not found in new system
+    IF @CompID IS NULL
+    BEGIN
+        SELECT @CompID = Comp_ID,
+               @UserId = 0,   -- Indicates this is an old user not yet migrated
+               @RoleId = 1,   -- Default to Admin Role
+               @AuthUserName = Contact_Person,
+               @AuthMobile = Mobile_No
+        FROM Comp_Reg 
+        WHERE LTRIM(RTRIM(Comp_Email)) = LTRIM(RTRIM(@Email)) 
+          AND LTRIM(RTRIM(Password))   = LTRIM(RTRIM(@Password)) 
+          AND (Status = 1 OR Status IS NULL);
+    END
 
     IF @CompID IS NULL
     BEGIN
@@ -81,8 +108,10 @@ BEGIN
         c.Comp_ID,
         c.Comp_Name,
         c.Status,
-        c.Contact_Person                 AS UserName,
-        c.Mobile_No                      AS MobileNumber,
+        @AuthUserName                    AS UserName,
+        @AuthMobile                      AS MobileNumber,
+        @UserId                          AS UserId,
+        @RoleId                          AS RoleId,
         @BalanceAmount                   AS BalanceAmount,
         s.Service_ID,
         s.ServiceName
