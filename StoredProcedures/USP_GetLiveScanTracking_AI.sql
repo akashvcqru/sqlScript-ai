@@ -47,7 +47,7 @@ BEGIN
     -- 2. Construct Date Range
     -------------------------------------------------
     DECLARE @StartDate DATE, @EndDate DATE;
-    DECLARE @Today DATE = CAST(GETDATE() AS DATE);
+    DECLARE @Today DATE = CAST(DATEADD(MINUTE, 330, GETUTCDATE()) AS DATE); -- Convert to IST before taking date
     DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset,''))));
     
     IF @Win = '' OR @Win = 'NULL' SET @Win = 'ALL';
@@ -294,12 +294,15 @@ BEGIN
                 pe.Longitude,
                 ISNULL(pe.IsVerified, 0) AS ImageVerified
             FROM Pro_Enq pe WITH (NOLOCK)
-            LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
-                  AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+            LEFT JOIN #tempM_Code mc ON 
+                  (LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
+                   AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50)))))
+                  OR 
+                  (LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) + LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = 
+                   LTRIM(RTRIM(ISNULL(CAST(pe.Received_Code1 AS VARCHAR(50)), ''))) + LTRIM(RTRIM(ISNULL(CAST(pe.Received_Code2 AS VARCHAR(50)), ''))))
             LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mc.Pro_ID
-            LEFT JOIN M_Consumer mcn WITH (NOLOCK) ON mcn.MobileNo = pe.MobileNo
+            LEFT JOIN M_Consumer mcn WITH (NOLOCK) ON mcn.MobileNo = pe.MobileNo AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
             WHERE (pe.Comp_ID = @Comp_ID OR (ISNULL(pe.Comp_ID, '') = '' AND mc.Code1 IS NOT NULL))
-              AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
               AND pe.Enq_Date >= @StartDate
               AND pe.Enq_Date < @EndDate
               AND (@CompanyStartDate IS NULL OR pe.Enq_Date >= @CompanyStartDate)
