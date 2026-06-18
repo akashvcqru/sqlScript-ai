@@ -152,9 +152,9 @@ BEGIN
     ---------------------------------------------------------
     DECLARE @LifetimeCodeGeneration INT;
     IF @CompanyKey = 'Comp-1693'
-        SET @LifetimeCodeGeneration = (SELECT COUNT(*) FROM M_Code_PFL a INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID WHERE b.Comp_ID = @CompanyKey);
+        SET @LifetimeCodeGeneration = (SELECT COUNT(1) FROM M_Code_PFL WITH (NOLOCK) WHERE Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WITH (NOLOCK) WHERE Comp_ID = @CompanyKey));
     ELSE
-        SET @LifetimeCodeGeneration = (SELECT COUNT(*) FROM M_Code a INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID WHERE b.Comp_ID = @CompanyKey);
+        SET @LifetimeCodeGeneration = (SELECT COUNT(1) FROM M_Code WITH (NOLOCK) WHERE Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WITH (NOLOCK) WHERE Comp_ID = @CompanyKey));
     DECLARE @AntiCounterfeitMeasures INT = (SELECT COUNT(*) FROM #tempPro_Enq WHERE CodeExists = 1 AND Is_Success = 1);
     DECLARE @CounterfeitAttemptsDetected INT = (SELECT COUNT(*) FROM #tempPro_Enq WHERE CodeExists = 0 OR Is_Success NOT IN (1, 2));
     DECLARE @NumberofScans INT = (SELECT COUNT(*) FROM #tempPro_Enq);
