@@ -22,7 +22,33 @@ begin
  ,isnull(bankekycStatus,0)bankekycStatus,PanHolderName,AadharHolderName,m.UPIId,Shop_address,FirmName,Agegroup    
  ,Pancard_Status,Aadhar_Status,Passbook_Status,Ekyc_status,Location,AddressProof    
  ,UpiidImage,UPIKYCSTATUS,teslapayoutmode,Selfie_image,
-
+CASE 
+    WHEN @Comp_Id = 'Comp-1152' THEN
+        CASE 
+            WHEN (m.employeeID IS NOT NULL AND m.employeeID <> '') AND (m.distributorID IS NOT NULL AND m.distributorID <> '') THEN
+                CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM m_dealermaster_mahindra_emp 
+                        WHERE DealerCode = m.distributorID AND DealerTechnicianId = m.employeeID
+                    ) 
+                    AND NOT EXISTS (
+                        SELECT 1 FROM m_dealermaster 
+                        WHERE DealerCode = m.distributorID AND DealerTechnicianId = m.employeeID
+                    ) THEN 'Account is deactivated'
+                    WHEN EXISTS (
+                        SELECT 1 FROM m_dealermaster_mahindra_emp 
+                        WHERE DealerCode = m.distributorID AND DealerTechnicianId = m.employeeID
+                    ) 
+                    OR EXISTS (
+                        SELECT 1 FROM m_dealermaster 
+                        WHERE DealerCode = m.distributorID AND DealerTechnicianId = m.employeeID
+                    ) THEN 'Active'
+                    ELSE 'Invalid Id and Dealer Code'
+                END
+            ELSE 'Invalid Id and Dealer Code'
+        END
+    ELSE ''
+END AS [Active Status],
 CASE 
     WHEN u.User_Type IS NULL THEN '' 
     ELSE u.User_Type 
