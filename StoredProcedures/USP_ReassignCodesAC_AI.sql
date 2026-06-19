@@ -190,6 +190,22 @@ BEGIN
             RETURN;
         END
 
+        -- Validate if any code in the requested range has already been tracked as reassigned in T_ReassignCode
+        DECLARE @OverlapFromSeries NVARCHAR(100) = NULL;
+        DECLARE @OverlapToSeries NVARCHAR(100) = NULL;
+
+        SELECT TOP 1 @OverlapFromSeries = FromSeries, @OverlapToSeries = ToSeries
+        FROM T_ReassignCode WITH (NOLOCK)
+        WHERE OldProductId = @OrigProId
+          AND (Series_Order_From * 10000 + Series_Serial_From) <= (@SeriesOrderTo * 10000 + @SerialTo)
+          AND (@SeriesOrderFrom * 10000 + @SerialFrom) <= (Series_Order_To * 10000 + Series_Serial_To);
+
+        IF @OverlapFromSeries IS NOT NULL
+        BEGIN
+            SELECT 0 AS success, 'These codes are already assigned. Overlapping with previously assigned range: ' + @OverlapFromSeries + ' to ' + @OverlapToSeries AS message;
+            RETURN;
+        END
+
         -- Validate TargetExpDate against Subscription DateTo and current date
         IF @TargetExpDate IS NOT NULL
         BEGIN
@@ -273,7 +289,7 @@ BEGIN
 
         COMMIT TRANSACTION;
 
-        SELECT 1 AS success, 'Codes reassigned successfully (tracking only).' AS message;
+        SELECT 1 AS success, 'Codes reassigned successfully.' AS message;
 
     END TRY
     BEGIN CATCH
