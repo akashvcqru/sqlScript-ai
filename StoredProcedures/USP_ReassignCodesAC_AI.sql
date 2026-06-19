@@ -247,7 +247,7 @@ BEGIN
 
         BEGIN TRANSACTION;
 
-        -- Insert record into T_ReassignCode for tracking only (no M_Code updates)
+        -- Insert record into T_ReassignCode for tracking
         INSERT INTO [dbo].[T_ReassignCode] (
             [Comp_ID],
             [OldProductId],
@@ -286,6 +286,20 @@ BEGIN
             @SerialFrom,
             @SerialTo
         );
+
+        -- Update reassignProid in M_Code
+        UPDATE M_Code
+        SET reassignProid = @TargetProId
+        WHERE Pro_ID = @OrigProId 
+          AND (
+              (@SeriesOrderFrom = @SeriesOrderTo AND Series_Order = @SeriesOrderFrom AND Series_Serial >= @SerialFrom AND Series_Serial <= @SerialTo)
+              OR
+              (@SeriesOrderFrom < @SeriesOrderTo AND (
+                  (Series_Order = @SeriesOrderFrom AND Series_Serial >= @SerialFrom)
+                  OR (Series_Order > @SeriesOrderFrom AND Series_Order < @SeriesOrderTo)
+                  OR (Series_Order = @SeriesOrderTo AND Series_Serial <= @SerialTo)
+              ))
+          );
 
         COMMIT TRANSACTION;
 
