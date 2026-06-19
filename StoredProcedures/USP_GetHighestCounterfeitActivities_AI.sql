@@ -84,129 +84,124 @@ BEGIN
     END
 
     ------------------------------------------------------
-    -- 1. Build ValidStates (Geo + latest matching Pro_Enq per row)
+    -- 1. Build Optimized Temp Tables for Scans & Codes
     ------------------------------------------------------
-    ;WITH GeoApply AS
-    (
-        SELECT
-            G.Comp_Id AS G_Comp_Id,
-            P.Comp_Id AS P_Comp_Id,
-            G.MobileNo AS G_MobileNo,
-            P.MobileNo AS P_MobileNo,
-            LEFT(G.Latitude,6) AS G_Latitude,
-            LEFT(G.Longitude,6) AS G_Longitude,
-            LEFT(P.Latitude,6) AS P_Latitude,
-            LEFT(P.Longitude,6) AS P_Longitude,
-            P.Is_Success,
-            G.Code1 AS G_Code1,
-            P.Received_Code1 AS P_Code1,
-            G.Code2 AS G_Code2,
-            P.Received_Code2 AS P_Code2,
-            G.Postcode,
-            G.State,
-            G.City,
-            G.StateDistrict,
-            G.Town,
-            G.Suburb,
-            G.Enq_Date,
-            ROW_NUMBER() OVER
-            (
-                PARTITION BY RIGHT(G.MobileNo,10), Code1, Code2, G.Enq_Date
-                ORDER BY G.Enq_Date DESC
-            ) AS rn
-        FROM GeoLocationData G WITH (NOLOCK)
-        OUTER APPLY
-        (
-            SELECT TOP 1 *
-            FROM Pro_Enq P WITH (NOLOCK)
-            WHERE P.Comp_Id = G.Comp_Id
-              AND P.Received_Code1 = G.Code1
-              AND P.Received_Code2 = G.Code2
-              AND P.MobileNo = G.MobileNo
-              AND P.Enq_Date >= @StartDate
-        ) P
-        WHERE 
-            G.Comp_Id = @Comp_Id
-            AND G.Enq_Date >= @StartDate
-            AND ISNULL(G.State,'') <> ''
-            AND LEN(LTRIM(RTRIM(G.State))) >= 2
-    ),
-    ValidStates AS
-    (
-        SELECT *
-        FROM GeoApply
-        WHERE rn = 1
-    ),
+    IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
+    SELECT 
+        pe.MobileNo AS OriginalMobileNo,
+        RIGHT(pe.MobileNo,10) AS MobileLast10,
+        pe.Is_Success,
+        pe.Enq_Date,
+        pe.Comp_ID,
+        pe.State AS Pe_State,
+        LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) AS VCode1,
+        LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50)))) AS VCode2
+    INTO #tempPro_Enq
+    FROM Pro_Enq pe WITH (NOLOCK)
+    WHERE pe.Enq_Date >= @StartDate
+      AND pe.Enq_Date < @EndDate
+      AND (pe.Comp_ID = @Comp_Id OR ISNULL(pe.Comp_ID, '') = '');
+
+    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+    CREATE TABLE #tempM_Code (
+        Code1 VARCHAR(100),
+        Code2 VARCHAR(100),
+        Pro_ID VARCHAR(50),
+        Use_Count INT,
+        VCode1 VARCHAR(50),
+        VCode2 VARCHAR(50)
+    );
+
+    IF @Comp_Id = 'Comp-1693'
+    BEGIN
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, a.Code2, a.Pro_ID, a.Use_Count, 
+                CAST(a.Code1 AS VARCHAR(50)) AS VCode1, 
+                CAST(a.Code2 AS VARCHAR(50)) AS VCode2,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            FROM M_Code_PFL a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @Comp_Id AND a.Use_Count > 0
+        )
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, Use_Count, VCode1, VCode2)
+        SELECT Code1, Code2, Pro_ID, Use_Count, VCode1, VCode2 FROM DistinctCodes WHERE rn = 1;
+    END
+    ELSE
+    BEGIN
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, a.Code2, a.Pro_ID, a.Use_Count, 
+                CAST(a.Code1 AS VARCHAR(50)) AS VCode1, 
+                CAST(a.Code2 AS VARCHAR(50)) AS VCode2,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            FROM M_Code a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @Comp_Id AND a.Use_Count > 0
+        )
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, Use_Count, VCode1, VCode2)
+        SELECT Code1, Code2, Pro_ID, Use_Count, VCode1, VCode2 FROM DistinctCodes WHERE rn = 1;
+    END
+
+    CREATE INDEX IX_tempM_Code_12 ON #tempM_Code(VCode1, VCode2);
 
     ------------------------------------------------------
-    -- 2. Build ValidScans
+    -- 2. Build ScansWithGeo & CleanScans
     ------------------------------------------------------
-    ValidScans AS
-    (
-        SELECT
-            MobileNo = RIGHT(pe.MobileNo,10),
+    IF OBJECT_ID('tempdb..#ValidStates') IS NOT NULL DROP TABLE #ValidStates;
+
+    ;WITH ScansWithGeo AS (
+        SELECT 
+            pe.OriginalMobileNo,
+            pe.MobileLast10,
             pe.Is_Success,
+            pe.Enq_Date,
             mc.Use_Count,
-            ROW_NUMBER() OVER
-            (
-                PARTITION BY RIGHT(pe.MobileNo,10)
-                ORDER BY pe.Enq_Date DESC
-            ) AS rn
-        FROM Pro_Enq pe WITH (NOLOCK)
-        INNER JOIN M_Code mc 
-            ON pe.Received_Code1 = CAST(mc.Code1 AS NVARCHAR(20)) 
-           AND pe.Received_Code2 = CAST(mc.Code2 AS NVARCHAR(20))
-        INNER JOIN Pro_Reg pr 
-            ON pr.Pro_ID = mc.Pro_ID
-           AND pr.Comp_ID = @Comp_Id
-        WHERE pe.Comp_ID = @Comp_Id
-          AND pe.Enq_Date >= @StartDate
-          AND @Comp_Id <> 'Comp-1693'
-
-        UNION ALL
-
+            COALESCE(
+                NULLIF(g.State, ''), 
+                NULLIF(pe.Pe_State, ''), 
+                NULLIF(mc_usr.State, ''), 
+                'Not Available'
+            ) AS State
+        FROM #tempPro_Enq pe
+        LEFT JOIN #tempM_Code mc ON mc.VCode1 = pe.VCode1 AND mc.VCode2 = pe.VCode2
+        LEFT JOIN GeoLocationData g WITH (NOLOCK) 
+            ON g.Code1 = pe.VCode1 
+            AND g.Code2 = pe.VCode2 
+            AND RIGHT(g.MobileNo, 10) = pe.MobileLast10
+        LEFT JOIN M_Consumer mc_usr ON RIGHT(pe.MobileLast10, 10) = mc_usr.MobileLast10
+        WHERE (pe.Comp_Id = @Comp_Id OR (ISNULL(pe.Comp_Id, '') = '' AND mc.Pro_ID IS NOT NULL))
+    ),
+    LatestScans AS
+    (
         SELECT
-            MobileNo = RIGHT(pe.MobileNo,10),
-            pe.Is_Success,
-            mc.Use_Count,
-            ROW_NUMBER() OVER
-            (
-                PARTITION BY RIGHT(pe.MobileNo,10)
-                ORDER BY pe.Enq_Date DESC
-            ) AS rn
-        FROM Pro_Enq pe WITH (NOLOCK)
-        INNER JOIN M_Code_PFL mc 
-            ON pe.Received_Code1 = CAST(mc.Code1 AS NVARCHAR(20)) 
-           AND pe.Received_Code2 = CAST(mc.Code2 AS NVARCHAR(20))
-        INNER JOIN Pro_Reg pr 
-            ON pr.Pro_ID = mc.Pro_ID
-           AND pr.Comp_ID = @Comp_Id
-        WHERE pe.Comp_ID = @Comp_Id
-          AND pe.Enq_Date >= @StartDate
-          AND @Comp_Id = 'Comp-1693'
+            MobileLast10,
+            Is_Success,
+            Use_Count,
+            State,
+            ROW_NUMBER() OVER (PARTITION BY MobileLast10 ORDER BY Enq_Date DESC) as rn
+        FROM ScansWithGeo
     ),
     CleanScans AS
     (
-        SELECT MobileNo, Is_Success, Use_Count
-        FROM ValidScans
-        WHERE rn = 1
+        SELECT * FROM LatestScans WHERE rn = 1
     )
+    SELECT * INTO #ValidStates FROM CleanScans;
 
     ------------------------------------------------------
     -- 3. Final Aggregation
     ------------------------------------------------------
-    SELECT
+    SELECT TOP 10
         CASE 
-            WHEN LEN(LTRIM(RTRIM(VS.State))) < 3 THEN 'NA'
-            ELSE VS.State
+            WHEN LEN(LTRIM(RTRIM(State))) < 2 THEN 'NA'
+            WHEN State = 'Not Available' THEN 'NA'
+            ELSE State
         END AS StateName,
-        SUM(CASE WHEN S.Use_Count = 1 AND S.Is_Success = 1 THEN 1 ELSE 0 END) AS SuccessScans,
-        SUM(CASE WHEN S.Is_Success <> 1 THEN 1 ELSE 0 END) AS FailedScans,
+        SUM(CASE WHEN Use_Count = 1 AND Is_Success = 1 THEN 1 ELSE 0 END) AS SuccessScans,
+        SUM(CASE WHEN Is_Success <> 1 THEN 1 ELSE 0 END) AS FailedScans,
         COUNT(*) AS TotalScans
-    FROM ValidStates VS
-    LEFT JOIN CleanScans S
-        ON RIGHT(VS.P_MobileNo,10) = S.MobileNo
-    GROUP BY VS.State
-    ORDER BY VS.State;
+    FROM #ValidStates
+    GROUP BY State
+    ORDER BY TotalScans DESC;
 END
 GO
