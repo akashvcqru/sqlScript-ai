@@ -27,6 +27,8 @@ CREATE TABLE [dbo].[tbl_AlertNews](
 	[Verification_Status] [nvarchar](100) NULL,
 	[Verification_Notes] [nvarchar](max) NULL,
 	[Source_Link] [nvarchar](max) NULL,
+	[Latitude] [varchar](100) NULL,
+	[Longitude] [varchar](100) NULL,
 	[Entry_Date] [datetime] NULL CONSTRAINT [DF_tbl_AlertNews_Entry_Date] DEFAULT (GETDATE()),
 	[Updated_Date] [datetime] NULL,
 	[Act_Flag] [bit] NULL CONSTRAINT [DF_tbl_AlertNews_Act_Flag] DEFAULT ((1)),
