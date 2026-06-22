@@ -175,7 +175,6 @@ BEGIN
         CD.Mobileno,
         CASE 
             WHEN CD.Comp_id = ''Comp-1466'' THEN ISNULL(CD.RequestAmmount, CD.Amount)
-            WHEN CD.Comp_id = ''Comp-1727'' THEN (ISNULL(CD.Amount, 0) / 2.0) - ISNULL(CD.tdsAmount, 0)
             ELSE CD.Amount 
         END AS Points,
         CASE 
@@ -185,6 +184,8 @@ BEGIN
             WHEN CD.PointsValue IS NOT NULL AND CD.PointsValue <> 0 THEN CD.PointsValue
             ELSE CD.Amount 
         END AS PointsValue,
+        ISNULL(CD.tdsAmount, 0) AS tdsAmount,
+        ISNULL(CD.tdsper, 0) AS tdsper,
         MC.ConsumerName,
         MC.City,
         MB.Account_No,
