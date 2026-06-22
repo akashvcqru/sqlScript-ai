@@ -57,26 +57,38 @@ BEGIN
             ORDER BY A.Entry_Date DESC
             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
         )
-        SELECT Row_ID, 
-               RequestDate, 
-               Pro_ID, 
-               Pro_Name, 
-               LabelType, 
-               Label_Size, 
-               Label_Prise, 
-               RequestedLabels,
-               RequestStatusFlag,
-               Tracking_No, 
-               Flag,
+        SELECT CTE.Row_ID, 
+               CTE.RequestDate, 
+               CTE.Pro_ID, 
+               CTE.Pro_Name, 
+               CTE.LabelType, 
+               CTE.Label_Size, 
+               CTE.Label_Prise, 
+               CTE.RequestedLabels,
+               CTE.RequestStatusFlag,
+               CTE.Tracking_No, 
+               CTE.Flag,
                CAST(CASE 
-                   WHEN Comp_ID = 'Comp-1693' THEN 
-                       ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code_PFL WITH (NOLOCK) WHERE LabelRequestId = Tracking_No AND Pro_ID = CTE.Pro_ID), 0)
-                   ELSE 
-                       ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code WITH (NOLOCK) WHERE LabelRequestId = Tracking_No AND Pro_ID = CTE.Pro_ID), 0)
+                   WHEN CTE.Comp_ID = 'Comp-1693' THEN ISNULL(PFL.DispatchFlag, 0)
+                   ELSE ISNULL(MC.DispatchFlag, 0)
                END AS INT) AS CourierDispatchFlag,
                @TotalRecords AS TotalRecords
         FROM CTE
-        ORDER BY Entry_Date DESC
+        OUTER APPLY (
+            SELECT TOP 1 DispatchFlag 
+            FROM M_Code_PFL WITH (NOLOCK) 
+            WHERE CTE.Comp_ID = 'Comp-1693' 
+              AND LabelRequestId = CAST(CTE.Tracking_No AS VARCHAR(250)) 
+              AND Pro_ID = CTE.Pro_ID
+        ) PFL
+        OUTER APPLY (
+            SELECT TOP 1 DispatchFlag 
+            FROM M_Code WITH (NOLOCK) 
+            WHERE CTE.Comp_ID <> 'Comp-1693' 
+              AND LabelRequestId = CAST(CTE.Tracking_No AS VARCHAR(250)) 
+              AND Pro_ID = CTE.Pro_ID
+        ) MC
+        ORDER BY CTE.Entry_Date DESC
         OPTION (RECOMPILE);
     END
     ELSE
@@ -122,26 +134,38 @@ BEGIN
             ORDER BY A.Entry_Date DESC
             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
         )
-        SELECT Row_ID, 
-               RequestDate, 
-               Pro_ID, 
-               Pro_Name, 
-               LabelType, 
-               Label_Size, 
-               Label_Prise, 
-               RequestedLabels,
-               RequestStatusFlag,
-               Tracking_No, 
-               Flag,
+        SELECT CTE.Row_ID, 
+               CTE.RequestDate, 
+               CTE.Pro_ID, 
+               CTE.Pro_Name, 
+               CTE.LabelType, 
+               CTE.Label_Size, 
+               CTE.Label_Prise, 
+               CTE.RequestedLabels,
+               CTE.RequestStatusFlag,
+               CTE.Tracking_No, 
+               CTE.Flag,
                CAST(CASE 
-                   WHEN Comp_ID = 'Comp-1693' THEN 
-                       ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code_PFL WITH (NOLOCK) WHERE LabelRequestId = Tracking_No AND Pro_ID = CTE.Pro_ID), 0)
-                   ELSE 
-                       ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code WITH (NOLOCK) WHERE LabelRequestId = Tracking_No AND Pro_ID = CTE.Pro_ID), 0)
+                   WHEN CTE.Comp_ID = 'Comp-1693' THEN ISNULL(PFL.DispatchFlag, 0)
+                   ELSE ISNULL(MC.DispatchFlag, 0)
                END AS INT) AS CourierDispatchFlag,
                @TotalRecords AS TotalRecords
         FROM CTE
-        ORDER BY Entry_Date DESC
+        OUTER APPLY (
+            SELECT TOP 1 DispatchFlag 
+            FROM M_Code_PFL WITH (NOLOCK) 
+            WHERE CTE.Comp_ID = 'Comp-1693' 
+              AND LabelRequestId = CAST(CTE.Tracking_No AS VARCHAR(250)) 
+              AND Pro_ID = CTE.Pro_ID
+        ) PFL
+        OUTER APPLY (
+            SELECT TOP 1 DispatchFlag 
+            FROM M_Code WITH (NOLOCK) 
+            WHERE CTE.Comp_ID <> 'Comp-1693' 
+              AND LabelRequestId = CAST(CTE.Tracking_No AS VARCHAR(250)) 
+              AND Pro_ID = CTE.Pro_ID
+        ) MC
+        ORDER BY CTE.Entry_Date DESC
         OPTION (RECOMPILE);
     END
 END
