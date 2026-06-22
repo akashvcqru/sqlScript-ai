@@ -10,6 +10,7 @@ GO
 -- Author:      Antigravity
 -- Create date: 2026-05-22
 -- Description: Get QR Code Print Label Request List with pagination and search
+-- Optimization: Removed Temp Tables in favor of CTEs to reduce TempDB IO.
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetQRCodePrintLabelRequestList_AI]
     @Comp_ID NVARCHAR(50),
@@ -20,61 +21,128 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    WITH FilteredRequests AS (
-        SELECT M_Label_Request.Row_ID, 
-               CONVERT(nvarchar, M_Label_Request.Entry_Date, 107) AS RequestDate, 
-               M_Label_Request.Pro_ID, 
-               Pro_Reg.Pro_Name, 
-               M_Label.Label_Name as LabelType, 
-               M_Label.Label_Size, 
-               M_Label.Label_Prise, 
-               M_Label_Request.Qty as RequestedLabels,
-               (CASE 
-                    WHEN M_Label_Request.Flag = '0' THEN 'Pending' 
-                    WHEN M_Label_Request.Flag = '-1' THEN 'Rejected' 
-                    WHEN M_Label_Request.Flag = '1' THEN 'Printed' 
-                    WHEN M_Label_Request.Flag = '-2' THEN 'Canceled' 
-                END) AS RequestStatusFlag,
-               M_Label_Request.Tracking_No, 
-               M_Label_Request.Flag,
-               Pro_Reg.Comp_ID,
-               M_Label_Request.Entry_Date,
-               COUNT(*) OVER() AS TotalRecords
-        FROM M_Label_Request 
-        INNER JOIN M_Label ON M_Label_Request.Label_Code = M_Label.Label_Code 
-        INNER JOIN Pro_Reg ON M_Label_Request.Pro_ID = Pro_Reg.Pro_ID 
-        WHERE Pro_Reg.Comp_ID = @Comp_ID 
-          AND (@Search = '%%' OR @Search = '' OR M_Label_Request.Tracking_No LIKE @Search 
-               OR Pro_Reg.Pro_Name LIKE @Search
-               OR M_Label.Label_Name LIKE @Search
-               OR CAST(M_Label_Request.Row_ID AS NVARCHAR(50)) LIKE @Search)
-    ),
-    PaginatedRequests AS (
-        SELECT *
-        FROM FilteredRequests
+    DECLARE @TotalRecords INT = 0;
+
+    IF @Search = '%%' OR @Search = '' OR @Search IS NULL
+    BEGIN
+        -- Get total records
+        SELECT @TotalRecords = COUNT(1)
+        FROM M_Label_Request A WITH (NOLOCK)
+        INNER JOIN Pro_Reg B WITH (NOLOCK) ON A.Pro_ID = B.Pro_ID 
+        WHERE B.Comp_ID = @Comp_ID;
+
+        WITH CTE AS (
+            SELECT A.Row_ID, 
+                   CONVERT(nvarchar, A.Entry_Date, 107) AS RequestDate, 
+                   A.Pro_ID, 
+                   B.Pro_Name, 
+                   C.Label_Name as LabelType, 
+                   C.Label_Size, 
+                   C.Label_Prise, 
+                   A.Qty as RequestedLabels,
+                   (CASE 
+                        WHEN A.Flag = '0' THEN 'Pending' 
+                        WHEN A.Flag = '-1' THEN 'Rejected' 
+                        WHEN A.Flag = '1' THEN 'Printed' 
+                        WHEN A.Flag = '-2' THEN 'Canceled' 
+                    END) AS RequestStatusFlag,
+                   A.Tracking_No, 
+                   A.Flag,
+                   B.Comp_ID,
+                   A.Entry_Date
+            FROM M_Label_Request A WITH (NOLOCK)
+            INNER JOIN M_Label C WITH (NOLOCK) ON A.Label_Code = C.Label_Code 
+            INNER JOIN Pro_Reg B WITH (NOLOCK) ON A.Pro_ID = B.Pro_ID 
+            WHERE B.Comp_ID = @Comp_ID
+            ORDER BY A.Entry_Date DESC
+            OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
+        )
+        SELECT Row_ID, 
+               RequestDate, 
+               Pro_ID, 
+               Pro_Name, 
+               LabelType, 
+               Label_Size, 
+               Label_Prise, 
+               RequestedLabels,
+               RequestStatusFlag,
+               Tracking_No, 
+               Flag,
+               CAST(CASE 
+                   WHEN Comp_ID = 'Comp-1693' THEN 
+                       ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code_PFL WITH (NOLOCK) WHERE LabelRequestId = Tracking_No AND Pro_ID = CTE.Pro_ID), 0)
+                   ELSE 
+                       ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code WITH (NOLOCK) WHERE LabelRequestId = Tracking_No AND Pro_ID = CTE.Pro_ID), 0)
+               END AS INT) AS CourierDispatchFlag,
+               @TotalRecords AS TotalRecords
+        FROM CTE
         ORDER BY Entry_Date DESC
-        OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
-    )
-    SELECT Row_ID, 
-           RequestDate, 
-           Pro_ID, 
-           Pro_Name, 
-           LabelType, 
-           Label_Size, 
-           Label_Prise, 
-           RequestedLabels,
-           RequestStatusFlag,
-           Tracking_No, 
-           Flag,
-           CAST(CASE 
-               WHEN Comp_ID = 'Comp-1693' THEN 
-                   ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code_PFL WHERE LabelRequestId = Tracking_No AND Pro_ID = PaginatedRequests.Pro_ID), 0)
-               ELSE 
-                   ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code WHERE LabelRequestId = Tracking_No AND Pro_ID = PaginatedRequests.Pro_ID), 0)
-           END AS INT) AS CourierDispatchFlag,
-           TotalRecords
-    FROM PaginatedRequests
-    ORDER BY Entry_Date DESC
-    OPTION (RECOMPILE);
+        OPTION (RECOMPILE);
+    END
+    ELSE
+    BEGIN
+        -- Get total records for search
+        SELECT @TotalRecords = COUNT(1)
+        FROM M_Label_Request A WITH (NOLOCK)
+        INNER JOIN M_Label C WITH (NOLOCK) ON A.Label_Code = C.Label_Code 
+        INNER JOIN Pro_Reg B WITH (NOLOCK) ON A.Pro_ID = B.Pro_ID 
+        WHERE B.Comp_ID = @Comp_ID 
+          AND (A.Tracking_No LIKE @Search 
+               OR B.Pro_Name LIKE @Search
+               OR C.Label_Name LIKE @Search
+               OR CAST(A.Row_ID AS NVARCHAR(50)) LIKE @Search);
+
+        WITH CTE AS (
+            SELECT A.Row_ID, 
+                   CONVERT(nvarchar, A.Entry_Date, 107) AS RequestDate, 
+                   A.Pro_ID, 
+                   B.Pro_Name, 
+                   C.Label_Name as LabelType, 
+                   C.Label_Size, 
+                   C.Label_Prise, 
+                   A.Qty as RequestedLabels,
+                   (CASE 
+                        WHEN A.Flag = '0' THEN 'Pending' 
+                        WHEN A.Flag = '-1' THEN 'Rejected' 
+                        WHEN A.Flag = '1' THEN 'Printed' 
+                        WHEN A.Flag = '-2' THEN 'Canceled' 
+                    END) AS RequestStatusFlag,
+                   A.Tracking_No, 
+                   A.Flag,
+                   B.Comp_ID,
+                   A.Entry_Date
+            FROM M_Label_Request A WITH (NOLOCK)
+            INNER JOIN M_Label C WITH (NOLOCK) ON A.Label_Code = C.Label_Code 
+            INNER JOIN Pro_Reg B WITH (NOLOCK) ON A.Pro_ID = B.Pro_ID 
+            WHERE B.Comp_ID = @Comp_ID 
+              AND (A.Tracking_No LIKE @Search 
+                   OR B.Pro_Name LIKE @Search
+                   OR C.Label_Name LIKE @Search
+                   OR CAST(A.Row_ID AS NVARCHAR(50)) LIKE @Search)
+            ORDER BY A.Entry_Date DESC
+            OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
+        )
+        SELECT Row_ID, 
+               RequestDate, 
+               Pro_ID, 
+               Pro_Name, 
+               LabelType, 
+               Label_Size, 
+               Label_Prise, 
+               RequestedLabels,
+               RequestStatusFlag,
+               Tracking_No, 
+               Flag,
+               CAST(CASE 
+                   WHEN Comp_ID = 'Comp-1693' THEN 
+                       ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code_PFL WITH (NOLOCK) WHERE LabelRequestId = Tracking_No AND Pro_ID = CTE.Pro_ID), 0)
+                   ELSE 
+                       ISNULL((SELECT TOP 1 DispatchFlag FROM M_Code WITH (NOLOCK) WHERE LabelRequestId = Tracking_No AND Pro_ID = CTE.Pro_ID), 0)
+               END AS INT) AS CourierDispatchFlag,
+               @TotalRecords AS TotalRecords
+        FROM CTE
+        ORDER BY Entry_Date DESC
+        OPTION (RECOMPILE);
+    END
 END
 GO
