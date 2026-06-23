@@ -107,16 +107,14 @@ BEGIN
             (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20))) AS FullCode
         FROM Pro_Enq pe WITH (NOLOCK)
         INNER JOIN M_Code_PFL mc WITH (NOLOCK)
-            ON (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20)))
-             = (pe.Received_Code1 + pe.Received_Code2)
+            ON mc.Code1 = TRY_CAST(LTRIM(RTRIM(pe.Received_Code1)) AS NUMERIC(18,0))
+           AND mc.Code2 = TRY_CAST(LTRIM(RTRIM(pe.Received_Code2)) AS NUMERIC(18,0))
         INNER JOIN Pro_Reg pr WITH (NOLOCK)
             ON pr.Pro_ID = mc.Pro_ID
            AND pr.Comp_ID = @Comp_Id
         WHERE pe.Is_Success = 1
-          AND mc.Use_Count = 1
           AND pe.Enq_Date >= @StartDate
-          AND pe.Enq_Date <  @EndDate
-          AND mc.Gen_Date >= @CompanyStartDate;
+          AND pe.Enq_Date <  @EndDate;
     END
     ELSE
     BEGIN
@@ -127,16 +125,14 @@ BEGIN
             (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20))) AS FullCode
         FROM Pro_Enq pe WITH (NOLOCK)
         INNER JOIN M_Code mc WITH (NOLOCK)
-            ON (CAST(mc.Code1 AS NVARCHAR(20)) + CAST(mc.Code2 AS NVARCHAR(20)))
-             = (pe.Received_Code1 + pe.Received_Code2)
+            ON mc.Code1 = TRY_CAST(LTRIM(RTRIM(pe.Received_Code1)) AS NUMERIC(18,0))
+           AND mc.Code2 = TRY_CAST(LTRIM(RTRIM(pe.Received_Code2)) AS NUMERIC(18,0))
         INNER JOIN Pro_Reg pr WITH (NOLOCK)
             ON pr.Pro_ID = mc.Pro_ID
            AND pr.Comp_ID = @Comp_Id
         WHERE pe.Is_Success = 1
-          AND mc.Use_Count = 1
           AND pe.Enq_Date >= @StartDate
-          AND pe.Enq_Date <  @EndDate
-          AND mc.Gen_Date >= @CompanyStartDate;
+          AND pe.Enq_Date <  @EndDate;
     END
 
     ------------------------------------------------------

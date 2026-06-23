@@ -6,7 +6,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 -- exec [dbo].[Sp_ProductWiseCheckedCode] 'Comp-1599','quarter'
-CREATE OR ALTER PROCEDURE [dbo].[Sp_ProductWiseCheckedCode]    
+CREATE OR ALTER PROCEDURE [dbo].[USP_Sp_ProductWiseCheckedCode_AI]    
 @Comp_Id varchar(20),
  @datePreset NVARCHAR(20)=NULL
 AS    
@@ -108,9 +108,9 @@ BEGIN
             SELECT Code1, Code2, Pro_ID FROM M_Code_PFL WITH (NOLOCK) 
             WHERE @Comp_Id = 'Comp-1693' 
               AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id)
-        ) mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50))))
-            AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
-        WHERE pe.Enq_Date >= @StartDate
+        ) mc ON mc.Code1 = TRY_CAST(LTRIM(RTRIM(pe.Received_Code1)) AS NUMERIC(18,0))
+            AND mc.Code2 = TRY_CAST(LTRIM(RTRIM(pe.Received_Code2)) AS NUMERIC(18,0))
+        WHERE pe.Enq_Date >= @StartDate AND pe.Enq_Date < @EndDate
           AND (pe.Comp_ID = @Comp_Id OR (ISNULL(pe.Comp_ID, '') = '' AND mc.Code1 IS NOT NULL))
     ) PE;
 
@@ -126,14 +126,13 @@ BEGIN
 	    SELECT Code1, Code2, Pro_ID, Use_Count FROM M_Code WITH (NOLOCK) 
 	    WHERE @Comp_Id <> 'Comp-1693' 
 	      AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id) 
-	      AND Gen_Date >= @CompanyStartDate
 	    UNION ALL
 	    SELECT Code1, Code2, Pro_ID, Use_Count FROM M_Code_PFL WITH (NOLOCK) 
 	    WHERE @Comp_Id = 'Comp-1693' 
 	      AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id)
 	) MC 
-        ON LTRIM(RTRIM(CAST(MC.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(FE.Received_Code1 AS VARCHAR(50))))
-       AND LTRIM(RTRIM(CAST(MC.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(FE.Received_Code2 AS VARCHAR(50))))
+        ON MC.Code1 = TRY_CAST(LTRIM(RTRIM(FE.Received_Code1)) AS NUMERIC(18,0))
+       AND MC.Code2 = TRY_CAST(LTRIM(RTRIM(FE.Received_Code2)) AS NUMERIC(18,0))
     INNER JOIN Pro_Reg PR WITH (NOLOCK)
         ON PR.Pro_ID = MC.Pro_ID
        AND PR.Comp_ID = @Comp_Id;

@@ -87,7 +87,9 @@ BEGIN
     CREATE TABLE #tempM_Code (
         Code1 VARCHAR(100),
         Code2 VARCHAR(100),
-        Pro_ID VARCHAR(50)
+        Pro_ID VARCHAR(50),
+        VCode1 VARCHAR(50),
+        VCode2 VARCHAR(50)
     );
 
     IF @Comp_id = 'Comp-1693'
@@ -98,14 +100,16 @@ BEGIN
                 a.Code2, 
                 a.Pro_ID,
                 a.Use_Count,
+                CAST(a.Code1 AS VARCHAR(50)) AS VCode1, 
+                CAST(a.Code2 AS VARCHAR(50)) AS VCode2,
                 ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-            FROM M_Code_PFL a 
-            INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+            FROM M_Code_PFL a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
             WHERE b.Comp_ID = @Comp_id 
               AND a.Use_Count > 0
         )
-        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID)
-        SELECT Code1, Code2, Pro_ID
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, VCode1, VCode2)
+        SELECT Code1, Code2, Pro_ID, VCode1, VCode2
         FROM DistinctCodes
         WHERE rn = 1;
     END
@@ -117,19 +121,21 @@ BEGIN
                 a.Code2, 
                 a.Pro_ID,
                 a.Use_Count,
+                CAST(a.Code1 AS VARCHAR(50)) AS VCode1, 
+                CAST(a.Code2 AS VARCHAR(50)) AS VCode2,
                 ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-            FROM M_Code a 
-            INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+            FROM M_Code a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
             WHERE b.Comp_ID = @Comp_id 
               AND a.Use_Count > 0
         )
-        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID)
-        SELECT Code1, Code2, Pro_ID
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, VCode1, VCode2)
+        SELECT Code1, Code2, Pro_ID, VCode1, VCode2
         FROM DistinctCodes
         WHERE rn = 1;
     END
 
-    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+    CREATE INDEX IX_tempM_Code_12 ON #tempM_Code(VCode1, VCode2);
 
     ------------------------------------------------------
     -- Step 2: Main Scan Data with Geolocation Fallback
@@ -153,12 +159,12 @@ BEGIN
             AND g.Code2 = pe.Received_Code2 
             AND g.MobileNo = pe.MobileNo
         LEFT JOIN M_Consumer mc_usr ON RIGHT(pe.MobileNo, 10) = mc_usr.MobileLast10
-        LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
-              AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
-        WHERE pe.Comp_Id = @Comp_id
-          AND pe.Enq_Date >= @StartDate
+        LEFT JOIN #tempM_Code mc ON mc.VCode1 = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50))))
+                                AND mc.VCode2 = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+        WHERE pe.Enq_Date >= @StartDate
           AND pe.Enq_Date < @EndDate
           AND (@CompanyStartDate IS NULL OR pe.Enq_Date >= @CompanyStartDate)
+          AND (pe.Comp_Id = @Comp_id OR (ISNULL(pe.Comp_Id, '') = '' AND mc.Pro_ID IS NOT NULL))
           -- Removed filter to include ALL scans (Genuine, Duplicate, Invalid) per user requirement
     )
     SELECT TOP 10  

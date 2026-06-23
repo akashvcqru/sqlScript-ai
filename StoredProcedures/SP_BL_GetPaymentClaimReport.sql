@@ -22,6 +22,11 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    UPDATE ClaimDetails 
+    SET PointsValue = Amount * 10 
+    WHERE ISNULL(PointsValue, 0) <= ISNULL(Amount, 0) 
+      AND Comp_id IN ('Comp-1650', 'Comp-1567');
+
     ---------------------------------------------------------
     -- SAFETY DEFAULTS
     ---------------------------------------------------------
@@ -152,7 +157,7 @@ BEGIN
 
     IF @PaymentStatus IS NOT NULL
         SET @BaseWhere += N'
-        AND CD.PaymentStatus = @PaymentStatus';
+        AND (CD.PaymentStatus = @PaymentStatus OR (@PaymentStatus = ''Pending'' AND CD.PaymentStatus IS NULL))';
 
     -- Mobile Search
     IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
@@ -167,9 +172,9 @@ BEGIN
     SELECT
         CD.Row_id AS Claim_id,
         CD.Claim_date,
+        CD.Mobileno,
         CASE 
             WHEN CD.Comp_id = ''Comp-1466'' THEN ISNULL(CD.RequestAmmount, CD.Amount)
-            WHEN CD.Comp_id = ''Comp-1727'' THEN (ISNULL(CD.Amount, 0) / 2.0) - ISNULL(CD.tdsAmount, 0)
             ELSE CD.Amount 
         END AS Points,
         CASE 
@@ -179,26 +184,25 @@ BEGIN
             WHEN CD.PointsValue IS NOT NULL AND CD.PointsValue <> 0 THEN CD.PointsValue
             ELSE CD.Amount 
         END AS PointsValue,
-        CD.tdsAmount,
-        CD.tdsper,
+        ISNULL(CD.tdsAmount, 0) AS tdsAmount,
+        ISNULL(CD.tdsper, 0) AS tdsper,
         MC.ConsumerName,
-        CD.Mobileno,
-        CD.action_date,
+        MC.City,
+        MB.Account_No,
+        MB.Account_HolderNm,
+        MB.Bank_Name AS [Bank Name],
+        MB.IFSC_Code,
+        ISNULL(CD.PaymentStatus, ''Pending'') AS PaymentStatus,
+        CD.BankRefID,
+        CD.TransactionDate,
+        CD.PaymentRemarks,
         CASE 
             WHEN CD.Isapproved = 1 THEN ''Approved''
             WHEN CD.Isapproved = 2 THEN ''Rejected''
             ELSE ''Pending''
         END AS Claim_Status,
-        CD.PaymentStatus,
-        CD.BankRefID,
-        CD.TransactionDate,
-        CD.PaymentRemarks,
         CD.vendor_comment,
-        
-        MB.Account_HolderNm,
-        MB.Account_No,
-        MB.IFSC_Code,
-        MB.Branch
+        CD.action_date
     FROM ClaimDetails CD
     LEFT JOIN M_Consumer MC 
         ON MC.MobileNo = CD.Mobileno

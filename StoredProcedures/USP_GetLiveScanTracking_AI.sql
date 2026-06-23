@@ -47,7 +47,7 @@ BEGIN
     -- 2. Construct Date Range
     -------------------------------------------------
     DECLARE @StartDate DATE, @EndDate DATE;
-    DECLARE @Today DATE = CAST(GETDATE() AS DATE);
+    DECLARE @Today DATE = CAST(DATEADD(MINUTE, 330, GETUTCDATE()) AS DATE); -- Convert to IST before taking date
     DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset,''))));
     
     IF @Win = '' OR @Win = 'NULL' SET @Win = 'ALL';
@@ -118,66 +118,9 @@ BEGIN
     END
 
     -------------------------------------------------
-    -- 3. Pre-filter M_Code (Deduplicated per code pair)
+    -- 3. Pre-filter M_Code (Removed - using OUTER APPLY instead)
     -------------------------------------------------
-    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
-    
-    CREATE TABLE #tempM_Code (
-        Code1 VARCHAR(100),
-        Code2 VARCHAR(100),
-        Pro_ID VARCHAR(50),
-        Batch_No VARCHAR(100),
-        Use_Count INT,
-        Series_Order INT,
-        Series_Serial INT
-    );
 
-    IF @Comp_ID = 'Comp-1693'
-    BEGIN
-        ;WITH DistinctCodes AS (
-            SELECT 
-                a.Code1, 
-                a.Code2, 
-                a.Pro_ID,
-                a.Batch_No,
-                a.Use_Count,
-                a.Series_Order,
-                a.Series_Serial,
-                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC, a.Series_Order DESC) AS rn
-            FROM M_Code_PFL a WITH (NOLOCK)
-            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
-            WHERE b.Comp_ID = @Comp_ID
-              AND a.Use_Count > 0
-        )
-        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, Batch_No, Use_Count, Series_Order, Series_Serial)
-        SELECT Code1, Code2, Pro_ID, Batch_No, Use_Count, Series_Order, Series_Serial
-        FROM DistinctCodes
-        WHERE rn = 1;
-    END
-    ELSE
-    BEGIN
-        ;WITH DistinctCodes AS (
-            SELECT 
-                a.Code1, 
-                a.Code2, 
-                a.Pro_ID,
-                a.Batch_No,
-                a.Use_Count,
-                a.Series_Order,
-                a.Series_Serial,
-                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC, a.Series_Order DESC) AS rn
-            FROM M_Code a WITH (NOLOCK)
-            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
-            WHERE b.Comp_ID = @Comp_ID
-              AND a.Use_Count > 0
-        )
-        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, Batch_No, Use_Count, Series_Order, Series_Serial)
-        SELECT Code1, Code2, Pro_ID, Batch_No, Use_Count, Series_Order, Series_Serial
-        FROM DistinctCodes
-        WHERE rn = 1;
-    END
-
-    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
 
     -------------------------------------------------
     -- 4. Result Query
@@ -260,15 +203,81 @@ BEGIN
     END
     ELSE
     BEGIN
+        ------------------------------------------------------
+        -- Step 1: Pre-filter M_Code (Deduplicated per code pair)
+        ------------------------------------------------------
+        IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+        
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, 
+                a.Code2, 
+                a.Pro_ID,
+                a.Batch_No,
+                a.Use_Count,
+                CAST(a.Code1 AS VARCHAR(50)) AS VCode1,
+                CAST(a.Code2 AS VARCHAR(50)) AS VCode2,
+                CAST(a.Code1 AS VARCHAR(50)) + CAST(a.Code2 AS VARCHAR(50)) AS CombinedCode,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC, a.Series_Order DESC) AS rn
+            FROM M_Code a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @Comp_ID 
+              AND a.Use_Count > 0
+        )
+        SELECT *
+        INTO #tempM_Code 
+        FROM DistinctCodes
+        WHERE rn = 1;
+
+        CREATE INDEX IX_tempM_Code_12 ON #tempM_Code(VCode1, VCode2);
+        CREATE INDEX IX_tempM_Code_Combined ON #tempM_Code(CombinedCode);
+
+        ------------------------------------------------------
+        -- Step 2: Pre-filter Pro_Enq (The largest table)
+        ------------------------------------------------------
+        IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
+        
+        SELECT 
+            pe.Enq_Date,
+            pe.Received_Code1,
+            pe.Received_Code2,
+            pe.Is_Success,
+            pe.City,
+            pe.state,
+            pe.PinCode,
+            pe.Dial_Mode,
+            pe.MobileNo,
+            pe.Latitude,
+            pe.Longitude,
+            pe.IsVerified,
+            pe.Comp_ID,
+            LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) AS VCode1,
+            LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50)))) AS VCode2,
+            LTRIM(RTRIM(ISNULL(CAST(pe.Received_Code1 AS VARCHAR(50)), ''))) + LTRIM(RTRIM(ISNULL(CAST(pe.Received_Code2 AS VARCHAR(50)), ''))) AS CombinedCode
+        INTO #tempPro_Enq
+        FROM Pro_Enq pe WITH (NOLOCK)
+        WHERE pe.Enq_Date >= @StartDate
+          AND pe.Enq_Date < @EndDate
+          AND (@CompanyStartDate IS NULL OR pe.Enq_Date >= @CompanyStartDate)
+          AND (pe.Comp_ID = @Comp_ID OR ISNULL(pe.Comp_ID, '') = '')
+          AND (@StateFilter IS NULL OR pe.state = @StateFilter)
+          AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
+
+        CREATE INDEX IX_tempPro_Enq_12 ON #tempPro_Enq(VCode1, VCode2);
+        CREATE INDEX IX_tempPro_Enq_Combined ON #tempPro_Enq(CombinedCode);
+
+        ------------------------------------------------------
+        -- Step 3: Result Query
+        ------------------------------------------------------
         ;WITH ResultCTE AS (
             SELECT 
                 pe.Enq_Date AS ScanTimestamp,
                 pr.Pro_Name AS Product,
                 pr.Pro_ID AS VariantSKU,
                 mc.Batch_No AS BatchNo,
-                ISNULL(pe.Received_Code1, '') + ISNULL(pe.Received_Code2, '') AS UniqueCode,
+                pe.CombinedCode AS UniqueCode,
                 CASE 
-                    WHEN mc.Code1 IS NULL THEN 'Invalid'
+                    WHEN mc.VCode1 IS NULL THEN 'Invalid'
                     WHEN pe.Is_Success = 2 THEN 'Duplicate'
                     WHEN pe.Is_Success = 1 THEN 'Genuine'
                     ELSE 'Invalid' 
@@ -293,21 +302,18 @@ BEGIN
                 pe.Latitude,
                 pe.Longitude,
                 ISNULL(pe.IsVerified, 0) AS ImageVerified
-            FROM Pro_Enq pe WITH (NOLOCK)
-            LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
-                  AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+            FROM #tempPro_Enq pe
+            OUTER APPLY (
+                SELECT TOP 1 * FROM #tempM_Code m
+                WHERE (m.VCode1 = pe.VCode1 AND m.VCode2 = pe.VCode2)
+                   OR (m.CombinedCode = pe.CombinedCode)
+            ) mc
             LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mc.Pro_ID
-            LEFT JOIN M_Consumer mcn WITH (NOLOCK) ON mcn.MobileNo = pe.MobileNo
-            WHERE (pe.Comp_ID = @Comp_ID OR (ISNULL(pe.Comp_ID, '') = '' AND mc.Code1 IS NOT NULL))
-              AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
-              AND pe.Enq_Date >= @StartDate
-              AND pe.Enq_Date < @EndDate
-              AND (@CompanyStartDate IS NULL OR pe.Enq_Date >= @CompanyStartDate)
-              AND (@StateFilter IS NULL OR pe.state = @StateFilter)
-              AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
+            LEFT JOIN M_Consumer mcn WITH (NOLOCK) ON mcn.MobileNo = pe.MobileNo AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
+            WHERE (pe.Comp_ID = @Comp_ID OR (ISNULL(pe.Comp_ID, '') = '' AND mc.VCode1 IS NOT NULL))
               AND (@Search IS NULL OR (
                     pe.MobileNo LIKE '%' + @Search + '%' OR 
-                    (ISNULL(CAST(pe.Received_Code1 AS VARCHAR(50)), '') + ISNULL(CAST(pe.Received_Code2 AS VARCHAR(50)), '')) LIKE '%' + @Search + '%' OR 
+                    pe.CombinedCode LIKE '%' + @Search + '%' OR 
                     mc.Batch_No LIKE '%' + @Search + '%' OR
                     pr.Pro_Name LIKE '%' + @Search + '%' OR
                     pr.Pro_ID LIKE '%' + @Search + '%'

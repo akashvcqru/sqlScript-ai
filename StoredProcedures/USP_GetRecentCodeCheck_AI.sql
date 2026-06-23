@@ -32,69 +32,78 @@ BEGIN
         SET @CompanyStartDate = '1900-01-01';
 
     -------------------------------------------------
-    -- 2. Get Recent Scans (Fetch more to ensure we get enough valid ones after join)
+    -- 2. Build Optimized Temp Tables
     -------------------------------------------------
-    ;WITH PE_Recent AS
-    (
-        SELECT TOP 5 
-              pe.Received_Code1
-            , pe.Received_Code2
-            , pe.MobileNo
-            , pe.Enq_Date
-            , pe.Dial_Mode
-            , pe.is_success
-        FROM Pro_Enq pe WITH (NOLOCK)
-        WHERE (pe.Comp_Id = @Comp_Id OR (ISNULL(pe.Comp_Id, '') = '' AND EXISTS (
-            SELECT 1 FROM Pro_Reg pr WITH (NOLOCK)
-            INNER JOIN (
-                SELECT Code1, Code2, Pro_ID FROM M_Code WITH (NOLOCK) WHERE @Comp_Id <> 'Comp-1693'
-                UNION ALL
-                SELECT Code1, Code2, Pro_ID FROM M_Code_PFL WITH (NOLOCK) WHERE @Comp_Id = 'Comp-1693'
-            ) mc ON mc.Pro_ID = pr.Pro_ID
-            WHERE pr.Comp_ID = @Comp_Id
-              AND mc.Code1 = pe.Received_Code1
-              AND mc.Code2 = pe.Received_Code2
-        )))
-          AND pe.Enq_Date >= @CompanyStartDate
-        ORDER BY pe.Enq_Date DESC
-    ),
+    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
+    CREATE TABLE #tempM_Code (
+        Code1 VARCHAR(100),
+        Code2 VARCHAR(100),
+        Pro_ID VARCHAR(50),
+        Batch_No VARCHAR(100),
+        Use_Count INT,
+        VCode1 VARCHAR(50),
+        VCode2 VARCHAR(50),
+        Pro_Name VARCHAR(200)
+    );
+
+    IF @Comp_Id = 'Comp-1693'
+    BEGIN
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, a.Code2, a.Pro_ID, a.Batch_No, a.Use_Count, b.Pro_Name,
+                CAST(a.Code1 AS VARCHAR(50)) AS VCode1, CAST(a.Code2 AS VARCHAR(50)) AS VCode2,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            FROM M_Code_PFL a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @Comp_Id AND a.Use_Count > 0
+        )
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, Batch_No, Use_Count, VCode1, VCode2, Pro_Name)
+        SELECT Code1, Code2, Pro_ID, Batch_No, Use_Count, VCode1, VCode2, Pro_Name FROM DistinctCodes WHERE rn = 1;
+    END
+    ELSE
+    BEGIN
+        ;WITH DistinctCodes AS (
+            SELECT 
+                a.Code1, a.Code2, a.Pro_ID, a.Batch_No, a.Use_Count, b.Pro_Name,
+                CAST(a.Code1 AS VARCHAR(50)) AS VCode1, CAST(a.Code2 AS VARCHAR(50)) AS VCode2,
+                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
+            FROM M_Code a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
+            WHERE b.Comp_ID = @Comp_Id AND a.Use_Count > 0
+        )
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, Batch_No, Use_Count, VCode1, VCode2, Pro_Name)
+        SELECT Code1, Code2, Pro_ID, Batch_No, Use_Count, VCode1, VCode2, Pro_Name FROM DistinctCodes WHERE rn = 1;
+    END
+
+    CREATE INDEX IX_tempM_Code_12 ON #tempM_Code(VCode1, VCode2);
 
     -------------------------------------------------
-    -- 3. Prepare M_Code Mapping for these specific codes
+    -- 3. Get Recent Scans (Top 5 Valid)
     -------------------------------------------------
-    MC AS
-    (
-        SELECT 
-              MC.Pro_ID
-            , MC.Batch_No
-            , MC.Use_Count
-            , PR.Pro_Name
-            , CAST(MC.Code1 AS NVARCHAR(10)) AS Code1V
-            , CAST(MC.Code2 AS NVARCHAR(10)) AS Code2V
-        FROM M_Code MC WITH (NOLOCK)
-        JOIN Pro_Reg PR WITH (NOLOCK) ON MC.Pro_ID = PR.Pro_ID
-        WHERE PR.Comp_ID = @Comp_Id AND @Comp_Id <> 'Comp-1693'
-          AND EXISTS (SELECT 1 FROM PE_Recent PE WHERE PE.Received_Code1 = CAST(MC.Code1 AS NVARCHAR(10)) AND PE.Received_Code2 = CAST(MC.Code2 AS NVARCHAR(10)))
-
-        UNION ALL
-
-        SELECT 
-              MC.Pro_ID
-            , MC.Batch_No
-            , MC.Use_Count
-            , PR.Pro_Name
-            , CAST(MC.Code1 AS NVARCHAR(10)) AS Code1V
-            , CAST(MC.Code2 AS NVARCHAR(10)) AS Code2V
-        FROM M_Code_PFL MC WITH (NOLOCK)
-        JOIN Pro_Reg PR WITH (NOLOCK) ON MC.Pro_ID = PR.Pro_ID
-        WHERE PR.Comp_ID = @Comp_Id AND @Comp_Id = 'Comp-1693'
-          AND EXISTS (SELECT 1 FROM PE_Recent PE WHERE PE.Received_Code1 = CAST(MC.Code1 AS NVARCHAR(10)) AND PE.Received_Code2 = CAST(MC.Code2 AS NVARCHAR(10)))
-    ),
+    IF OBJECT_ID('tempdb..#PE_Recent') IS NOT NULL DROP TABLE #PE_Recent;
+    SELECT TOP 5 
+          pe.Received_Code1
+        , pe.Received_Code2
+        , pe.MobileNo
+        , pe.Enq_Date
+        , pe.Dial_Mode
+        , pe.is_success
+        , LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) AS VCode1
+        , LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50)))) AS VCode2
+    INTO #PE_Recent
+    FROM Pro_Enq pe WITH (NOLOCK)
+    WHERE pe.Enq_Date >= @CompanyStartDate
+      AND (pe.Comp_Id = @Comp_Id OR (ISNULL(pe.Comp_Id, '') = '' AND EXISTS (
+          SELECT 1 FROM #tempM_Code mc 
+          WHERE mc.VCode1 = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50))))
+            AND mc.VCode2 = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
+      )))
+    ORDER BY pe.Enq_Date DESC;
 
     -------------------------------------------------
     -- 4. Latest Geo only for the mobiles in the candidates
     -------------------------------------------------
-    Geo AS
+    ;WITH Geo AS
     (
         SELECT *
         FROM
@@ -105,7 +114,7 @@ BEGIN
                 , ROW_NUMBER() OVER (PARTITION BY RIGHT(G.MobileNo,10) ORDER BY G.Enq_Date DESC) AS rn
             FROM GeoLocationData G WITH (NOLOCK)
             WHERE G.Comp_Id = @Comp_Id
-              AND EXISTS (SELECT 1 FROM PE_Recent PE WHERE RIGHT(PE.MobileNo,10) = RIGHT(G.MobileNo,10))
+              AND EXISTS (SELECT 1 FROM #PE_Recent PE WHERE RIGHT(PE.MobileNo,10) = RIGHT(G.MobileNo,10))
         ) X
         WHERE rn = 1
     ),
@@ -119,8 +128,11 @@ BEGIN
               PE.Received_Code1
             , PE.Received_Code2
             , COUNT(*) AS TotalScans
-            , COUNT(DISTINCT CONCAT(Latitude, '|', Longitude)) AS DistinctLocations
-        WHERE EXISTS (SELECT 1 FROM PE_Recent R WHERE R.Received_Code1 = PE.Received_Code1 AND R.Received_Code2 = PE.Received_Code2)
+            , COUNT(DISTINCT CONCAT(pe_all.Latitude, '|', pe_all.Longitude)) AS DistinctLocations
+        FROM #PE_Recent PE
+        LEFT JOIN Pro_Enq pe_all WITH (NOLOCK) 
+            ON pe_all.Received_Code1 = PE.Received_Code1 
+           AND pe_all.Received_Code2 = PE.Received_Code2
         GROUP BY PE.Received_Code1, PE.Received_Code2
     )
 
@@ -132,9 +144,9 @@ BEGIN
         , MC.Pro_ID
         , MC.Pro_Name
         , MC.Batch_No
-        , ISNULL(MC.Code1V, PE.Received_Code1) AS Code1V
-        , ISNULL(MC.Code2V, PE.Received_Code2) AS Code2V
-        , ISNULL((MC.Code1V + MC.Code2V), ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '')) AS UniqueCode
+        , ISNULL(MC.VCode1, PE.Received_Code1) AS Code1V
+        , ISNULL(MC.VCode2, PE.Received_Code2) AS Code2V
+        , ISNULL((MC.VCode1 + MC.VCode2), ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '')) AS UniqueCode
         , PE.Enq_Date
         , PE.Dial_Mode
         
@@ -159,10 +171,10 @@ BEGIN
         , GEO.Latitude
         , GEO.Longitude
 
-    FROM PE_Recent PE
-    LEFT JOIN MC 
-        ON PE.Received_Code1 = MC.Code1V
-       AND PE.Received_Code2 = MC.Code2V
+    FROM #PE_Recent PE
+    LEFT JOIN #tempM_Code MC 
+        ON PE.VCode1 = MC.VCode1
+       AND PE.VCode2 = MC.VCode2
 
     LEFT JOIN Geo GEO
         ON GEO.Mobile10 = RIGHT(PE.MobileNo,10)

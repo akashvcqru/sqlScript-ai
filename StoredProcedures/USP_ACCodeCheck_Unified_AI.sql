@@ -20,13 +20,14 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @ResultCode INT = 0; -- 0: Success, 1: Invalid, 2: Already Used, 3: Error
+    DECLARE @ResultCode INT = 1; -- 1: Success, 0: Invalid, 2: Already Used, 3: Error
     DECLARE @Message NVARCHAR(MAX) = '';
     DECLARE @RowID NUMERIC(12, 0);
     DECLARE @UseCount NUMERIC(5, 0);
     DECLARE @M_ConsumerID INT;
     DECLARE @CurrentCompID NVARCHAR(20);
     DECLARE @IsSuccess NVARCHAR(50) = '1';
+    DECLARE @ProID VARCHAR(50);
 
     -- 1. Normalize Mobile (add 91 if 10 digits)
     IF @MobileNo IS NOT NULL AND LEN(@MobileNo) = 10
@@ -38,7 +39,8 @@ BEGIN
     SELECT TOP 1 
         @RowID = mc.Row_ID, 
         @UseCount = mc.Use_Count, 
-        @CurrentCompID = pr.Comp_ID 
+        @CurrentCompID = pr.Comp_ID,
+        @ProID = mc.Pro_ID
     FROM M_Code mc
     INNER JOIN Pro_Reg pr ON mc.Pro_ID = pr.Pro_ID
     WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0));
@@ -49,7 +51,8 @@ BEGIN
         SELECT TOP 1 
             @RowID = mc.Row_ID, 
             @UseCount = mc.Use_Count, 
-            @CurrentCompID = pr.Comp_ID 
+            @CurrentCompID = pr.Comp_ID,
+            @ProID = mc.Pro_ID
         FROM M_Code_PFL mc
         INNER JOIN Pro_Reg pr ON mc.Pro_ID = pr.Pro_ID
         WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0));
@@ -57,9 +60,39 @@ BEGIN
 
     IF @RowID IS NULL
     BEGIN
-        SET @ResultCode = 1;
+        SET @ResultCode = 0;
         SET @Message = 'Invalid Code. Please check the 13-digit code and try again.';
         SELECT @ResultCode AS ResultCode, @Message AS [Message];
+        RETURN;
+    END
+
+    -- Check Service Subscription
+    IF NOT EXISTS (SELECT 1 FROM M_ServiceSubscription WHERE Pro_ID = @ProID)
+    BEGIN
+        SET @ResultCode = 0;
+        SET @Message = 'This code is currently not linked to any service. Please contact customer support for assistance.';
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM M_ServiceSubscription WHERE Pro_ID = @ProID AND IsActive = 1)
+    BEGIN
+        SET @ResultCode = 0;
+        SET @Message = 'The code is deactivate';
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
+        RETURN;
+    END
+
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM M_ServiceSubscription ms
+        INNER JOIN M_ServiceSubscriptionTrans mst ON ms.Subscribe_Id = mst.Subscribe_Id
+        WHERE ms.Pro_ID = @ProID AND ms.IsActive = 1 AND mst.IsActive = 1
+    )
+    BEGIN
+        SET @ResultCode = 0;
+        SET @Message = 'The code is deactivate';
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
         RETURN;
     END
 
@@ -73,7 +106,7 @@ BEGIN
     END
 
     -- 4. If MobileNo is provided, perform registration/verification
-    IF @MobileNo IS NOT NULL AND (@ResultCode = 0 OR @ResultCode = 2)
+    IF @MobileNo IS NOT NULL AND (@ResultCode = 1 OR @ResultCode = 2)
     BEGIN
         BEGIN TRY
             -- Find or Create Consumer
@@ -140,7 +173,7 @@ BEGIN
             );
 
             -- Mark code as used ONLY if this is the first successful check
-            IF @ResultCode = 0
+            IF @ResultCode = 1
             BEGIN
                 UPDATE M_Code SET Use_Count = ISNULL(Use_Count, 0) + 1, Allot_Date = GETDATE() WHERE Row_ID = @RowID;
                 -- Update PFL as well if that's where we found it
@@ -155,10 +188,10 @@ BEGIN
             SET @Message = 'Internal Error: ' + ERROR_MESSAGE();
         END CATCH
     END
-    ELSE IF @MobileNo IS NULL AND @ResultCode = 0
+    ELSE IF @MobileNo IS NULL AND @ResultCode = 1
     BEGIN
         -- Just a check call (like chkwarranty)
-        SET @ResultCode = 0;
+        SET @ResultCode = 1;
         SET @Message = 'Code is valid and ready for verification.';
     END
 

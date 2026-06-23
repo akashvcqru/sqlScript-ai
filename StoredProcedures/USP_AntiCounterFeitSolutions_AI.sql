@@ -100,7 +100,9 @@ BEGIN
     CREATE TABLE #tempM_Code (
         Code1 VARCHAR(100),
         Code2 VARCHAR(100),
-        Pro_ID VARCHAR(50)
+        Pro_ID VARCHAR(50),
+        VCode1 VARCHAR(50),
+        VCode2 VARCHAR(50)
     );
 
     IF @Comp_Id = 'Comp-1693'
@@ -111,14 +113,16 @@ BEGIN
                 a.Code2, 
                 a.Pro_ID,
                 a.Use_Count,
+                CAST(a.Code1 AS VARCHAR(50)) AS VCode1, 
+                CAST(a.Code2 AS VARCHAR(50)) AS VCode2,
                 ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-            FROM M_Code_PFL a 
-            INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+            FROM M_Code_PFL a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
             WHERE b.Comp_ID = @Comp_Id 
               AND a.Use_Count > 0
         )
-        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID)
-        SELECT Code1, Code2, Pro_ID
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, VCode1, VCode2)
+        SELECT Code1, Code2, Pro_ID, VCode1, VCode2
         FROM DistinctCodes
         WHERE rn = 1;
     END
@@ -130,37 +134,48 @@ BEGIN
                 a.Code2, 
                 a.Pro_ID,
                 a.Use_Count,
+                CAST(a.Code1 AS VARCHAR(50)) AS VCode1, 
+                CAST(a.Code2 AS VARCHAR(50)) AS VCode2,
                 ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-            FROM M_Code a 
-            INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+            FROM M_Code a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
             WHERE b.Comp_ID = @Comp_Id 
               AND a.Use_Count > 0
         )
-        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID)
-        SELECT Code1, Code2, Pro_ID
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, VCode1, VCode2)
+        SELECT Code1, Code2, Pro_ID, VCode1, VCode2
         FROM DistinctCodes
         WHERE rn = 1;
     END
 
-    CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
+    CREATE INDEX IX_tempM_Code_12 ON #tempM_Code(VCode1, VCode2);
 
     ------------------------------------------------------
     -- Step 2: Prepare scan data
     ------------------------------------------------------
-    DROP TABLE IF EXISTS #ValidScans;
-
-    SELECT
+    IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
+    SELECT 
         CAST(pe.Enq_Date AS DATE) AS ScanDate,
+        pe.Is_Success,
+        pe.Comp_ID,
+        LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) AS VCode1,
+        LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50)))) AS VCode2
+    INTO #tempPro_Enq
+    FROM Pro_Enq pe WITH (NOLOCK)
+    WHERE pe.Enq_Date >= @StartDate
+      AND pe.Enq_Date <  @EndDate
+      AND pe.Enq_Date >= @CompanyStartDate
+      AND (pe.Comp_ID = @Comp_Id OR ISNULL(pe.Comp_ID, '') = '');
+
+    DROP TABLE IF EXISTS #ValidScans;
+    SELECT
+        pe.ScanDate,
         pe.Is_Success,
         CASE WHEN mc.Pro_ID IS NOT NULL THEN 1 ELSE 0 END AS CodeExists
     INTO #ValidScans
-    FROM Pro_Enq pe WITH (NOLOCK)
-    LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
-          AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
-    WHERE pe.Comp_ID = @Comp_Id
-      AND pe.Enq_Date >= @StartDate
-      AND pe.Enq_Date <  @EndDate
-      AND pe.Enq_Date >= @CompanyStartDate;
+    FROM #tempPro_Enq pe
+    LEFT JOIN #tempM_Code mc ON mc.VCode1 = pe.VCode1 AND mc.VCode2 = pe.VCode2
+    WHERE (pe.Comp_ID = @Comp_Id OR (ISNULL(pe.Comp_ID, '') = '' AND mc.Pro_ID IS NOT NULL));
 
     ------------------------------------------------------
     -- Result Set 1: Periodic Data

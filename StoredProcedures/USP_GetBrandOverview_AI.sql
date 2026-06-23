@@ -86,7 +86,9 @@ BEGIN
     CREATE TABLE #tempM_Code (
         Code1 VARCHAR(100),
         Code2 VARCHAR(100),
-        Pro_ID VARCHAR(50)
+        Pro_ID VARCHAR(50),
+        VCode1 VARCHAR(50),
+        VCode2 VARCHAR(50)
     );
 
     IF @CompanyKey = 'Comp-1693'
@@ -98,13 +100,13 @@ BEGIN
                 a.Pro_ID,
                 a.Use_Count,
                 ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-            FROM M_Code_PFL a 
-            INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+            FROM M_Code_PFL a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
             WHERE b.Comp_ID = @CompanyKey 
               AND a.Use_Count > 0
         )
-        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID)
-        SELECT Code1, Code2, Pro_ID
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, VCode1, VCode2)
+        SELECT Code1, Code2, Pro_ID, CAST(Code1 AS VARCHAR(50)), CAST(Code2 AS VARCHAR(50))
         FROM DistinctCodes
         WHERE rn = 1;
     END
@@ -117,44 +119,59 @@ BEGIN
                 a.Pro_ID,
                 a.Use_Count,
                 ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-            FROM M_Code a 
-            INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID 
+            FROM M_Code a WITH (NOLOCK)
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
             WHERE b.Comp_ID = @CompanyKey 
               AND a.Use_Count > 0
         )
-        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID)
-        SELECT Code1, Code2, Pro_ID
+        INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, VCode1, VCode2)
+        SELECT Code1, Code2, Pro_ID, CAST(Code1 AS VARCHAR(50)), CAST(Code2 AS VARCHAR(50))
         FROM DistinctCodes
         WHERE rn = 1;
     END
 
+    CREATE INDEX IX_tempM_Code_12 ON #tempM_Code(VCode1, VCode2);
+
     ---------------------------------------------------------
     -- Step 2: Pre-filter Pro_Enq
     ---------------------------------------------------------
+    IF OBJECT_ID('tempdb..#tempPro_EnqBase') IS NOT NULL DROP TABLE #tempPro_EnqBase;
+    SELECT 
+        pe.MobileNo, 
+        pe.Is_Success, 
+        pe.Received_Code1, 
+        pe.Received_Code2,
+        pe.Comp_ID,
+        RIGHT(pe.MobileNo, 10) AS MobileLast10,
+        LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) AS VCode1,
+        LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50)))) AS VCode2
+    INTO #tempPro_EnqBase
+    FROM Pro_Enq pe WITH (NOLOCK)
+    WHERE pe.Enq_Date >= CAST(@StartDate AS DATETIME)
+      AND pe.Enq_Date < DATEADD(DAY, 1, CAST(@EndDate AS DATETIME))
+      AND (pe.Comp_ID = @CompanyKey OR ISNULL(pe.Comp_ID, '') = '');
+
     IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
     SELECT 
         pe.MobileNo, 
         pe.Is_Success, 
         pe.Received_Code1, 
         pe.Received_Code2,
-        RIGHT(pe.MobileNo, 10) AS MobileLast10,
+        pe.MobileLast10,
         CASE WHEN mc.Pro_ID IS NOT NULL THEN 1 ELSE 0 END AS CodeExists
     INTO #tempPro_Enq
-    FROM Pro_Enq pe
-    LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
-          AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
-    WHERE pe.Comp_ID = @CompanyKey
-      AND pe.Enq_Date >= CAST(@StartDate AS DATETIME)
-      AND pe.Enq_Date < DATEADD(DAY, 1, CAST(@EndDate AS DATETIME));
+    FROM #tempPro_EnqBase pe
+    LEFT JOIN #tempM_Code mc ON mc.VCode1 = pe.VCode1 AND mc.VCode2 = pe.VCode2
+    WHERE (pe.Comp_ID = @CompanyKey OR (ISNULL(pe.Comp_ID, '') = '' AND mc.Pro_ID IS NOT NULL));
 
     ---------------------------------------------------------
     -- Step 3: Aggregates
     ---------------------------------------------------------
     DECLARE @LifetimeCodeGeneration INT;
     IF @CompanyKey = 'Comp-1693'
-        SET @LifetimeCodeGeneration = (SELECT COUNT(*) FROM M_Code_PFL a INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID WHERE b.Comp_ID = @CompanyKey);
+        SET @LifetimeCodeGeneration = (SELECT COUNT(1) FROM M_Code_PFL WITH (NOLOCK) WHERE Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WITH (NOLOCK) WHERE Comp_ID = @CompanyKey));
     ELSE
-        SET @LifetimeCodeGeneration = (SELECT COUNT(*) FROM M_Code a INNER JOIN Pro_Reg b ON a.Pro_ID = b.Pro_ID WHERE b.Comp_ID = @CompanyKey);
+        SET @LifetimeCodeGeneration = (SELECT COUNT(1) FROM M_Code WITH (NOLOCK) WHERE Pro_ID IN (SELECT Pro_ID FROM Pro_Reg WITH (NOLOCK) WHERE Comp_ID = @CompanyKey));
     DECLARE @AntiCounterfeitMeasures INT = (SELECT COUNT(*) FROM #tempPro_Enq WHERE CodeExists = 1 AND Is_Success = 1);
     DECLARE @CounterfeitAttemptsDetected INT = (SELECT COUNT(*) FROM #tempPro_Enq WHERE CodeExists = 0 OR Is_Success NOT IN (1, 2));
     DECLARE @NumberofScans INT = (SELECT COUNT(*) FROM #tempPro_Enq);
