@@ -289,7 +289,7 @@ BEGIN
         U.PinCode,
         U.KYCStatus,
         ISNULL(B.Benefit,0) AS PointsEarned,
-        ISNULL(R.ReferralAmount,0) AS ReferralAmount,
+        ISNULL(R.ReferralAmount,0) AS RefralAmount,
         ISNULL(C.ClaimsAmount,0) + ISNULL(UU.UPIAmount,0) + ISNULL(BP.BPointsAmount,0) AS RedeemAmount,
         ISNULL(B.Benefit,0) + ISNULL(R.ReferralAmount,0) - (ISNULL(C.ClaimsAmount,0) + ISNULL(UU.UPIAmount,0) + ISNULL(BP.BPointsAmount,0)) AS BalanceAmount,
         ISNULL(C.TDSAmount,0) AS TDSAmount,
@@ -326,7 +326,7 @@ BEGIN
     BEGIN
         SELECT
             ConsumerName, MobileNo, State, City, PinCode, KYCStatus,
-            PointsEarned, ReferralAmount, RedeemAmount, BalanceAmount, TDSAmount, LastScan
+            PointsEarned, RefralAmount, RedeemAmount, BalanceAmount, TDSAmount, LastScan
         FROM #FinalData
         ORDER BY RN;
     END
@@ -334,7 +334,7 @@ BEGIN
     BEGIN
         SELECT
             ConsumerName, MobileNo, State, City, PinCode, KYCStatus,
-            PointsEarned, ReferralAmount, RedeemAmount, BalanceAmount, TDSAmount, LastScan
+            PointsEarned, RefralAmount, RedeemAmount, BalanceAmount, TDSAmount, LastScan
         FROM #FinalData
         WHERE RN BETWEEN ((@Page - 1) * @Limit) + 1 AND (@Page * @Limit)
         ORDER BY RN;
