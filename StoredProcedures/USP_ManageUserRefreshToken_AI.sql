@@ -16,8 +16,10 @@ BEGIN
 
     IF @Action = 'SAVE'
     BEGIN
-        -- Remove existing tokens for this user and device
-        DELETE FROM UserRefreshTokens WHERE UserId = @UserId AND Device = @Device;
+        -- Remove existing tokens for this user and device (handling NULL devices correctly)
+        DELETE FROM UserRefreshTokens 
+        WHERE UserId = @UserId 
+          AND (Device = @Device OR (Device IS NULL AND @Device IS NULL));
 
         INSERT INTO UserRefreshTokens (UserId, Comp_ID, RefreshToken, Device, ExpiryDate)
         VALUES (@UserId, @Comp_ID, @RefreshToken, @Device, @ExpiryDate);
