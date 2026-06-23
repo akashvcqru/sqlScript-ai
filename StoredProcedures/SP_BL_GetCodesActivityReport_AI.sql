@@ -253,6 +253,28 @@ BEGIN
     CREATE INDEX IX_Points_MCodeid ON #Points(M_Codeid);
 
     ----------------------------------------------------
+    -- REFERRAL POINTS
+    ----------------------------------------------------
+    IF OBJECT_ID('tempdb..#ScanReferrals') IS NOT NULL DROP TABLE #ScanReferrals;
+
+    SELECT 
+        BL.Code1, 
+        BL.Code2, 
+        BL.compid, 
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints
+    INTO #ScanReferrals
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    WHERE LOWER(BL.ServiceName) = 'refral'
+      AND (
+          (@Comp_Id IN ('Comp-1567','Comp-1650') AND BL.compid IN ('Comp-1567','Comp-1650'))
+          OR
+          (@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND BL.compid = @Comp_Id)
+      )
+    GROUP BY BL.Code1, BL.Code2, BL.compid;
+
+    CREATE INDEX IX_ScanReferrals ON #ScanReferrals(Code1, Code2);
+
+    ----------------------------------------------------
     -- CODE CONFIG POINTS (PRECISE BY SERIES RANGE)
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#CodeConfigPoints') IS NOT NULL DROP TABLE #CodeConfigPoints;
@@ -355,7 +377,8 @@ BEGIN
             CASE 
                 WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.WornPoint, 0)
                 ELSE 0 
-            END AS WornPoint
+            END AS WornPoint,
+            ISNULL(R.ReferralPoints, 0) AS ReferralPoints
 		FROM
 		(
 			SELECT *,
@@ -372,6 +395,7 @@ BEGIN
         LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
+        LEFT JOIN #ScanReferrals R ON R.Code1 = E.Received_Code1 AND R.Code2 = E.Received_Code2
         WHERE
 		  (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
           AND (@StateFilter IS NULL OR G.State = @StateFilter)
@@ -422,7 +446,8 @@ BEGIN
             CASE 
                 WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.WornPoint, 0)
                 ELSE 0 
-            END AS WornPoint
+            END AS WornPoint,
+            ISNULL(R.ReferralPoints, 0) AS ReferralPoints
         FROM 
 		(
 			SELECT *,
@@ -439,6 +464,7 @@ BEGIN
         LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
+        LEFT JOIN #ScanReferrals R ON R.Code1 = E.Received_Code1 AND R.Code2 = E.Received_Code2
         WHERE
 		    (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
             AND (@StateFilter IS NULL OR G.State = @StateFilter)

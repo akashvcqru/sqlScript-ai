@@ -149,6 +149,21 @@ BEGIN
     ---------------------------------------------------------
     -- MATERIALIZE RESULT
     ---------------------------------------------------------
+    IF OBJECT_ID('tempdb..#ScanReferrals') IS NOT NULL DROP TABLE #ScanReferrals;
+
+    SELECT 
+        BL.Code1, 
+        BL.Code2, 
+        BL.compid, 
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints
+    INTO #ScanReferrals
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    WHERE LOWER(BL.ServiceName) = 'refral'
+      AND BL.compid = @ActualCompId
+    GROUP BY BL.Code1, BL.Code2, BL.compid;
+
+    CREATE INDEX IX_ScanReferrals ON #ScanReferrals(Code1, Code2);
+
     IF OBJECT_ID('tempdb..#FilteredData') IS NOT NULL DROP TABLE #FilteredData;
 
     SELECT
@@ -212,12 +227,14 @@ BEGIN
                 CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
             ELSE 0 
         END AS WornPoint,
+        ISNULL(R.ReferralPoints, 0) AS ReferralPoints,
         ROW_NUMBER() OVER (
             PARTITION BY pc.Code1, pc.Code2, pc.Enq_Date
             ORDER BY pc.Enq_Date DESC, mc.dealer_state, mc.pancard_number, mc.aadharNumber, pc.Dial_Mode DESC
         ) AS rn
     INTO #FilteredData
     FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
+    LEFT JOIN #ScanReferrals R ON R.Code1 = pc.Code1 AND R.Code2 = pc.Code2
     LEFT JOIN dbo.M_Consumer mc WITH (NOLOCK) ON mc.M_Consumerid = pc.m_consumerid AND mc.IsDelete = 0
     LEFT JOIN dbo.m_dealermaster md WITH (NOLOCK) ON md.DealerTechnicianId = mc.employeeID AND md.DealerCode = mc.distributorID
     LEFT JOIN dbo.tbl_VendorViseKYCStatus ts WITH (NOLOCK) ON ts.M_Consumerid = pc.m_consumerid AND ts.Comp_Id = pc.Comp_Id
@@ -288,7 +305,7 @@ BEGIN
             Address, PanHolderName, pancard_number, Bank_Name, Account_HolderNm, 
             Account_No, IFSC_Code, Mstar_TechMasterId, DealerCode, 
             transaction_status, dealer_state, designation, DealerType, 
-            KycStatus, SchemeStatus, AssignPoint, WornPoint
+            KycStatus, SchemeStatus, AssignPoint, WornPoint, ReferralPoints
         FROM #FilteredData 
         WHERE rn = 1 
         ORDER BY Enq_Date DESC;
@@ -315,6 +332,6 @@ BEGIN
     FROM #FilteredData
     WHERE rn = 1;
 
-    DROP TABLE IF EXISTS #FilteredData;
+    DROP TABLE IF EXISTS #FilteredData, #ScanReferrals;
 END;
 GO
