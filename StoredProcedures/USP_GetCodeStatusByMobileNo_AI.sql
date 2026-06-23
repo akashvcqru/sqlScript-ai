@@ -279,7 +279,7 @@ BEGIN
         LEFT JOIN M_Code MCD ON MCD.Code1 = BL.Code1 AND MCD.Code2 = BL.Code2
         LEFT JOIN Pro_Reg PR ON PR.Pro_ID = MCD.Pro_ID
         WHERE BL.M_Consumerid = @TargetConsumerid
-          AND LOWER(BL.ServiceName) = 'refral'
+          AND (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
           AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''));
     END
 
