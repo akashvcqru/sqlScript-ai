@@ -238,10 +238,11 @@ BEGIN
 
     ------------------------------------------------------
     -- Query result selection
+    -- SumOfTotalAmount is calculated here so we can ORDER BY it for pagination
     ------------------------------------------------------
     DECLARE @SQLData NVARCHAR(MAX) = N'
     SELECT
-        ROW_NUMBER() OVER (ORDER BY VKS.Entry_date DESC) AS SN,
+        ROW_NUMBER() OVER (ORDER BY (ISNULL(PointsCash.TotalEarned, 0) - ISNULL(Trans.TotalRedeemed, 0)) DESC, VKS.Entry_date DESC) AS SN,
         MC.M_Consumerid AS M_Consumerid,
         MC.MobileNo AS UserNumber,
         MC.employeeID AS TechmasterID,
@@ -277,7 +278,9 @@ BEGIN
             WHEN VKS.VRKbl_KYC_status = 2 THEN ''REJECTED''
             ELSE ''PENDING''
         END AS [Status],
-        VKS.kycremark AS Comments
+        VKS.kycremark AS Comments,
+        ISNULL(PointsCash.TotalEarned, 0) - ISNULL(Trans.TotalRedeemed, 0) AS SumOfTotalAmount
+    INTO #TempPaged
     FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
         FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
@@ -290,10 +293,31 @@ BEGIN
         WHERE MB.M_Consumerid = MC.M_Consumerid
         ORDER BY MB.Entry_Date DESC
     ) MB
-    ' + @BaseWhere + N' ORDER BY VKS.Entry_date DESC';
+    OUTER APPLY (
+        SELECT ISNULL(SUM(CASE WHEN pc.Points IS NULL OR pc.Points = 0 THEN ISNULL(pc.Cash, 0) ELSE pc.Points END), 0) AS TotalEarned
+        FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
+        WHERE pc.M_Consumerid = MC.M_Consumerid
+          AND pc.Comp_Id = @Comp_Id
+          AND pc.Is_Success = 1
+    ) PointsCash
+    OUTER APPLY (
+        SELECT ISNULL(SUM(t.Amount), 0) AS TotalRedeemed
+        FROM dbo.Transactions t WITH (NOLOCK)
+        WHERE t.M_CounserID = CAST(MC.M_Consumerid AS VARCHAR(50))
+          AND t.CompId = REPLACE(@Comp_Id, ''Comp-'', '''')
+          AND t.Issuccess = 1
+    ) Trans
+    ' + @BaseWhere + N' ORDER BY (ISNULL(PointsCash.TotalEarned, 0) - ISNULL(Trans.TotalRedeemed, 0)) DESC, VKS.Entry_date DESC';
 
     IF @IsExport = 0
         SET @SQLData += N' OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY';
+
+    SET @SQLData += N';
+    SELECT 
+        tp.*
+    FROM #TempPaged tp
+    ORDER BY tp.SN;
+    DROP TABLE #TempPaged;';
 
     ------------------------------------------------------
     -- Count Query (only for non-export)

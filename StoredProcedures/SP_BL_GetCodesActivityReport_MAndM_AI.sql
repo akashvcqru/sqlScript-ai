@@ -149,6 +149,24 @@ BEGIN
     ---------------------------------------------------------
     -- MATERIALIZE RESULT
     ---------------------------------------------------------
+    IF OBJECT_ID('tempdb..#ScanReferrals') IS NOT NULL DROP TABLE #ScanReferrals;
+
+    SELECT 
+        CAST(C.Code1 AS VARCHAR(50)) AS Code1, 
+        CAST(C.Code2 AS VARCHAR(50)) AS Code2, 
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints
+    INTO #ScanReferrals
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    LEFT JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    LEFT JOIN BReferralMCodeCheck BRC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BRC.BReferralMCodeCheckid
+    INNER JOIN M_Consumer_M_Code MC ON MC.M_Consumer_MCodeid = COALESCE(BMC.M_Consumer_MCOdeid, BRC.M_Consumer_MCOdeid)
+    INNER JOIN M_Code C ON MC.M_Codeid = C.Row_ID
+    WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
+      AND MC.compid = @ActualCompId
+    GROUP BY CAST(C.Code1 AS VARCHAR(50)), CAST(C.Code2 AS VARCHAR(50));
+
+    CREATE INDEX IX_ScanReferrals ON #ScanReferrals(Code1, Code2);
+
     IF OBJECT_ID('tempdb..#FilteredData') IS NOT NULL DROP TABLE #FilteredData;
 
     SELECT
@@ -212,12 +230,14 @@ BEGIN
                 CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
             ELSE 0 
         END AS WornPoint,
+        ISNULL(R.ReferralPoints, 0) AS ReferralPoints,
         ROW_NUMBER() OVER (
             PARTITION BY pc.Code1, pc.Code2, pc.Enq_Date
             ORDER BY pc.Enq_Date DESC, mc.dealer_state, mc.pancard_number, mc.aadharNumber, pc.Dial_Mode DESC
         ) AS rn
     INTO #FilteredData
     FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
+    LEFT JOIN #ScanReferrals R ON R.Code1 = pc.Code1 AND R.Code2 = pc.Code2
     LEFT JOIN dbo.M_Consumer mc WITH (NOLOCK) ON mc.M_Consumerid = pc.m_consumerid AND mc.IsDelete = 0
     LEFT JOIN dbo.m_dealermaster md WITH (NOLOCK) ON md.DealerTechnicianId = mc.employeeID AND md.DealerCode = mc.distributorID
     LEFT JOIN dbo.tbl_VendorViseKYCStatus ts WITH (NOLOCK) ON ts.M_Consumerid = pc.m_consumerid AND ts.Comp_Id = pc.Comp_Id
@@ -276,6 +296,74 @@ BEGIN
             OR ISNULL(NULLIF(pc.Pro_Name, ''), pr.Pro_Name) LIKE '%' + @Lot
         ) OPTION (RECOMPILE);
 
+    -- Insert registration referrals (virtual rows)
+    INSERT INTO #FilteredData (
+        Comp_id, M_ConsumerId, Enq_Date, Pro_Name, Code1, Code2, uniquecode, amount_won, Result,
+        mode_of_verification, City, State, Latitude, Longitude, PinCode, Branch, kycremark,
+        ConsumerName, MobileNo, AadharHolderName, aadharNumber, Address, PanHolderName,
+        pancard_number, Bank_Name, Account_HolderNm, Account_No, IFSC_Code,
+        Mstar_TechMasterId, DealerCode, transaction_status, dealer_state, designation, DealerType,
+        KycStatus, SchemeStatus, AssignPoint, WornPoint, ReferralPoints, rn
+    )
+    SELECT 
+        BL.compid,
+        BL.M_Consumerid,
+        BL.UpdateDate AS Enq_Date,
+        'Referral Bonus' AS Pro_Name,
+        '' AS Code1,
+        '' AS Code2,
+        '' AS uniquecode,
+        0 AS amount_won,
+        'Referral' AS Result,
+        'Referral' AS mode_of_verification,
+        MC.City,
+        MC.State,
+        '' AS Latitude,
+        '' AS Longitude,
+        MC.PinCode,
+        '' AS Branch,
+        '' AS kycremark,
+        MC.ConsumerName,
+        MC.MobileNo,
+        '' AS AadharHolderName,
+        '' AS aadharNumber,
+        MC.Address,
+        '' AS PanHolderName,
+        '' AS pancard_number,
+        '' AS Bank_Name,
+        '' AS Account_HolderNm,
+        '' AS Account_No,
+        '' AS IFSC_Code,
+        '' AS Mstar_TechMasterId,
+        '' AS DealerCode,
+        '' AS transaction_status,
+        '' AS dealer_state,
+        '' AS designation,
+        '' AS DealerType,
+        '' AS KycStatus,
+        'ACTIVE' AS SchemeStatus,
+        0 AS AssignPoint,
+        0 AS WornPoint,
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints,
+        1 AS rn
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    INNER JOIN M_Consumer MC WITH (NOLOCK) ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
+    WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
+      AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+      AND BL.Code1 IS NULL
+      AND BL.compid = @ActualCompId
+      AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
+      AND (@EndDate IS NULL OR BL.UpdateDate < DATEADD(DAY, 1, @EndDate))
+      AND (@StateFilter IS NULL OR MC.State = @StateFilter)
+      AND (@CodeStatusFilter IS NULL OR @CodeStatusFilter = 'Referral')
+      AND @Scheme IS NULL
+      AND @Lot IS NULL
+      AND (
+          @Search IS NULL
+          OR MC.MobileNo LIKE '%' + @Search + '%'
+      )
+    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, MC.PinCode, MC.Address, BL.compid, BL.UpdateDate;
+
     ---------------------------------------------------------
     -- EXPORT MODE
     ---------------------------------------------------------
@@ -288,7 +376,7 @@ BEGIN
             Address, PanHolderName, pancard_number, Bank_Name, Account_HolderNm, 
             Account_No, IFSC_Code, Mstar_TechMasterId, DealerCode, 
             transaction_status, dealer_state, designation, DealerType, 
-            KycStatus, SchemeStatus, AssignPoint, WornPoint
+            KycStatus, SchemeStatus, AssignPoint, WornPoint, ReferralPoints
         FROM #FilteredData 
         WHERE rn = 1 
         ORDER BY Enq_Date DESC;
@@ -315,6 +403,6 @@ BEGIN
     FROM #FilteredData
     WHERE rn = 1;
 
-    DROP TABLE IF EXISTS #FilteredData;
+    DROP TABLE IF EXISTS #FilteredData, #ScanReferrals;
 END;
 GO

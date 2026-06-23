@@ -253,6 +253,37 @@ BEGIN
     END
 
     ---------------------------------------------------------
+    -- INSERT REFERRAL RECORDS
+    ---------------------------------------------------------
+    DECLARE @TargetConsumerid INT = NULL;
+    SELECT TOP 1 @TargetConsumerid = M_Consumerid FROM M_Consumer WHERE RIGHT(MobileNo, 10) = @NormalizedMobile AND IsDelete = 0 ORDER BY M_Consumerid DESC;
+
+    IF @TargetConsumerid IS NOT NULL
+    BEGIN
+        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint)
+        SELECT 
+            'Referral' AS CodeStatus,
+            CAST(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END AS DECIMAL(18,2)) AS Points,
+            CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN 1 ELSE 0 END AS IsCash,
+            BL.UpdateDate AS Enq_Date,
+            ISNULL(BL.Code1, '') + ISNULL(BL.Code2, '') AS UniqueCode,
+            ISNULL(MC.MobileNo, '') AS MobileNo, -- Scanned by referred user
+            'Referral' AS Dial_Mode,
+            ISNULL(PR.Pro_Name, 'Referral Bonus') AS Pro_Name,
+            '' AS Batch_No,
+            0 AS ImageVerified,
+            CAST(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END AS DECIMAL(18,2)) AS AssignPoint,
+            CAST(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END AS DECIMAL(18,2)) AS WornPoint
+        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        LEFT JOIN M_Consumer MC ON BL.refranceM_Consumerid = MC.M_Consumerid
+        LEFT JOIN M_Code MCD ON MCD.Code1 = BL.Code1 AND MCD.Code2 = BL.Code2
+        LEFT JOIN Pro_Reg PR ON PR.Pro_ID = MCD.Pro_ID
+        WHERE BL.M_Consumerid = @TargetConsumerid
+          AND (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
+          AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''));
+    END
+
+    ---------------------------------------------------------
     -- Calculate Summary Counts
     ---------------------------------------------------------
     DECLARE @TotalScans BIGINT = (SELECT COUNT(*) FROM #FinalData);
