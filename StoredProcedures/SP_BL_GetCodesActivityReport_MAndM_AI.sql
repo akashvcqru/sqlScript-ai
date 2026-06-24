@@ -178,8 +178,12 @@ BEGIN
         pc.Code2,
         CONCAT(pc.Code1, pc.Code2) AS uniquecode,
         CASE 
-            WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, ISNULL(pc.Cash, 0))
-            ELSE CASE WHEN pc.Points IS NULL OR pc.Points = 0 THEN ISNULL(pc.Cash, 0) ELSE pc.Points END
+            WHEN pc.Is_Success = 1 THEN
+                CASE 
+                    WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, ISNULL(pc.Cash, 0))
+                    ELSE CASE WHEN pc.Points IS NULL OR pc.Points = 0 THEN ISNULL(pc.Cash, 0) ELSE pc.Points END
+                END
+            ELSE 0
         END AS amount_won,
         CASE 
             WHEN pc.Is_Success = 1 THEN 'Verified'
