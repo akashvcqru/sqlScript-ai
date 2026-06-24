@@ -253,6 +253,31 @@ BEGIN
     CREATE INDEX IX_Points_MCodeid ON #Points(M_Codeid);
 
     ----------------------------------------------------
+    -- REFERRAL POINTS
+    ----------------------------------------------------
+    IF OBJECT_ID('tempdb..#ScanReferrals') IS NOT NULL DROP TABLE #ScanReferrals;
+
+    SELECT 
+        CAST(C.Code1 AS VARCHAR(50)) AS Code1, 
+        CAST(C.Code2 AS VARCHAR(50)) AS Code2, 
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints
+    INTO #ScanReferrals
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    LEFT JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    LEFT JOIN BReferralMCodeCheck BRC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BRC.BReferralMCodeCheckid
+    INNER JOIN M_Consumer_M_Code MC ON MC.M_Consumer_MCodeid = COALESCE(BMC.M_Consumer_MCOdeid, BRC.M_Consumer_MCOdeid)
+    INNER JOIN M_Code C ON MC.M_Codeid = C.Row_ID
+    WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
+      AND (
+          (@Comp_Id IN ('Comp-1567','Comp-1650') AND MC.compid IN ('Comp-1567','Comp-1650'))
+          OR
+          (@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND MC.compid = @Comp_Id)
+      )
+    GROUP BY CAST(C.Code1 AS VARCHAR(50)), CAST(C.Code2 AS VARCHAR(50));
+
+    CREATE INDEX IX_ScanReferrals ON #ScanReferrals(Code1, Code2);
+
+    ----------------------------------------------------
     -- CODE CONFIG POINTS (PRECISE BY SERIES RANGE)
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#CodeConfigPoints') IS NOT NULL DROP TABLE #CodeConfigPoints;
@@ -320,42 +345,63 @@ BEGIN
     CREATE INDEX IX_CodeConfigPoints_MCodeid ON #CodeConfigPoints(M_Codeid);
 
     ----------------------------------------------------
-    -- RESULT SET 1
+    -- COMBINE SCANS AND REGISTRATION REFERRALS
     ----------------------------------------------------
-    IF (@IsExport = 1)
-    BEGIN
-        SELECT 
-            (E.Received_Code1 + E.Received_Code2) AS UniqueCode,
-            E.Enq_Date,
-            E.Dial_Mode,
-            MC.ConsumerName,
+    IF OBJECT_ID('tempdb..#FinalReport') IS NOT NULL DROP TABLE #FinalReport;
+
+    CREATE TABLE #FinalReport (
+        UniqueCode VARCHAR(100),
+        Enq_Date DATETIME,
+        Dial_Mode VARCHAR(50),
+        ConsumerName NVARCHAR(150),
+        MobileNo VARCHAR(50),
+        State NVARCHAR(100),
+        City NVARCHAR(100),
+        Pro_Name NVARCHAR(200),
+        Points DECIMAL(18,2),
+        Result VARCHAR(50),
+        Latitude VARCHAR(50),
+        Longitude VARCHAR(50),
+        AssignPoint DECIMAL(18,2),
+        WornPoint DECIMAL(18,2),
+        ReferralPoints DECIMAL(18,2)
+    );
+
+    -- 1. Insert scan enquiries
+    INSERT INTO #FinalReport
+    SELECT 
+        (E.Received_Code1 + E.Received_Code2) AS UniqueCode,
+        E.Enq_Date,
+        E.Dial_Mode,
+        MC.ConsumerName,
 			CASE 
 				WHEN LEN(ISNULL(MC.MobileNo,'')) < 10 
 					 THEN ISNULL(E.MobileNo,'')
 				ELSE MC.MobileNo
 			END AS MobileNo,
-            G.State,
-            G.City,
-            PR.Pro_Name,
-            CASE 
-                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0)) 
-                ELSE 0 
-            END AS Points,
-            CASE 
-                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Verified'
-                WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Already Scanned'
-                ELSE 'Invalid'
-            END AS Result,
+        G.State,
+        G.City,
+        PR.Pro_Name,
+        CASE 
+            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0)) 
+            ELSE 0 
+        END AS Points,
+        CASE 
+            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Verified'
+            WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Already Scanned'
+            ELSE 'Invalid'
+        END AS Result,
 			E.Latitude,
 			E.Longitude,
-            CASE 
-                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.AssignPoint, 0)
-                ELSE 0 
-            END AS AssignPoint,
-            CASE 
-                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.WornPoint, 0)
-                ELSE 0 
-            END AS WornPoint
+        CASE 
+            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.AssignPoint, 0)
+            ELSE 0 
+        END AS AssignPoint,
+        CASE 
+            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.WornPoint, 0)
+            ELSE 0 
+        END AS WornPoint,
+        ISNULL(R.ReferralPoints, 0) AS ReferralPoints
 		FROM
 		(
 			SELECT *,
@@ -372,89 +418,110 @@ BEGIN
         LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
+        LEFT JOIN #ScanReferrals R ON R.Code1 = E.Received_Code1 AND R.Code2 = E.Received_Code2
         WHERE
 		  (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
-          AND (@StateFilter IS NULL OR G.State = @StateFilter)
-          AND (
-                @CodeStatusFilter IS NULL OR
-                (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1)) OR
-                ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
-                (@CodeStatusFilter = 'Invalid' AND E.Is_Success NOT IN (1,2))
-          )
-          AND (
-				 @Search IS NULL
-				 OR LTRIM(RTRIM(@Search)) = ''
-				 OR E.MobileNo LIKE '%' + @Search + '%'
-				 OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
-          )
-        ORDER BY E.Enq_Date DESC;
+          AND (@StateFilter IS NULL OR G.State = @StateFilter);
+
+    -- 2. Insert registration referrals (virtual rows)
+    INSERT INTO #FinalReport
+    SELECT 
+        '' AS UniqueCode,
+        BL.UpdateDate AS Enq_Date,
+        'Referral' AS Dial_Mode,
+        MC.ConsumerName,
+        MC.MobileNo,
+        MC.State,
+        MC.City,
+        'Referral Bonus' AS Pro_Name,
+        0 AS Points,
+        'Referral' AS Result,
+        '' AS Latitude,
+        '' AS Longitude,
+        0 AS AssignPoint,
+        0 AS WornPoint,
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
+    WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
+      AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+      AND BL.Code1 IS NULL
+      AND (
+          (@Comp_Id IN ('Comp-1567','Comp-1650') AND BL.compid IN ('Comp-1567','Comp-1650'))
+          OR
+          (@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND BL.compid = @Comp_Id)
+      )
+      AND BL.UpdateDate >= @StartDate
+      AND BL.UpdateDate < @EndDate
+      AND (@StateFilter IS NULL OR MC.State = @StateFilter)
+    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, BL.UpdateDate;
+
+    ----------------------------------------------------
+    -- RESULT SET 1
+    ----------------------------------------------------
+    IF (@IsExport = 1)
+    BEGIN
+        SELECT 
+            UniqueCode,
+            Enq_Date,
+            Dial_Mode,
+            ConsumerName,
+            MobileNo,
+            State,
+            City,
+            Pro_Name,
+            Points,
+            Result,
+			Latitude,
+			Longitude,
+            AssignPoint,
+            WornPoint,
+            ReferralPoints
+		FROM #FinalReport
+        WHERE (
+            @CodeStatusFilter IS NULL OR
+            Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+        )
+        AND (
+			 @Search IS NULL
+			 OR LTRIM(RTRIM(@Search)) = ''
+			 OR MobileNo LIKE '%' + @Search + '%'
+			 OR UniqueCode LIKE '%' + @Search + '%'
+        )
+        ORDER BY Enq_Date DESC;
     END
     ELSE
     BEGIN
         SELECT 
-            (E.Received_Code1 + E.Received_Code2) AS UniqueCode,
-            E.Enq_Date,
-            E.Dial_Mode,
-            MC.ConsumerName,
-			CASE 
-				WHEN LEN(ISNULL(MC.MobileNo,'')) < 10 
-					 THEN ISNULL(E.MobileNo,'')
-				ELSE MC.MobileNo
-			END AS MobileNo,
-            G.State,
-            G.City,
-            PR.Pro_Name,
-            CASE 
-                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0)) 
-                ELSE 0 
-            END AS Points,
-            CASE 
-                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Verified'
-                WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Already Scanned'
-                ELSE 'Invalid'
-            END AS Result,
-			E.Latitude,
-			E.Longitude,
-            CASE 
-                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.AssignPoint, 0)
-                ELSE 0 
-            END AS AssignPoint,
-            CASE 
-                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.WornPoint, 0)
-                ELSE 0 
-            END AS WornPoint
-        FROM 
-		(
-			SELECT *,
-				   CASE 
-					   WHEN Is_Success = 1 
-					   THEN ROW_NUMBER() OVER (PARTITION BY Received_Code1, Received_Code2, Is_Success ORDER BY Enq_Date)
-					   ELSE 1
-				   END AS rn
-			FROM #Enq
-		) E
-        LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
-        LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
-        LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid
-        LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
-        LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
-        LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
-        WHERE
-		    (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
-            AND (@StateFilter IS NULL OR G.State = @StateFilter)
-            AND (
-                @CodeStatusFilter IS NULL OR
-                (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1)) OR
-                ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
-                (@CodeStatusFilter = 'Invalid' AND E.Is_Success NOT IN (1,2))
-            )
-            AND (
-				 @Search IS NULL
-				 OR LTRIM(RTRIM(@Search)) = ''
-				 OR E.MobileNo LIKE '%' + @Search + '%'
-				 OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
-            )
-        ORDER BY E.Enq_Date DESC
+            UniqueCode,
+            Enq_Date,
+            Dial_Mode,
+            ConsumerName,
+            MobileNo,
+            State,
+            City,
+            Pro_Name,
+            Points,
+            Result,
+			Latitude,
+			Longitude,
+            AssignPoint,
+            WornPoint,
+            ReferralPoints
+        FROM #FinalReport
+        WHERE (
+            @CodeStatusFilter IS NULL OR
+            Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+        )
+        AND (
+			 @Search IS NULL
+			 OR LTRIM(RTRIM(@Search)) = ''
+			 OR MobileNo LIKE '%' + @Search + '%'
+			 OR UniqueCode LIKE '%' + @Search + '%'
+        )
+        ORDER BY Enq_Date DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
         ----------------------------------------------------
@@ -465,35 +532,17 @@ BEGIN
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM 
-		(
-			SELECT *,
-				   CASE 
-					   WHEN Is_Success = 1 
-					   THEN ROW_NUMBER() OVER (PARTITION BY Received_Code1, Received_Code2, Is_Success ORDER BY Enq_Date)
-					   ELSE 1
-				   END AS rn
-			FROM #Enq
-		) E
-        LEFT JOIN #Geo G
-            ON G.Code1 = E.Received_Code1
-           AND G.Code2 = E.Received_Code2
-           AND G.MobileNo = E.MobileNo
-        LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
-        WHERE
-		    (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
-            AND (@StateFilter IS NULL OR G.State = @StateFilter)
-            AND (
-                @CodeStatusFilter IS NULL OR
-                (@CodeStatusFilter = 'Verified' AND E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1)) OR
-                ((@CodeStatusFilter = 'Already Scanned' OR @CodeStatusFilter = 'Already Verified') AND (E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)))) OR
-                (@CodeStatusFilter = 'Invalid' AND E.Is_Success NOT IN (1,2))
-            )
-            AND (
-				 @Search IS NULL
-				 OR LTRIM(RTRIM(@Search)) = ''
-				 OR E.MobileNo LIKE '%' + @Search + '%'
-				 OR E.Received_Code1+E.Received_Code2 LIKE '%' + @Search + '%'
-            );
+        FROM #FinalReport
+        WHERE (
+            @CodeStatusFilter IS NULL OR
+            Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+        )
+        AND (
+			 @Search IS NULL
+			 OR LTRIM(RTRIM(@Search)) = ''
+			 OR MobileNo LIKE '%' + @Search + '%'
+			 OR UniqueCode LIKE '%' + @Search + '%'
+        );
     END
 END
