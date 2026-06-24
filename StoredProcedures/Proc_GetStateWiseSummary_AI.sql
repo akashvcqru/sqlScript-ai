@@ -191,7 +191,7 @@ BEGIN
                       THEN 'South'
                   ELSE 'Other'
               END AS Region,
-              ISNULL(B.Points,0) AS Points
+              CASE WHEN B.Points IS NULL OR B.Points = 0 THEN ISNULL(B.Cash, 0) ELSE B.Points END AS Points
           FROM #TempPoints B
           INNER JOIN dbo.UserData_MHCroneJob C WITH (NOLOCK)
               ON B.M_ConsumerId = C.M_ConsumerId
