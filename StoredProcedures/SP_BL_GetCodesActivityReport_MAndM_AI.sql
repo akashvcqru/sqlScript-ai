@@ -226,12 +226,18 @@ BEGIN
         END AS SchemeStatus,
         CASE 
             WHEN pc.Is_Success = 1 THEN
-                CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(sst.IsCash, 0) ELSE ISNULL(sst.Points, 0) END
+                CASE 
+                    WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(sst.IsCash, 0) 
+                    ELSE CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN ISNULL(sst.IsCash, 0) ELSE sst.Points END
+                END
             ELSE 0 
         END AS AssignPoint,
         CASE 
             WHEN pc.Is_Success = 1 THEN
-                CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
+                CASE 
+                    WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) 
+                    ELSE CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END
+                END
             ELSE 0 
         END AS WornPoint,
         ISNULL(R.ReferralPoints, 0) AS ReferralPoints,
@@ -266,7 +272,8 @@ BEGIN
     LEFT JOIN dbo.BLoyaltyPointsEarned BL WITH (NOLOCK)
         ON BL.Code1 = pc.Code1
        AND BL.Code2 = pc.Code2
-       AND BL.compid = @ActualCompId
+       AND (BL.compid = @ActualCompId OR BL.compid IS NULL)
+       AND BL.M_Consumerid = pc.M_Consumerid
     WHERE
         pc.Comp_Id = @ActualCompId
         AND (
