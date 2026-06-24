@@ -112,20 +112,30 @@ BEGIN
         SET @Label1 = '0-2 Days'; SET @Label2 = '3-7 Days'; SET @Label3 = '>7 Days';
     END
 
-     -- Total Users (Lifetime)
-    SELECT @TotalUsers = COUNT(VC.M_consumerId)
-    FROM M_Consumer AS MC WITH (NOLOCK)
-    INNER JOIN (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
-        FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
-    ) AS VC ON VC.M_consumerId=MC.M_Consumerid
-    WHERE VC.Comp_ID = @ActualCompId 
-      AND VC.rn = 1
-      AND MC.IsDelete=0
-      AND (
-            (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL)) OR
-            (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM')
-          );
+     -- Total Users (Lifetime) logic aligned with SP_BL_GetBrandOverview_MAndM_AI
+    DECLARE @Cron_TotalUsers INT = 0;
+    
+    SELECT TOP 1 @Cron_TotalUsers = ISNULL(Total_User, 0)
+    FROM BrandData_MHCroneJob WITH (NOLOCK)
+    WHERE Comp_ID = @ActualCompId
+    ORDER BY CreatedDate DESC;
+
+    DECLARE @SBU_RegUsers_Current INT = 0;
+    
+    SELECT @SBU_RegUsers_Current = COUNT(*)
+    FROM UserData_MHCroneJob WITH (NOLOCK)
+    WHERE DealerCode = 'SBUTEAM' AND Comp_ID = @ActualCompId AND IsDelete = 0;
+
+    IF @IsSBUTeam = 1
+    BEGIN
+        SET @TotalUsers = @SBU_RegUsers_Current;
+    END
+    ELSE
+    BEGIN
+        SET @TotalUsers = @Cron_TotalUsers - @SBU_RegUsers_Current;
+    END
+
+    IF @TotalUsers < 0 SET @TotalUsers = 0;
 
     ----------------------------------------------------------------
     -- 4️⃣ SOURCE CTE (FILTERED BY TIMEWINDOW)

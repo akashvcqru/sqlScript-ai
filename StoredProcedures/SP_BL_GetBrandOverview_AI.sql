@@ -92,13 +92,13 @@ BEGIN
     SELECT @RegUsers_Current = COUNT(*) 
     FROM M_Consumer AS MC WITH (NOLOCK)
     INNER JOIN tbl_Vendorvisekycstatus AS VC WITH (NOLOCK) ON VC.M_consumerId = MC.M_Consumerid
-    WHERE VC.Comp_ID = @CompId AND MC.IsDelete = 0 AND MC.Entry_Date >= @CompRegDate;
+    WHERE VC.Comp_ID = @CompId AND MC.IsDelete = 0;
 
     SELECT @RegUsers_Prev = COUNT(*) 
     FROM M_Consumer AS MC WITH (NOLOCK)
     INNER JOIN tbl_Vendorvisekycstatus AS VC WITH (NOLOCK) ON VC.M_consumerId = MC.M_Consumerid
     WHERE VC.Comp_ID = @CompId AND MC.IsDelete = 0
-      AND MC.Entry_Date >= @CompRegDate AND MC.Entry_Date < @StartDate;
+     AND MC.Entry_Date < @StartDate;
 
     ---------------------------------------------------------
     -- 2. ACTIVE USERS (Users with activity in period)

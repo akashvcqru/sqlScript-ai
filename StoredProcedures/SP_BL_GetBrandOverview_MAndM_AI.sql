@@ -422,34 +422,34 @@ BEGIN
         @Final_BurnedCash AS Total_BurnedCash;
 
     ---------------------------------------------------------
-    -- RESULT SET 2: KYC BREAKDOWN
+    -- RESULT SET 2: KYC BREAKDOWN (Real-time from tbl_Vendorvisekycstatus)
     ---------------------------------------------------------
-    DECLARE @SBU_ActiveKYC INT = 0;
-    DECLARE @SBU_RejectedKYC INT = 0;
-    DECLARE @SBU_PendingKYC INT = 0;
+    DECLARE @ActiveKYC INT = 0;
+    DECLARE @RejectedKYC INT = 0;
+    DECLARE @PendingKYC INT = 0;
 
     SELECT 
-        @SBU_ActiveKYC = ISNULL(SUM(CASE WHEN VRKbl_KYC_status = 1 THEN 1 ELSE 0 END), 0),
-        @SBU_RejectedKYC = ISNULL(SUM(CASE WHEN VRKbl_KYC_status = 2 THEN 1 ELSE 0 END), 0),
-        @SBU_PendingKYC = ISNULL(SUM(CASE WHEN VRKbl_KYC_status NOT IN (1, 2) OR VRKbl_KYC_status IS NULL THEN 1 ELSE 0 END), 0)
-    FROM #SBUTeamMobile;
+        @ActiveKYC = ISNULL(SUM(CASE WHEN VC.VRKbl_KYC_status = 1 THEN 1 ELSE 0 END), 0),
+        @RejectedKYC = ISNULL(SUM(CASE WHEN VC.VRKbl_KYC_status = 2 THEN 1 ELSE 0 END), 0),
+        @PendingKYC = ISNULL(SUM(CASE WHEN VC.VRKbl_KYC_status NOT IN (1, 2) OR VC.VRKbl_KYC_status IS NULL THEN 1 ELSE 0 END), 0)
+    FROM M_Consumer AS MC WITH (NOLOCK)
+    INNER JOIN (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
+        FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+    ) AS VC ON VC.M_consumerId = MC.M_Consumerid
+    WHERE VC.Comp_ID = @ActualCompId 
+      AND VC.rn = 1
+      AND MC.IsDelete = 0
+      AND (
+          (@IsSBUTeam = 1 AND MC.distributorID = 'SBUTEAM') OR
+          (@IsSBUTeam = 0 AND (MC.distributorID <> 'SBUTEAM' OR MC.distributorID IS NULL))
+      );
 
-    IF @IsSBUTeam = 1
-    BEGIN
-        SELECT 'ActiveKYC' AS KYCStatus, @SBU_ActiveKYC AS CurrentCount
-        UNION ALL
-        SELECT 'RejectedKYC', @SBU_RejectedKYC
-        UNION ALL
-        SELECT 'PendingKYC', @SBU_PendingKYC;
-    END
-    ELSE
-    BEGIN
-        SELECT 'ActiveKYC' AS KYCStatus, (@Cron_ApprovedKyc - @SBU_ActiveKYC) AS CurrentCount
-        UNION ALL
-        SELECT 'RejectedKYC', (@Cron_RejectKyc - @SBU_RejectedKYC)
-        UNION ALL
-        SELECT 'PendingKYC', (@Cron_PendingKyc - @SBU_PendingKYC);
-    END
+    SELECT 'ActiveKYC' AS KYCStatus, @ActiveKYC AS CurrentCount
+    UNION ALL
+    SELECT 'RejectedKYC', @RejectedKYC
+    UNION ALL
+    SELECT 'PendingKYC', @PendingKYC;
 
 END;
 GO
