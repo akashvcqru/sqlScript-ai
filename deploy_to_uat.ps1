@@ -28,9 +28,9 @@ $ErrorActionPreference = "Stop"
 
 # Define Paths
 $scriptDir = $PSScriptRoot
-if (-not $scriptDir) { $scriptDir = "d:\VCQRU_Project\sqlScript-ai" }
+if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $spDir = Join-Path $scriptDir "StoredProcedures"
-$appSettingsPath = "d:\VCQRU_Project\backend-ai\appsettings.Development.json"
+$appSettingsPath = Join-Path (Split-Path $scriptDir -Parent) "backend-ai\appsettings.Development.json"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "   Stored Procedures Deployment Script (UAT)" -ForegroundColor Cyan

@@ -74,7 +74,8 @@ BEGIN
         [Address]    = CASE WHEN @Address IS NOT NULL AND LTRIM(RTRIM(@Address)) <> '' THEN @Address ELSE Address END,
         DOB          = CASE WHEN @Vr_dob IS NOT NULL AND LTRIM(RTRIM(@Vr_dob)) <> '' THEN @Vr_dob ELSE DOB END,
         employeeID   = CASE WHEN @employeeID IS NOT NULL AND LTRIM(RTRIM(@employeeID)) <> '' THEN @employeeID ELSE employeeID END,
-        distributorID = CASE WHEN @distributorID IS NOT NULL AND LTRIM(RTRIM(@distributorID)) <> '' THEN @distributorID ELSE distributorID END
+        distributorID = CASE WHEN @distributorID IS NOT NULL AND LTRIM(RTRIM(@distributorID)) <> '' THEN @distributorID ELSE distributorID END,
+        Vrkabel_User_Type = CASE WHEN @Vrkabel_User_Type IS NOT NULL THEN @Vrkabel_User_Type ELSE Vrkabel_User_Type END
     WHERE M_Consumerid = @M_ConsumerId;      
       
 
