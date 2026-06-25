@@ -17,7 +17,7 @@ BEGIN
     DECLARE @CurrentDate DATE = CAST(GETDATE() AS DATE);
     DECLARE @CurrentDay INT = DAY(GETDATE());
     DECLARE @CurrentTime TIME = CAST(GETDATE() AS TIME);
-    DECLARE @ScheduledTime TIME = CAST('13:00:00' AS TIME);
+    DECLARE @ScheduledTime TIME = CAST('12:00:00' AS TIME);
 
     SELECT Comp_id, DayOfMonth 
     FROM tbl_AutomaticClaimSettings
