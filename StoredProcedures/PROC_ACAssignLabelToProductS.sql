@@ -14,7 +14,10 @@ BEGIN
         SELECT 
             Pro_Reg.Comp_ID, 
             Pro_Reg.Pro_ID, 
-            Pro_Reg.Pro_Name
+            Pro_Reg.Pro_Name,
+            Pro_Reg.BatchSize,
+            (SELECT TOP 1 PlanMasterPeriod FROM M_ServiceSubscription
+             WHERE Pro_ID = Pro_Reg.Pro_ID AND PlanMasterPeriod IS NOT NULL) AS PlanMasterPeriod
         FROM Comp_Reg 
         INNER JOIN Pro_Reg ON Comp_Reg.Comp_ID = Pro_Reg.Comp_ID 
         WHERE (Pro_Reg.Comp_ID = @Comp_ID) 
@@ -28,14 +31,17 @@ BEGIN
                 AND (DispatchFlag = 1) 
                 AND (ReceiveFlag = 1)
           )) > 0)
-        GROUP BY Pro_Reg.Comp_ID, Pro_Reg.Pro_ID, Pro_Reg.Pro_Name, Comp_Reg.Comp_Name
+        GROUP BY Pro_Reg.Comp_ID, Pro_Reg.Pro_ID, Pro_Reg.Pro_Name, Pro_Reg.BatchSize, Comp_Reg.Comp_Name
     END
     ELSE
     BEGIN
         SELECT 
             Pro_Reg.Comp_ID, 
             Pro_Reg.Pro_ID, 
-            Pro_Reg.Pro_Name
+            Pro_Reg.Pro_Name,
+            Pro_Reg.BatchSize,
+            (SELECT TOP 1 PlanMasterPeriod FROM M_ServiceSubscription
+             WHERE Pro_ID = Pro_Reg.Pro_ID AND PlanMasterPeriod IS NOT NULL) AS PlanMasterPeriod
         FROM Comp_Reg 
         INNER JOIN Pro_Reg ON Comp_Reg.Comp_ID = Pro_Reg.Comp_ID 
         WHERE (Pro_Reg.Comp_ID = @Comp_ID) 
@@ -49,7 +55,7 @@ BEGIN
                 AND (DispatchFlag = 1) 
                 AND (ReceiveFlag = 1)
           )) > 0)
-        GROUP BY Pro_Reg.Comp_ID, Pro_Reg.Pro_ID, Pro_Reg.Pro_Name, Comp_Reg.Comp_Name
+        GROUP BY Pro_Reg.Comp_ID, Pro_Reg.Pro_ID, Pro_Reg.Pro_Name, Pro_Reg.BatchSize, Comp_Reg.Comp_Name
     END
 END
 GO
