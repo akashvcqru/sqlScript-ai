@@ -17,8 +17,8 @@ BEGIN
     SELECT 
         SS.Subscribe_Id,
         SS.Service_ID,
-        SS.Comp_ID,
-        SS.Pro_ID,
+        P.Comp_ID,
+        P.Pro_ID,
         SS.Plan_ID,
         SS.PlanName,
         SS.PlanMasterPeriod,
@@ -34,12 +34,11 @@ BEGIN
         S.ServiceName,
         P.Pro_Name,
         COUNT(*) OVER() AS TotalRecords
-    FROM M_ServiceSubscription SS
-    INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
-    INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
-    WHERE SS.Comp_ID = @Comp_ID
-      AND (SS.IsDelete = 0 OR SS.IsDelete IS NULL)
-    ORDER BY SS.EntryDate DESC
+    FROM Pro_Reg P
+    LEFT JOIN M_ServiceSubscription SS ON P.Pro_ID = SS.Pro_ID AND (SS.IsDelete = 0 OR SS.IsDelete IS NULL)
+    LEFT JOIN M_Service S ON SS.Service_ID = S.Service_ID
+    WHERE P.Comp_ID = @Comp_ID
+    ORDER BY COALESCE(SS.EntryDate, P.Pro_Entry_Date) DESC
     OFFSET (@PageNumber - 1) * @PageSize ROWS
     FETCH NEXT @PageSize ROWS ONLY;
 END
