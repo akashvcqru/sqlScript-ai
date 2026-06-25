@@ -19,7 +19,7 @@ BEGIN
     DECLARE @CurrentTime TIME = CAST(GETDATE() AS TIME);
     DECLARE @ScheduledTime TIME = CAST('12:00:00' AS TIME);
 
-    SELECT Comp_id, DayOfMonth 
+    SELECT Comp_id, DayOfMonth, ClaimType 
     FROM tbl_AutomaticClaimSettings
     WHERE IsAutoClaimEnable = 1
       -- Check if today is the scheduled day of month
