@@ -48,11 +48,11 @@ BEGIN
         @RecievedCode1 = Code1, 
         @RecievedCode2 = Code2 
     FROM (
-        SELECT Code1, Code2, Pro_ID, Series_Order, Series_Serial FROM M_Code WHERE @ActualCompId <> 'Comp-1693'
+        SELECT Code1, Code2, Pro_ID, reassignProid, Series_Order, Series_Serial FROM M_Code WHERE @ActualCompId <> 'Comp-1693'
         UNION ALL
-        SELECT Code1, Code2, Pro_ID, Series_Order, Series_Serial FROM M_Code_PFL WHERE @ActualCompId = 'Comp-1693'
+        SELECT Code1, Code2, Pro_ID, NULL AS reassignProid, Series_Order, Series_Serial FROM M_Code_PFL WHERE @ActualCompId = 'Comp-1693'
     ) mc
-    WHERE Pro_ID = @Pro_ID 
+    WHERE (Pro_ID = @Pro_ID OR reassignProid = @Pro_ID)
       AND Series_Order = @Series_Order 
       AND Series_Serial = @Series_Serial;
 
@@ -180,9 +180,9 @@ BEGIN
             ON mc.Code1 = PE.Received_Code1
            AND mc.Code2 = PE.Received_Code2
         INNER JOIN Pro_Reg pr WITH (NOLOCK)
-            ON pr.Pro_ID = mc.Pro_ID
+            ON pr.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)
         LEFT JOIN #temp1 sd 
-            ON sd.Pro_ID = mc.Pro_Id
+            ON sd.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)
            AND CONCAT(
                 FORMAT(mc.Series_Order, '000#'),
                 FORMAT(mc.Series_Serial, '000#')
@@ -298,7 +298,7 @@ BEGIN
                 ON mc.Code1 = PE.Received_Code1
                AND mc.Code2 = PE.Received_Code2
             INNER JOIN Pro_Reg pr WITH (NOLOCK)
-                ON pr.Pro_ID = mc.Pro_ID      
+                ON pr.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)      
             INNER JOIN M_ServiceSubscription ss WITH (NOLOCK)
                 ON ss.Pro_ID = pr.Pro_ID
                 AND CONCAT(

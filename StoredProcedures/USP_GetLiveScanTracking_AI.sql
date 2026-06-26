@@ -213,6 +213,7 @@ BEGIN
                 a.Code1, 
                 a.Code2, 
                 a.Pro_ID,
+                a.reassignProid,
                 a.Batch_No,
                 a.Use_Count,
                 CAST(a.Code1 AS VARCHAR(50)) AS VCode1,
@@ -220,7 +221,7 @@ BEGIN
                 CAST(a.Code1 AS VARCHAR(50)) + CAST(a.Code2 AS VARCHAR(50)) AS CombinedCode,
                 ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC, a.Series_Order DESC) AS rn
             FROM M_Code a WITH (NOLOCK)
-            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON ISNULL(NULLIF(a.reassignProid, ''), a.Pro_ID) = b.Pro_ID 
             WHERE b.Comp_ID = @Comp_ID 
               AND a.Use_Count > 0
         )
@@ -308,7 +309,7 @@ BEGIN
                 WHERE (m.VCode1 = pe.VCode1 AND m.VCode2 = pe.VCode2)
                    OR (m.CombinedCode = pe.CombinedCode)
             ) mc
-            LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mc.Pro_ID
+            LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)
             LEFT JOIN M_Consumer mcn WITH (NOLOCK) ON mcn.MobileNo = pe.MobileNo AND (mcn.IsDelete IS NULL OR mcn.IsDelete = 0)
             WHERE (pe.Comp_ID = @Comp_ID OR (ISNULL(pe.Comp_ID, '') = '' AND mc.VCode1 IS NOT NULL))
               AND (@Search IS NULL OR (

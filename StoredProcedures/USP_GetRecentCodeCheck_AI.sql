@@ -64,11 +64,13 @@ BEGIN
     BEGIN
         ;WITH DistinctCodes AS (
             SELECT 
-                a.Code1, a.Code2, a.Pro_ID, a.Batch_No, a.Use_Count, b.Pro_Name,
+                a.Code1, a.Code2, 
+                ISNULL(NULLIF(a.reassignProid, ''), a.Pro_ID) AS Pro_ID, 
+                a.Batch_No, a.Use_Count, b.Pro_Name,
                 CAST(a.Code1 AS VARCHAR(50)) AS VCode1, CAST(a.Code2 AS VARCHAR(50)) AS VCode2,
                 ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
             FROM M_Code a WITH (NOLOCK)
-            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON ISNULL(NULLIF(a.reassignProid, ''), a.Pro_ID) = b.Pro_ID 
             WHERE b.Comp_ID = @Comp_Id AND a.Use_Count > 0
         )
         INSERT INTO #tempM_Code (Code1, Code2, Pro_ID, Batch_No, Use_Count, VCode1, VCode2, Pro_Name)

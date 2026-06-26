@@ -45,7 +45,7 @@ BEGIN
     ELSE
     BEGIN
         SELECT TOP 1 
-            @Pro_ID = Pro_ID, 
+            @Pro_ID = ISNULL(NULLIF(reassignProid, ''), Pro_ID), 
             @Series_Order = Series_Order, 
             @Series_Serial = Series_Serial 
         FROM M_Code 
@@ -266,7 +266,7 @@ BEGIN
             ON mc.Code1 = PE.Received_Code1
            AND mc.Code2 = PE.Received_Code2
         INNER JOIN Pro_Reg pr WITH (NOLOCK)
-            ON pr.Pro_ID = mc.Pro_ID
+            ON pr.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)
         LEFT JOIN #temp1 sd 
             ON 1 = 1
         LEFT JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) 
@@ -377,7 +377,7 @@ BEGIN
                 ON mc.Code1 = PE.Received_Code1
                AND mc.Code2 = PE.Received_Code2
             INNER JOIN Pro_Reg pr WITH (NOLOCK)
-                ON pr.Pro_ID = mc.Pro_ID      
+                ON pr.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)      
             INNER JOIN M_ServiceSubscription ss WITH (NOLOCK)
                 ON ss.Pro_ID = pr.Pro_ID
                 AND (
