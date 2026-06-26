@@ -101,9 +101,9 @@ BEGIN
         SELECT pe.Received_Code1, pe.Received_Code2, pe.Is_Success, pe.Comp_ID, pe.Enq_Date
         FROM Pro_Enq pe WITH (NOLOCK)
         LEFT JOIN (
-            SELECT Code1, Code2, Pro_ID FROM M_Code WITH (NOLOCK) 
+            SELECT Code1, Code2, ISNULL(NULLIF(reassignProid, ''), Pro_ID) AS Pro_ID FROM M_Code WITH (NOLOCK) 
             WHERE @Comp_Id <> 'Comp-1693' 
-              AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id)
+              AND ISNULL(NULLIF(reassignProid, ''), Pro_ID) IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id)
             UNION ALL
             SELECT Code1, Code2, Pro_ID FROM M_Code_PFL WITH (NOLOCK) 
             WHERE @Comp_Id = 'Comp-1693' 
@@ -122,20 +122,20 @@ BEGIN
     INTO #MergedData
     FROM #FilteredEnq FE
     --INNER JOIN M_Code MC
-	INNER JOIN (
-	    SELECT Code1, Code2, Pro_ID, Use_Count FROM M_Code WITH (NOLOCK) 
-	    WHERE @Comp_Id <> 'Comp-1693' 
-	      AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id) 
-	    UNION ALL
-	    SELECT Code1, Code2, Pro_ID, Use_Count FROM M_Code_PFL WITH (NOLOCK) 
-	    WHERE @Comp_Id = 'Comp-1693' 
-	      AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id)
-	) MC 
-        ON MC.Code1 = TRY_CAST(LTRIM(RTRIM(FE.Received_Code1)) AS NUMERIC(18,0))
-       AND MC.Code2 = TRY_CAST(LTRIM(RTRIM(FE.Received_Code2)) AS NUMERIC(18,0))
-    INNER JOIN Pro_Reg PR WITH (NOLOCK)
-        ON PR.Pro_ID = MC.Pro_ID
-       AND PR.Comp_ID = @Comp_Id;
+ 	INNER JOIN (
+ 	    SELECT Code1, Code2, Pro_ID, reassignProid, Use_Count FROM M_Code WITH (NOLOCK) 
+ 	    WHERE @Comp_Id <> 'Comp-1693' 
+ 	      AND ISNULL(NULLIF(reassignProid, ''), Pro_ID) IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id) 
+ 	    UNION ALL
+ 	    SELECT Code1, Code2, Pro_ID, NULL AS reassignProid, Use_Count FROM M_Code_PFL WITH (NOLOCK) 
+ 	    WHERE @Comp_Id = 'Comp-1693' 
+ 	      AND Pro_ID IN (SELECT Pro_ID FROM Pro_Reg PR WITH (NOLOCK) WHERE PR.Comp_ID = @Comp_Id)
+ 	) MC 
+         ON MC.Code1 = TRY_CAST(LTRIM(RTRIM(FE.Received_Code1)) AS NUMERIC(18,0))
+        AND MC.Code2 = TRY_CAST(LTRIM(RTRIM(FE.Received_Code2)) AS NUMERIC(18,0))
+     INNER JOIN Pro_Reg PR WITH (NOLOCK)
+         ON PR.Pro_ID = ISNULL(NULLIF(MC.reassignProid, ''), MC.Pro_ID)
+        AND PR.Comp_ID = @Comp_Id;
 
     -- 3️⃣ Product-wise Top 5
     SELECT TOP 5

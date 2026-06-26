@@ -126,14 +126,15 @@ BEGIN
                 a.Code1, 
                 a.Code2, 
                 a.Pro_ID,
+                a.reassignProid,
                 a.Use_Count,
                 ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
             FROM M_Code a WITH (NOLOCK)
-            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
+            INNER JOIN Pro_Reg b WITH (NOLOCK) ON ISNULL(NULLIF(a.reassignProid, ''), a.Pro_ID) = b.Pro_ID 
             WHERE b.Comp_ID = @Comp_ID 
               AND a.Use_Count > 0
         )
-        SELECT Code1, Code2, Pro_ID, Use_Count
+        SELECT Code1, Code2, ISNULL(NULLIF(reassignProid, ''), Pro_ID) AS Pro_ID, Use_Count
         INTO #tempM_Code 
         FROM DistinctCodes
         WHERE rn = 1;

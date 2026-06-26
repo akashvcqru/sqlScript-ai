@@ -254,9 +254,9 @@ BEGIN
             ON mc.Code1 = PE.Received_Code1
            AND mc.Code2 = PE.Received_Code2
         INNER JOIN Pro_Reg pr WITH (NOLOCK)
-            ON pr.Pro_ID = mc.Pro_ID
+            ON pr.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)
         LEFT JOIN #temp1 sd 
-            ON sd.Pro_ID = mc.Pro_Id
+            ON sd.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)
            AND CONCAT(
                 FORMAT(mc.Series_Order, '000#'),
                 FORMAT(mc.Series_Serial, '000#')
@@ -300,7 +300,7 @@ BEGIN
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
         LEFT JOIN M_Consumer MC ON BL.refranceM_Consumerid = MC.M_Consumerid
         LEFT JOIN M_Code MCD ON MCD.Code1 = BL.Code1 AND MCD.Code2 = BL.Code2
-        LEFT JOIN Pro_Reg PR ON PR.Pro_ID = MCD.Pro_ID
+        LEFT JOIN Pro_Reg PR ON PR.Pro_ID = ISNULL(NULLIF(MCD.reassignProid, ''), MCD.Pro_ID)
         WHERE BL.M_Consumerid = @TargetConsumerid
           AND (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
           AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''));

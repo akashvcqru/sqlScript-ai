@@ -5,7 +5,8 @@ $files = @(
     "USP_GetCodeStatusByMobileNo_AI.sql",
     "USP_GetCodeStatusBySerialNumber_AI.sql",
     "SP_BL_LiveScanActivity_AI.sql",
-    "SP_BL_LiveScanActivity_MAndM_AI.sql"
+    "SP_BL_LiveScanActivity_MAndM_AI.sql",
+    "USP_ReassignCodesBulkUpload_AI.sql"
 )
 
 $dir = "c:\VCQRU-Project\sqlScript\StoredProcedures"
