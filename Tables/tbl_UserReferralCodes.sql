@@ -5,6 +5,8 @@ CREATE TABLE [dbo].[tbl_UserReferralCodes] (
     [RefCode] VARCHAR(100) UNIQUE NOT NULL,
     [IsUsed] BIT DEFAULT 0,
     [usermobileno] VARCHAR(20) NULL,
+    [UsedByPoints] INT NULL,
+    [SharedByPoints] INT NULL,
     [CreatedDate] DATETIME DEFAULT GETDATE(),
     [UpdatedDate] DATETIME DEFAULT GETDATE()
 );
