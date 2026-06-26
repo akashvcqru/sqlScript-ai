@@ -78,11 +78,12 @@ BEGIN
 END
 
 
-   ;WITH CTE_AllUsers AS (
+    ;WITH CTE_AllUsers AS (
     -- Base: Users linked with this company via KYC
     SELECT DISTINCT 
         V.M_ConsumerId,
-        MC.MobileNo
+        MC.MobileNo,
+        ISNULL(NULLIF(LTRIM(RTRIM(MC.state)), ''), '') AS RegisteredState
     FROM tbl_VendorViseKYCStatus V
     LEFT JOIN M_Consumer MC ON MC.M_ConsumerId = V.M_ConsumerId
     WHERE V.Comp_Id = @CompId AND (MC.Entry_Date IS NULL OR MC.Entry_Date >= @CompRegDate)
@@ -92,7 +93,8 @@ CTE_State AS (
     SELECT 
         AU.M_ConsumerId,
         AU.MobileNo,
-        G.[State],
+        AU.RegisteredState,
+        G.[State] AS GeoState,
         ROW_NUMBER() OVER (PARTITION BY AU.M_ConsumerId ORDER BY G.Enq_Date DESC) AS rn
     FROM CTE_AllUsers AU
     LEFT JOIN GeoLocationData G
@@ -102,7 +104,10 @@ CTE_State AS (
        AND CAST(G.Enq_Date AS DATE) BETWEEN @StartDate AND @EndDate
 ),
 CTE_UserState AS (
-    SELECT M_ConsumerId, MobileNo, [State]
+    SELECT 
+        M_ConsumerId, 
+        MobileNo, 
+        ISNULL(NULLIF(RegisteredState, ''), ISNULL(GeoState, '')) AS [State]
     FROM CTE_State
     WHERE rn = 1   -- Latest State Only
 ),

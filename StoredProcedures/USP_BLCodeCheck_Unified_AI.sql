@@ -132,16 +132,45 @@ BEGIN
         IF @Code1 IS NOT NULL AND @Code2 IS NOT NULL
         BEGIN
             -- Identify Code and Product
-            SELECT @M_Codeid = Row_ID, @Pro_ID = Pro_ID FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2;
+            DECLARE @Batch_No NVARCHAR(100) = NULL;
+            SELECT @M_Codeid = Row_ID, @Pro_ID = Pro_ID, @Batch_No = Batch_No FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2;
 
             IF @M_Codeid = 0 OR @M_Codeid IS NULL
             BEGIN
                 -- Try M_Code_PFL for specific ranges if needed
-                SELECT @M_Codeid = Row_ID, @Pro_ID = Pro_ID FROM M_Code_PFL WHERE Code1 = @Code1 AND Code2 = @Code2;
+                SELECT @M_Codeid = Row_ID, @Pro_ID = Pro_ID, @Batch_No = Batch_No FROM M_Code_PFL WHERE Code1 = @Code1 AND Code2 = @Code2;
             END
 
             IF @M_Codeid > 0
             BEGIN
+                -- Deactivation check for specific services
+                IF NULLIF(RTRIM(LTRIM(@Batch_No)), '') IS NULL
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                        FROM M_ServiceSubscription ss WITH (NOLOCK)
+                        INNER JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON ss.Subscribe_Id = sst.Subscribe_Id
+                        WHERE ss.Pro_ID = @Pro_ID
+                          AND sst.IsActive <> 0 AND sst.IsDelete = 0
+                          AND ss.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029')
+                    )
+                    BEGIN
+                        SET @ResultCode = 0;
+                        SET @Message = 'Sorry, the code ' + RIGHT('00000' + CAST(@Code1 AS VARCHAR(20)), 5) + RIGHT('00000000' + CAST(@Code2 AS VARCHAR(20)), 8) + ' has been deactivated. For more information, please contact our support team.';
+                        ROLLBACK TRANSACTION;
+                        SELECT 
+                            @ResultCode AS ResultCode,
+                            @Message AS Message,
+                            @Comp_ID AS Comp_ID,
+                            @Pro_ID AS Pro_ID,
+                            0 AS Amount,
+                            '' AS ServiceID,
+                            @ConsumerName AS ConsumerName,
+                            @Email AS ConsumerEmail;
+                        RETURN;
+                    END
+                END
+
                 -- Check if already scanned
                 DECLARE @ExistingEnqCount INT;
                 SELECT @ExistingEnqCount = COUNT(*) FROM Pro_Enq WHERE Received_Code1 = CAST(@Code1 AS VARCHAR(5)) AND Received_Code2 = CAST(@Code2 AS VARCHAR(8)) AND Is_Success = '1';

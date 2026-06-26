@@ -109,7 +109,10 @@ BEGIN
             + '/' + pr.Pro_ID + '.jpg'                        AS ImgPath,
         ISNULL(latest_batch.Batch_No, '')                     AS Batch_No,
         ISNULL(CONVERT(VARCHAR, latest_batch.Mfd_Date, 105), '') AS Mfd_Date,
-        ISNULL(CONVERT(VARCHAR, latest_batch.Exp_Date, 105), '') AS Exp_Date
+        ISNULL(CONVERT(VARCHAR, latest_batch.Exp_Date, 105), '') AS Exp_Date,
+        sub.Subscribe_Id,
+        sub.Service_ID,
+        sub.IsActive
     FROM   Pro_Reg pr
     LEFT JOIN M_Label ml ON pr.Label_Code = ml.Label_Code
     OUTER APPLY (
@@ -118,6 +121,13 @@ BEGIN
         WHERE t.Pro_ID = pr.Pro_ID
         ORDER BY t.Entry_Date DESC
     ) AS latest_batch
+    OUTER APPLY (
+        SELECT TOP 1 ss.Subscribe_Id, ss.Service_ID, ss.IsActive
+        FROM M_ServiceSubscription ss
+        WHERE ss.Pro_ID = pr.Pro_ID
+          AND (ss.IsDelete = 0 OR ss.IsDelete IS NULL)
+        ORDER BY ss.EntryDate DESC
+    ) AS sub
     WHERE
         ('' = @Comp_ID OR pr.Comp_ID = @Comp_ID)
         AND (@SearchQuery = '' OR pr.Pro_Name LIKE '%' + @SearchQuery + '%' OR pr.Pro_ID = @SearchQuery)

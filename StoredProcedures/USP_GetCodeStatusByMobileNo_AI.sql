@@ -109,10 +109,16 @@ BEGIN
             PE.Batch_No,
             ISNULL(PE.IsVerified, 0) AS ImageVerified,
             CAST(CASE WHEN PE.Status = 'Authenticate' THEN
-                CASE WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0) ELSE ISNULL(sd.Points, 0) END
+                CASE 
+                    WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0) 
+                    ELSE CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END
+                END
             ELSE 0 END AS DECIMAL(18,2)) AS AssignPoint,
             CAST(CASE WHEN PE.Status = 'Authenticate' THEN
-                CASE WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
+                CASE 
+                    WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) 
+                    ELSE CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END
+                END
             ELSE 0 END AS DECIMAL(18,2)) AS WornPoint
         FROM pfl_codecheckData PE WITH (NOLOCK)
         INNER JOIN M_Code_PFL mc WITH (NOLOCK)
@@ -130,10 +136,12 @@ BEGIN
                CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#'))
                AND 
                CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+        LEFT JOIN M_Consumer mc_c WITH (NOLOCK) ON RIGHT(mc_c.MobileNo, 10) = RIGHT(PE.MobileNo, 10) AND mc_c.IsDelete = 0
         LEFT JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) 
             ON BL.Code1 = PE.Code1V 
            AND BL.Code2 = PE.Code2V
-           AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
+           AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', '') OR BL.compid IS NULL)
+           AND BL.M_Consumerid = mc_c.M_Consumerid
         WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
           AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
     END
@@ -166,10 +174,16 @@ BEGIN
                 mcd.Batch_No,
                 0 AS ImageVerified,
                 CAST(CASE WHEN pc.Is_Success = 1 THEN
-                    CASE WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0) ELSE ISNULL(sd.Points, 0) END
+                    CASE 
+                        WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0) 
+                        ELSE CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END
+                    END
                 ELSE 0 END AS DECIMAL(18,2)) AS AssignPoint,
                 CAST(CASE WHEN pc.Is_Success = 1 THEN
-                    CASE WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
+                    CASE 
+                        WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) 
+                        ELSE CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END
+                    END
                 ELSE 0 END AS DECIMAL(18,2)) AS WornPoint,
                 ROW_NUMBER() OVER (
                     PARTITION BY pc.Code1, pc.Code2
@@ -192,7 +206,8 @@ BEGIN
             LEFT JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) 
                 ON BL.Code1 = pc.Code1 
                AND BL.Code2 = pc.Code2
-               AND BL.compid = @ActualCompId
+               AND (BL.compid = @ActualCompId OR BL.compid IS NULL)
+               AND BL.M_Consumerid = pc.m_consumerid
             WHERE RIGHT(pc.MobileNo, 10) = @NormalizedMobile
               AND pc.Comp_Id = @ActualCompId
               AND (
@@ -223,10 +238,16 @@ BEGIN
             mc.Batch_No,
             ISNULL(PE.IsVerified, 0) AS ImageVerified,
             CAST(CASE WHEN PE.Is_Success = 1 THEN
-                CASE WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0) ELSE ISNULL(sd.Points, 0) END
+                CASE 
+                    WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0) 
+                    ELSE CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END
+                END
             ELSE 0 END AS DECIMAL(18,2)) AS AssignPoint,
             CAST(CASE WHEN PE.Is_Success = 1 THEN
-                CASE WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
+                CASE 
+                    WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) 
+                    ELSE CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END
+                END
             ELSE 0 END AS DECIMAL(18,2)) AS WornPoint
         FROM Pro_Enq PE WITH (NOLOCK)
         INNER JOIN M_Code mc WITH (NOLOCK)
@@ -244,10 +265,12 @@ BEGIN
                CONCAT(FORMAT(sd.start_order, '000#'), FORMAT(sd.start_series, '000#'))
                AND 
                CONCAT(FORMAT(sd.end_order, '000#'), FORMAT(sd.end_series, '000#'))
+        LEFT JOIN M_Consumer mc_c WITH (NOLOCK) ON RIGHT(mc_c.MobileNo, 10) = RIGHT(PE.MobileNo, 10) AND mc_c.IsDelete = 0
         LEFT JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) 
             ON BL.Code1 = PE.Received_Code1 
            AND BL.Code2 = PE.Received_Code2
-           AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
+           AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', '') OR BL.compid IS NULL)
+           AND BL.M_Consumerid = mc_c.M_Consumerid
         WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
           AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
     END

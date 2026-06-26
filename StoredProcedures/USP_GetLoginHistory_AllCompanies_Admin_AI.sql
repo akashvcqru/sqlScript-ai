@@ -12,54 +12,79 @@ BEGIN
 
     DECLARE @StartDate DATETIME = NULL;
     DECLARE @EndDate   DATETIME = NULL;
-    DECLARE @Today     DATETIME = CAST(GETDATE() AS DATE);
-    DECLARE @Now       DATETIME = GETDATE();
 
-    -- Parse and handle DatePreset if provided
-    IF @DatePreset IS NOT NULL AND LTRIM(RTRIM(@DatePreset)) <> ''
+    -- Explicit date range wins
+    IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
     BEGIN
-        SET @DatePreset = LOWER(LTRIM(RTRIM(@DatePreset)));
-        
-        IF @DatePreset = 'today' OR @DatePreset = 'day' OR @DatePreset = 'dy'
-        BEGIN
-            SET @StartDate = @Today;
-            SET @EndDate   = @Now;
-        END
-        ELSE IF @DatePreset = 'yesterday'
-        BEGIN
-            SET @StartDate = DATEADD(DAY, -1, @Today);
-            -- Yesterday end of day (23:59:59.997 due to datetime rounding)
-            SET @EndDate   = DATEADD(MILLISECOND, -3, @Today);
-        END
-        ELSE IF @DatePreset = 'week' OR @DatePreset = 'last 7 days'
-        BEGIN
-            SET @StartDate = DATEADD(DAY, -7, @Today);
-            SET @EndDate   = @Now;
-        END
-        ELSE IF @DatePreset = 'last 30 days'
-        BEGIN
-            SET @StartDate = DATEADD(DAY, -30, @Today);
-            SET @EndDate   = @Now;
-        END
-        ELSE IF @DatePreset = 'month' OR @DatePreset = 'this month'
-        BEGIN
-            SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
-            SET @EndDate   = @Now;
-        END
-        ELSE IF @DatePreset = 'last month'
-        BEGIN
-            DECLARE @LastMonthStart DATETIME = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1));
-            SET @StartDate = @LastMonthStart;
-            -- Last month end of day
-            SET @EndDate   = DATEADD(MILLISECOND, -3, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1));
-        END
+        SET @StartDate = CAST(@FromDate AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
     END
-
-    -- Explicit Date Range overrides DatePreset
-    IF @FromDate IS NOT NULL AND @ToDate IS NOT NULL
+    ELSE
     BEGIN
-        SET @StartDate = @FromDate;
-        SET @EndDate   = @ToDate;
+        SET @DatePreset = UPPER(LTRIM(RTRIM(ISNULL(@DatePreset, ''))));
+
+        IF (@DatePreset = 'TODAY')
+        BEGIN
+            SET @StartDate = CAST(GETDATE() AS DATE);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF (@DatePreset = 'LASTDAY' OR @DatePreset = 'YESTERDAY')
+        BEGIN
+            SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
+            SET @EndDate   = CAST(GETDATE() AS DATE);
+        END
+        ELSE IF (@DatePreset = 'WEEK')
+        BEGIN
+            SET DATEFIRST 1;
+            SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF (@DatePreset = 'LASTWEEK')
+        BEGIN
+            SET DATEFIRST 1;
+            SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+        END
+        ELSE IF (@DatePreset = 'MONTH')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF (@DatePreset = 'LASTMONTH')
+        BEGIN
+            SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0);
+        END
+        ELSE IF (@DatePreset = 'QUARTER')
+        BEGIN
+            SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
+        END
+        ELSE IF (@DatePreset = 'YEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF (@DatePreset = 'LASTYEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+            SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        END
+        ELSE IF (@DatePreset = 'LAST7DAYS')
+        BEGIN
+            SET @StartDate = DATEADD(DAY, -7, CAST(GETDATE() AS DATE));
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF (@DatePreset = 'LAST30DAYS')
+        BEGIN
+            SET @StartDate = DATEADD(DAY, -30, CAST(GETDATE() AS DATE));
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE
+        BEGIN
+            SET @StartDate = '2015-01-01';
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
     END
 
     -- Query for total count (only if not exporting)
@@ -70,7 +95,7 @@ BEGIN
         LEFT JOIN Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = lh.Comp_ID
         WHERE (@Search IS NULL OR lh.Comp_ID LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
           AND (@StartDate IS NULL OR lh.LoginTime >= @StartDate)
-          AND (@EndDate IS NULL OR lh.LoginTime <= @EndDate);
+          AND (@EndDate IS NULL OR lh.LoginTime < @EndDate);
     END
 
     -- Query for login history list
@@ -94,7 +119,7 @@ BEGIN
     LEFT JOIN Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = lh.Comp_ID
     WHERE (@Search IS NULL OR lh.Comp_ID LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
       AND (@StartDate IS NULL OR lh.LoginTime >= @StartDate)
-      AND (@EndDate IS NULL OR lh.LoginTime <= @EndDate)
+      AND (@EndDate IS NULL OR lh.LoginTime < @EndDate)
     ORDER BY lh.LoginTime DESC
     OFFSET (CASE WHEN @IsExport = 1 THEN 0 ELSE @Offset END) ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 100000000 ELSE @Limit END) ROWS ONLY;

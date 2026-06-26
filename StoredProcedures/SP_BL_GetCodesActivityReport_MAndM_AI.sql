@@ -178,8 +178,12 @@ BEGIN
         pc.Code2,
         CONCAT(pc.Code1, pc.Code2) AS uniquecode,
         CASE 
-            WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, ISNULL(pc.Cash, 0))
-            ELSE CASE WHEN pc.Points IS NULL OR pc.Points = 0 THEN ISNULL(pc.Cash, 0) ELSE pc.Points END
+            WHEN pc.Is_Success = 1 THEN
+                CASE 
+                    WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, ISNULL(pc.Cash, 0))
+                    ELSE CASE WHEN pc.Points IS NULL OR pc.Points = 0 THEN ISNULL(pc.Cash, 0) ELSE pc.Points END
+                END
+            ELSE 0
         END AS amount_won,
         CASE 
             WHEN pc.Is_Success = 1 THEN 'Verified'
@@ -222,15 +226,25 @@ BEGIN
         END AS SchemeStatus,
         CASE 
             WHEN pc.Is_Success = 1 THEN
-                CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(sst.IsCash, 0) ELSE ISNULL(sst.Points, 0) END
+                CASE 
+                    WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(sst.IsCash, 0) 
+                    ELSE CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN ISNULL(sst.IsCash, 0) ELSE sst.Points END
+                END
             ELSE 0 
         END AS AssignPoint,
         CASE 
             WHEN pc.Is_Success = 1 THEN
-                CASE WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
+                CASE 
+                    WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) 
+                    ELSE CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END
+                END
             ELSE 0 
         END AS WornPoint,
         ISNULL(R.ReferralPoints, 0) AS ReferralPoints,
+        CASE 
+            WHEN pc.Points IS NULL OR pc.Points = 0 THEN ISNULL(pc.Cash, 0)
+            ELSE pc.Points
+        END AS Points,
         ROW_NUMBER() OVER (
             PARTITION BY pc.Code1, pc.Code2, pc.Enq_Date
             ORDER BY pc.Enq_Date DESC, mc.dealer_state, mc.pancard_number, mc.aadharNumber, pc.Dial_Mode DESC
@@ -262,7 +276,8 @@ BEGIN
     LEFT JOIN dbo.BLoyaltyPointsEarned BL WITH (NOLOCK)
         ON BL.Code1 = pc.Code1
        AND BL.Code2 = pc.Code2
-       AND BL.compid = @ActualCompId
+       AND (BL.compid = @ActualCompId OR BL.compid IS NULL)
+       AND BL.M_Consumerid = pc.M_Consumerid
     WHERE
         pc.Comp_Id = @ActualCompId
         AND (
@@ -303,7 +318,7 @@ BEGIN
         ConsumerName, MobileNo, AadharHolderName, aadharNumber, Address, PanHolderName,
         pancard_number, Bank_Name, Account_HolderNm, Account_No, IFSC_Code,
         Mstar_TechMasterId, DealerCode, transaction_status, dealer_state, designation, DealerType,
-        KycStatus, SchemeStatus, AssignPoint, WornPoint, ReferralPoints, rn
+        KycStatus, SchemeStatus, AssignPoint, WornPoint, ReferralPoints, Points, rn
     )
     SELECT 
         BL.compid,
@@ -345,6 +360,7 @@ BEGIN
         0 AS AssignPoint,
         0 AS WornPoint,
         SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints,
+        0 AS Points,
         1 AS rn
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC WITH (NOLOCK) ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
@@ -376,7 +392,7 @@ BEGIN
             Address, PanHolderName, pancard_number, Bank_Name, Account_HolderNm, 
             Account_No, IFSC_Code, Mstar_TechMasterId, DealerCode, 
             transaction_status, dealer_state, designation, DealerType, 
-            KycStatus, SchemeStatus, AssignPoint, WornPoint, ReferralPoints
+            KycStatus, SchemeStatus, AssignPoint, WornPoint, ReferralPoints, Points
         FROM #FilteredData 
         WHERE rn = 1 
         ORDER BY Enq_Date DESC;

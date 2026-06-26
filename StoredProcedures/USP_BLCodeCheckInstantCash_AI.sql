@@ -90,11 +90,14 @@ BEGIN
         END
 
         -- Check M_Code
+        DECLARE @Batch_No NVARCHAR(100) = NULL;
+
         SELECT 
             @M_Codeid = Row_ID, 
             @Pro_ID = Pro_ID,
             @Series_Order = TRY_CAST(ISNULL(Series_Order,0) AS INT),
-            @Series_Serial = TRY_CAST(ISNULL(Series_Serial,0) AS INT)
+            @Series_Serial = TRY_CAST(ISNULL(Series_Serial,0) AS INT),
+            @Batch_No = Batch_No
         FROM M_Code WITH (UPDLOCK, ROWLOCK)
         WHERE Code1 = @dCode1 AND Code2 = @dCode2;
 
@@ -106,7 +109,8 @@ BEGIN
                 @Pro_ID = Pro_ID,
                 @Series_Order = 0, 
                 @Series_Serial = 0,
-                @IsPFL = 1
+                @IsPFL = 1,
+                @Batch_No = Batch_No
             FROM M_Code_PFL WITH (UPDLOCK, ROWLOCK)
             WHERE Code1 = @dCode1 AND Code2 = @dCode2;
         END
@@ -116,6 +120,25 @@ BEGIN
             ROLLBACK TRANSACTION;
             SELECT 0 AS ResultCode, 'The code you entered is invalid. Please check and try again.' AS Message;
             RETURN;
+        END
+
+        -- Deactivation check for specific services
+        IF NULLIF(RTRIM(LTRIM(@Batch_No)), '') IS NULL
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM M_ServiceSubscription ss WITH (NOLOCK)
+                INNER JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON ss.Subscribe_Id = sst.Subscribe_Id
+                WHERE ss.Pro_ID = @Pro_ID
+                  AND sst.IsActive <> 0 AND sst.IsDelete = 0
+                  AND ss.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029')
+            )
+            BEGIN
+                ROLLBACK TRANSACTION;
+                DECLARE @DeactivatedMessage NVARCHAR(250) = 'Sorry, the code ' + RIGHT('00000' + CAST(@dCode1 AS VARCHAR(20)), 5) + RIGHT('00000000' + CAST(@dCode2 AS VARCHAR(20)), 8) + ' has been deactivated. For more information, please contact our support team.';
+                SELECT 0 AS ResultCode, @DeactivatedMessage AS Message;
+                RETURN;
+            END
         END
 
         SELECT @ActualComp_ID = Comp_ID FROM Pro_Reg WHERE Pro_ID = @Pro_ID;
@@ -393,6 +416,15 @@ BEGIN
                             
                             INSERT INTO tblCashWalletBalance (Comp_Id, Service_ID, M_Consumerid, OldBal, NewBal, Amount, Cr_Dr_Type, PayrefId, ReqDate)
                             VALUES (@ActualComp_ID, @CurrServiceID, @M_Consumerid, @OldWalletBal, @OldWalletBal + @EarningAmount, @EarningAmount, 'Credit', @TransactionID, GETDATE());
+                        END
+                    END
+                    ELSE IF @CurrServiceID IN ('SRV1001', 'SRV1005')
+                    BEGIN
+                        -- Capture return data for SRV1001 or SRV1005 if SRV1029 is not already set
+                        IF @ReturnServiceID IS NULL OR @ReturnServiceID = '' OR @ReturnServiceID NOT IN ('SRV1029')
+                        BEGIN
+                            SET @ReturnAmount = @EarningAmount;
+                            SET @ReturnServiceID = @CurrServiceID;
                         END
                     END
                 END

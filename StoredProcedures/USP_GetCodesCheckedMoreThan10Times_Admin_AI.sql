@@ -82,24 +82,33 @@ BEGIN
         END
     END
 
+    ;WITH FlaggedCodes AS (
+        SELECT 
+            pe.Received_Code1,
+            pe.Received_Code2,
+            pe.Comp_ID,
+            COUNT(pe.Enq_Date) AS CodeCheckCount,
+            MAX(pe.Enq_Date) AS LastCodeCheckTime
+        FROM Pro_Enq pe WITH (NOLOCK)
+        WHERE (@StartDate IS NULL OR pe.Enq_Date >= @StartDate)
+          AND (@EndDate IS NULL OR pe.Enq_Date < @EndDate)
+        GROUP BY pe.Received_Code1, pe.Received_Code2, pe.Comp_ID
+        HAVING COUNT(pe.Enq_Date) > 10
+    )
     SELECT 
-        (pe.Received_Code1 + pe.Received_Code2) AS UniqueCode,
+        (fc.Received_Code1 + fc.Received_Code2) AS UniqueCode,
         pr.Pro_Name AS ProductName,
         pr.Pro_ID AS ProductID,
-        pe.Comp_ID AS CompId,
+        fc.Comp_ID AS CompId,
         c.Comp_Name AS CompanyName,
-        COUNT(pe.Enq_Date) AS CodeCheckCount,
-        MAX(pe.Enq_Date) AS LastCodeCheckTime,
+        fc.CodeCheckCount,
+        fc.LastCodeCheckTime,
         pr.Pro_Entry_Date AS ProRegDate
-    FROM Pro_Enq pe WITH (NOLOCK)
-    INNER JOIN Comp_Reg c WITH (NOLOCK) ON pe.Comp_ID = c.Comp_ID
-    LEFT JOIN M_Code mc WITH (NOLOCK) ON mc.Code1 = TRY_CAST(pe.Received_Code1 AS NUMERIC(5,0)) AND mc.Code2 = TRY_CAST(pe.Received_Code2 AS NUMERIC(8,0))
-    LEFT JOIN M_Code_PFL mcp WITH (NOLOCK) ON mcp.Code1 = TRY_CAST(pe.Received_Code1 AS NUMERIC(5,0)) AND mcp.Code2 = TRY_CAST(pe.Received_Code2 AS NUMERIC(8,0))
+    FROM FlaggedCodes fc
+    INNER JOIN Comp_Reg c WITH (NOLOCK) ON fc.Comp_ID = c.Comp_ID
+    LEFT JOIN M_Code mc WITH (NOLOCK) ON mc.Code1 = TRY_CAST(fc.Received_Code1 AS NUMERIC(5,0)) AND mc.Code2 = TRY_CAST(fc.Received_Code2 AS NUMERIC(8,0))
+    LEFT JOIN M_Code_PFL mcp WITH (NOLOCK) ON mcp.Code1 = TRY_CAST(fc.Received_Code1 AS NUMERIC(5,0)) AND mcp.Code2 = TRY_CAST(fc.Received_Code2 AS NUMERIC(8,0))
     LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = COALESCE(mc.Pro_ID, mcp.Pro_ID)
-    WHERE (@StartDate IS NULL OR pe.Enq_Date >= @StartDate)
-      AND (@EndDate IS NULL OR pe.Enq_Date < @EndDate)
-    GROUP BY pr.Pro_ID, pr.Pro_Name, pr.Pro_Entry_Date, pe.Received_Code1, pe.Received_Code2, pe.Comp_ID, c.Comp_Name
-    HAVING COUNT(pe.Enq_Date) > 10
-    ORDER BY LastCodeCheckTime DESC;
+    ORDER BY fc.LastCodeCheckTime DESC;
 END
 GO
