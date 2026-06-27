@@ -62,7 +62,8 @@ BEGIN
     WHERE o.UserId = @UserId 
           AND (@OrderStatus IS NULL OR @OrderStatus = '' OR o.OrderStatus = @OrderStatus)
     GROUP BY 
-        o.OrderId, o.OrderStatus, o.TotalAmount, o.CreatedDate, o.AddressId, ii.DueDate, ii.InvoiceNumber, DiscountAmount,SpecialInstructions;
+        o.OrderId, o.OrderStatus, o.TotalAmount, o.CreatedDate, o.AddressId, ii.DueDate, ii.InvoiceNumber, DiscountAmount,SpecialInstructions
+    ORDER BY o.CreatedDate DESC;
 
     -- ✅ Status Summary: Always return all 4 statuses even if 0
     SELECT 
