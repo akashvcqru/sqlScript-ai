@@ -27,14 +27,25 @@ BEGIN
     SET NOCOUNT ON;
 
     ------------------------------------------------------
-    -- Normalize Lot parameter name (e.g., 'LOT8', 'Lot 8' -> '8')
+    -- Normalize Lot parameter to canonical 'MCSN' form
+    --   'LOT7'  → strip 'LOT' → '7'  → prepend 'MCS' → 'MCS7'
+    --   '7'     → purely numeric     → prepend 'MCS' → 'MCS7'
+    --   'MCS7'  → already canonical  → 'MCS7'
+    --   'MCS6'  → already canonical  → 'MCS6'
+    -- This ensures the lot filter always matches Pro_Name patterns like '_MCS7'
     ------------------------------------------------------
     IF @Lot IS NOT NULL
     BEGIN
-        SET @Lot = LTRIM(RTRIM(@Lot));
-        IF UPPER(@Lot) LIKE 'LOT%'
+        SET @Lot = UPPER(LTRIM(RTRIM(@Lot)));
+        -- Strip 'LOT' prefix if present (e.g., 'LOT7' → '7')
+        IF @Lot LIKE 'LOT%'
         BEGIN
             SET @Lot = LTRIM(RTRIM(SUBSTRING(@Lot, 4, LEN(@Lot))));
+        END
+        -- If now purely numeric (e.g., '7'), prepend 'MCS' → 'MCS7'
+        IF @Lot NOT LIKE '%[^0-9]%' AND LEN(@Lot) > 0
+        BEGIN
+            SET @Lot = 'MCS' + @Lot;
         END
     END
 
