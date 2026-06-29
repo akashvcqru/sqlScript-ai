@@ -214,6 +214,10 @@ BEGIN
 
     ------------------------------------------------------
     -- Lot Filter (For Comp-1152)
+    -- Pro_Name pattern: e.g. 'M&M_Star_Scheme_MCS6'  RIGHT(4) = 'MCS6'
+    -- @Lot is already normalized (LOT prefix stripped above, e.g. 'MCS6')
+    -- Checks BOTH pr.Pro_Name (via M_Code join) AND pc.Pro_Name (stored on transaction)
+    -- independently so either source matching is sufficient.
     ------------------------------------------------------
     IF @Lot IS NOT NULL AND LTRIM(RTRIM(@Lot)) <> ''
     BEGIN
@@ -224,14 +228,16 @@ BEGIN
             LEFT JOIN dbo.M_Code mcd WITH (NOLOCK) ON mcd.Code1 = pc.Code1 AND mcd.Code2 = pc.Code2
             LEFT JOIN dbo.Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mcd.Pro_ID
             WHERE pc.Comp_Id = @Comp_Id
+              AND pc.Is_Success = 1
               AND (
-                    RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 4) = @Lot
-                    OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 4) = ''MCS'' + @Lot
-                    OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 4) = ''mcs'' + @Lot
-                    OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 5) = ''_'' + @Lot
-                    OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 5) = ''_MCS'' + @Lot
-                    OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 5) = ''_mcs'' + @Lot
-                    OR ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name) LIKE ''%'' + @Lot
+                    -- Match via Pro_Reg Pro_Name (canonical name from product registration)
+                    RIGHT(UPPER(ISNULL(pr.Pro_Name, '''')), 4) = UPPER(@Lot)
+                    OR RIGHT(UPPER(ISNULL(pr.Pro_Name, '''')), LEN(@Lot) + 1) = ''_'' + UPPER(@Lot)
+                    OR UPPER(ISNULL(pr.Pro_Name, '''')) LIKE ''%[_]'' + UPPER(@Lot)
+                    -- Match via Pro_Name stored directly on the transaction record
+                    OR RIGHT(UPPER(ISNULL(pc.Pro_Name, '''')), 4) = UPPER(@Lot)
+                    OR RIGHT(UPPER(ISNULL(pc.Pro_Name, '''')), LEN(@Lot) + 1) = ''_'' + UPPER(@Lot)
+                    OR UPPER(ISNULL(pc.Pro_Name, '''')) LIKE ''%[_]'' + UPPER(@Lot)
               )
         )';
     END
