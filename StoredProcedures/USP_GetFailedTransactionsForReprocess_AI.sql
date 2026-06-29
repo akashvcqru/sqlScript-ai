@@ -143,6 +143,7 @@ BEGIN
     FROM tblUPITransactionDetails UT
     WHERE UT.Status = 'Failed'
       AND (UT.Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
+      AND (ISNULL(NULLIF(LTRIM(RTRIM(UT.Code1)), '0'), '') = '' OR ISNULL(NULLIF(LTRIM(RTRIM(UT.Code2)), '0'), '') = '')
       AND EXISTS (
           SELECT 1
           FROM ClaimDetails CD
@@ -152,6 +153,59 @@ BEGIN
             AND CD.PaymentStatus = 'Success'
             AND CD.Isapproved    = 1
       );
+
+    -- =========================================================================
+    -- STEP 2.7: Auto-Cancel failed Coupon check transaction records where the user
+    -- has already successfully claimed/redeemed the amount via manual payout.
+    -- Uses running totals to ensure we only cancel failed transactions up to the
+    -- cumulative successfully claimed amount, and only for claims requested after
+    -- the failed transaction date.
+    -- =========================================================================
+    ;WITH FailedCouponTxns AS (
+        SELECT 
+            Id,
+            MobileNo,
+            Comp_Id,
+            Amount,
+            ReqDate,
+            SUM(Amount) OVER (PARTITION BY MobileNo, Comp_Id ORDER BY Id ASC) AS CumulativeFailed
+        FROM tblUPITransactionDetails
+        WHERE Status = 'Failed'
+          AND ISNULL(Code1, '0') <> '0'
+          AND ISNULL(Code2, '0') <> '0'
+          AND LEN(Code1) = 5
+          AND LEN(Code2) = 8
+          AND (Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
+    ),
+    SuccessfulManualPayouts AS (
+        SELECT 
+            Id,
+            MobileNo,
+            Comp_Id,
+            Amount,
+            ReqDate,
+            SUM(Amount) OVER (PARTITION BY MobileNo, Comp_Id ORDER BY Id ASC) AS CumulativePaid
+        FROM tblUPITransactionDetails
+        WHERE Status = 'Success'
+          AND (ISNULL(NULLIF(LTRIM(RTRIM(Code1)), '0'), '') = '' OR ISNULL(NULLIF(LTRIM(RTRIM(Code2)), '0'), '') = '')
+          AND (Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
+    ),
+    Matched AS (
+        SELECT 
+            F.Id
+        FROM FailedCouponTxns F
+        INNER JOIN SuccessfulManualPayouts P
+           ON P.MobileNo = F.MobileNo 
+          AND P.Comp_Id = F.Comp_Id
+          AND P.ReqDate >= F.ReqDate
+          AND P.CumulativePaid >= F.CumulativeFailed
+    )
+    UPDATE UT
+    SET UT.Status      = 'Cancelled',
+        UT.FinalStatus  = 'CANCELLED',
+        UT.FinalRemarks = 'Claimed via manual payout'
+    FROM tblUPITransactionDetails UT
+    INNER JOIN Matched M ON UT.Id = M.Id;
 
     -- =========================================================================
     -- STEP 3: Select remaining genuine failed transactions for reprocessing
