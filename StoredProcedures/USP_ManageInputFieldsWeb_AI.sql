@@ -20,7 +20,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_ManageInputFieldsWeb_AI]
     @MaxLength INT = NULL,
     @IsActive BIT = 1,
     @createdby VARCHAR(50) = NULL,
-    @updatedby VARCHAR(50) = NULL
+    @updatedby VARCHAR(50) = NULL,
+    @ListOption VARCHAR(1000) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -29,10 +30,10 @@ BEGIN
     BEGIN
         -- Insert Action
         INSERT INTO Master_InputFieldsWeb (
-            FieldName, Label, FieldType, DefaultValidation, Placeholder, MaxLength, IsActive, created_date, createdby
+            FieldName, Label, FieldType, DefaultValidation, Placeholder, MaxLength, IsActive, created_date, createdby, ListOption
         )
         VALUES (
-            @FieldName, @Label, @FieldType, @DefaultValidation, @Placeholder, @MaxLength, @IsActive, GETDATE(), @createdby
+            @FieldName, @Label, @FieldType, @DefaultValidation, @Placeholder, @MaxLength, @IsActive, GETDATE(), @createdby, @ListOption
         );
         
         SELECT SCOPE_IDENTITY() AS NewFieldId, 'Added successfully' AS [Message], 1 AS [Status];
@@ -52,7 +53,8 @@ BEGIN
                 MaxLength = @MaxLength,
                 IsActive = @IsActive,
                 updatedby = @updatedby,
-                updated_date = GETDATE()
+                updated_date = GETDATE(),
+                ListOption = @ListOption
             WHERE FieldId = @FieldId;
 
             SELECT @FieldId AS NewFieldId, 'Updated successfully' AS [Message], 1 AS [Status];

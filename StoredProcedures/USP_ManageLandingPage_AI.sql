@@ -140,7 +140,7 @@ BEGIN
         ORDER BY CreatedDate DESC;
 
         -- Table 1: Field Configs for those Landing Pages
-        SELECT FC.*, MF.FieldName, MF.FieldType as BaseFieldType
+        SELECT FC.*, MF.FieldName, MF.FieldType as BaseFieldType, MF.DefaultValidation, MF.Placeholder, MF.MaxLength, MF.ListOption
         FROM LandingPage_FieldConfig FC
         INNER JOIN LandingPage LP ON FC.PageId = LP.PageId
         LEFT JOIN Master_InputFieldsWeb MF ON FC.FieldId = MF.FieldId
@@ -182,7 +182,7 @@ BEGIN
         WHERE Comp_Id = @Comp_Id AND Service_Id = @EffectiveServiceId;
 
         -- Get Field Configs
-        SELECT FC.*, MF.FieldName, MF.FieldType as BaseFieldType
+        SELECT FC.*, MF.FieldName, MF.FieldType as BaseFieldType, MF.DefaultValidation, MF.Placeholder, MF.MaxLength, MF.ListOption
         FROM LandingPage_FieldConfig FC
         LEFT JOIN Master_InputFieldsWeb MF ON FC.FieldId = MF.FieldId
         WHERE FC.PageId = @PageId
