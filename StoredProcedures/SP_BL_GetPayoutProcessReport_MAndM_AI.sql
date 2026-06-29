@@ -27,15 +27,44 @@ BEGIN
     SET NOCOUNT ON;
 
     ------------------------------------------------------
-    -- Normalize Lot parameter name (e.g., 'LOT8', 'Lot 8' -> '8')
+    -- Normalize Lot parameter to canonical 'MCSN' form
+    --   'LOT7'  → strip 'LOT' → '7'  → prepend 'MCS' → 'MCS7'
+    --   '7'     → purely numeric     → prepend 'MCS' → 'MCS7'
+    --   'MCS7'  → already canonical  → 'MCS7'
+    --   'MCS6'  → already canonical  → 'MCS6'
+    -- This ensures the lot filter always matches Pro_Name patterns like '_MCS7'
     ------------------------------------------------------
     IF @Lot IS NOT NULL
     BEGIN
-        SET @Lot = LTRIM(RTRIM(@Lot));
-        IF UPPER(@Lot) LIKE 'LOT%'
+        SET @Lot = UPPER(LTRIM(RTRIM(@Lot)));
+        -- Strip 'LOT' prefix if present (e.g., 'LOT7' → '7')
+        IF @Lot LIKE 'LOT%'
         BEGIN
             SET @Lot = LTRIM(RTRIM(SUBSTRING(@Lot, 4, LEN(@Lot))));
         END
+        -- If now purely numeric (e.g., '7'), prepend 'MCS' → 'MCS7'
+        IF @Lot NOT LIKE '%[^0-9]%' AND LEN(@Lot) > 0
+        BEGIN
+            SET @Lot = 'MCS' + @Lot;
+        END
+    END
+
+    ------------------------------------------------------
+    -- Get matching Pro_IDs from Pro_Reg if Lot filter is provided
+    ------------------------------------------------------
+    IF OBJECT_ID('tempdb..#MatchingProIds') IS NOT NULL
+        DROP TABLE #MatchingProIds;
+        
+    CREATE TABLE #MatchingProIds (Pro_ID VARCHAR(50) PRIMARY KEY);
+
+    IF @Lot IS NOT NULL AND LTRIM(RTRIM(@Lot)) <> ''
+    BEGIN
+        INSERT INTO #MatchingProIds (Pro_ID)
+        SELECT DISTINCT Pro_ID 
+        FROM Pro_Reg WITH (NOLOCK)
+        WHERE RIGHT(UPPER(ISNULL(Pro_Name, '')), 4) = UPPER(@Lot)
+           OR RIGHT(UPPER(ISNULL(Pro_Name, '')), LEN(@Lot) + 1) = '_' + UPPER(@Lot)
+           OR UPPER(ISNULL(Pro_Name, '')) LIKE '%[_]' + UPPER(@Lot);
     END
 
     ------------------------------------------------------
@@ -214,6 +243,10 @@ BEGIN
 
     ------------------------------------------------------
     -- Lot Filter (For Comp-1152)
+    -- Pro_Name pattern: e.g. 'M&M_Star_Scheme_MCS6'  RIGHT(4) = 'MCS6'
+    -- @Lot is already normalized (LOT prefix stripped above, e.g. 'MCS6')
+    -- Checks BOTH pr.Pro_Name (via M_Code join) AND pc.Pro_Name (stored on transaction)
+    -- independently so either source matching is sufficient.
     ------------------------------------------------------
     IF @Lot IS NOT NULL AND LTRIM(RTRIM(@Lot)) <> ''
     BEGIN
@@ -221,17 +254,13 @@ BEGIN
         AND MC.M_Consumerid IN (
             SELECT DISTINCT pc.M_Consumerid 
             FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
-            LEFT JOIN dbo.M_Code mcd WITH (NOLOCK) ON mcd.Code1 = pc.Code1 AND mcd.Code2 = pc.Code2
-            LEFT JOIN dbo.Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mcd.Pro_ID
             WHERE pc.Comp_Id = @Comp_Id
+              AND pc.Is_Success = ''1''
               AND (
-                    RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 4) = @Lot
-                    OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 4) = ''MCS'' + @Lot
-                    OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 4) = ''mcs'' + @Lot
-                    OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 5) = ''_'' + @Lot
-                    OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 5) = ''_MCS'' + @Lot
-                    OR RIGHT(ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name), 5) = ''_mcs'' + @Lot
-                    OR ISNULL(NULLIF(pc.Pro_Name, ''''), pr.Pro_Name) LIKE ''%'' + @Lot
+                    pc.Pro_id IN (SELECT Pro_ID FROM #MatchingProIds)
+                    OR RIGHT(UPPER(ISNULL(pc.Pro_Name, '''')), 4) = UPPER(@Lot)
+                    OR RIGHT(UPPER(ISNULL(pc.Pro_Name, '''')), LEN(@Lot) + 1) = ''_'' + UPPER(@Lot)
+                    OR UPPER(ISNULL(pc.Pro_Name, '''')) LIKE ''%[_]'' + UPPER(@Lot)
               )
         )';
     END
@@ -284,6 +313,7 @@ BEGIN
     FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
         FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+        WHERE Comp_Id = @Comp_Id
     ) VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
     LEFT JOIN #TempDealerMaster TD ON MC.employeeID = TD.DealerTechnicianId AND MC.distributorID = TD.DealerCode
@@ -298,7 +328,7 @@ BEGIN
         FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
         WHERE pc.M_Consumerid = MC.M_Consumerid
           AND pc.Comp_Id = @Comp_Id
-          AND pc.Is_Success = 1
+          AND pc.Is_Success = ''1''
     ) PointsCash
     OUTER APPLY (
         SELECT ISNULL(SUM(t.Amount), 0) AS TotalRedeemed
@@ -335,6 +365,7 @@ BEGIN
         FROM (
             SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
             FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+            WHERE Comp_Id = @Comp_Id
         ) VKS
         INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
         LEFT JOIN #TempDealerMaster TD ON MC.employeeID = TD.DealerTechnicianId AND MC.distributorID = TD.DealerCode
@@ -397,5 +428,6 @@ BEGIN
     END
 
     DROP TABLE IF EXISTS #TempDealerMaster;
+    DROP TABLE IF EXISTS #MatchingProIds;
 END;
 GO

@@ -18,45 +18,46 @@ BEGIN
 
     -- =========================================================================
     -- STEP 0.1: Sync ClaimDetails with successful tblUPITransactionDetails records
-    -- (Pairs them chronologically by Comp_id, MobileNo, Amount and attempts on the same day)
+    -- Uses NEAREST TIMESTAMP matching to correctly pair records regardless of order
     -- =========================================================================
-    WITH UT_Ranked AS (
-        SELECT Id, Comp_Id, MobileNo, Amount, OrderId, Remarks, Status, ReqDate, account_no,
-               ROW_NUMBER() OVER(PARTITION BY Comp_Id, MobileNo, Amount, CAST(ReqDate AS DATE) ORDER BY ReqDate ASC) as AttemptNum
+    WITH SuccessUT AS (
+        SELECT Id, Comp_Id, MobileNo, Amount, OrderId, Remarks, Status, ReqDate, account_no
         FROM tblUPITransactionDetails
-        WHERE Comp_Id = @Comp_ID OR @Comp_ID IS NULL
+        WHERE Status = 'Success'
+          AND (Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
     ),
-    CD_Ranked AS (
-        SELECT Row_id, Comp_id, Mobileno, Amount, Isapproved, PaymentStatus, Claim_date,
-               ROW_NUMBER() OVER(PARTITION BY Comp_id, Mobileno, Amount, CAST(Claim_date AS DATE) ORDER BY Claim_date ASC) as AttemptNum
-        FROM ClaimDetails
-        WHERE Comp_id = @Comp_ID OR @Comp_ID IS NULL
-    ),
-    MatchedSuccess AS (
-        SELECT CD.Row_id, UT.OrderId, UT.Remarks, UT.ReqDate, UT.Status, UT.account_no, UT.Amount
-        FROM UT_Ranked UT
-        INNER JOIN CD_Ranked CD 
-           ON UT.Comp_Id = CD.Comp_id
-          AND UT.MobileNo = CD.Mobileno
-          AND UT.Amount = CD.Amount
-          AND UT.AttemptNum = CD.AttemptNum
-        WHERE UT.Status = 'Success'
-          AND CD.Isapproved <> 1
+    NearestMatch AS (
+        -- For each successful UT record, find the ClaimDetails record closest in time (that is not already success)
+        SELECT 
+            UT.Id AS UT_Id,
+            UT.OrderId, UT.Remarks, UT.ReqDate, UT.Status, UT.account_no, UT.Amount,
+            NEAREST.Row_id AS CD_RowId
+        FROM SuccessUT UT
+        CROSS APPLY (
+            SELECT TOP 1 Row_id
+            FROM ClaimDetails CD
+            WHERE CD.Comp_id = UT.Comp_Id
+              AND CD.Mobileno = UT.MobileNo
+              AND CD.Amount = UT.Amount
+              AND CD.Isapproved <> 1
+            ORDER BY ABS(DATEDIFF(second, UT.ReqDate, CD.Claim_date)) ASC
+        ) NEAREST
     )
     UPDATE CD
     SET CD.Isapproved = 1,
-        CD.PaymentStatus = M.Status,
+        CD.PaymentStatus = 'Success',
         CD.PaymentRemarks = M.Remarks,
         CD.BankRefID = M.OrderId,
         CD.TransactionDate = CONVERT(VARCHAR(30), M.ReqDate, 120),
-        CD.vendor_comment = CASE WHEN M.account_no IS NOT NULL AND M.account_no <> '' THEN 'IMPS Claim' ELSE 'UPI Claim' END,
+        -- vendor_comment = gateway remarks (e.g. 'Transaction Successful'), fallback to claim type
+        CD.vendor_comment = ISNULL(NULLIF(M.Remarks, ''), CASE WHEN M.account_no IS NOT NULL AND M.account_no <> '' THEN 'IMPS Claim' ELSE 'UPI Claim' END),
         CD.Points_Redeemed = CAST(M.Amount AS INT)
     FROM ClaimDetails CD
-    INNER JOIN MatchedSuccess M ON CD.Row_id = M.Row_id;
+    INNER JOIN NearestMatch M ON CD.Row_id = M.CD_RowId;
 
     -- =========================================================================
     -- STEP 0.2: Auto-Reject other duplicate ClaimDetails attempts
-    -- If a successful record exists, make sure other records on the same day are marked as Rejected (Isapproved = 2)
+    -- If a successful record exists, mark all other records on same day as Rejected
     -- =========================================================================
     WITH SuccessClaims AS (
         SELECT Comp_id, Mobileno, Amount, Row_id, Claim_date
@@ -66,7 +67,7 @@ BEGIN
     )
     UPDATE CD
     SET CD.Isapproved = 2,
-        CD.PaymentStatus = 'Failed',
+        CD.PaymentStatus = 'Rejected',
         CD.PaymentRemarks = 'Duplicate attempt of successful claim'
     FROM ClaimDetails CD
     INNER JOIN SuccessClaims SC 
@@ -101,25 +102,55 @@ BEGIN
       );
 
     -- =========================================================================
-    -- STEP 2: Auto-Reject duplicate failed claims for Non-Coupon/Manual Payouts
+    -- STEP 2: Auto-Cancel duplicate failed claims for Non-Coupon/Manual Payouts
     -- If a Success record exists for the same consumer + amount in a 24h window,
     -- mark duplicate failed attempts as 'Cancelled'
     -- =========================================================================
     UPDATE UT
-    SET UT.Status = 'Cancelled',
-        UT.FinalStatus = 'CANCELLED',
+    SET UT.Status      = 'Cancelled',
+        UT.FinalStatus  = 'CANCELLED',
         UT.FinalRemarks = 'Duplicate attempt of successful manual payout'
     FROM tblUPITransactionDetails UT
     WHERE UT.Status = 'Failed'
-      AND UT.Comp_Id = @Comp_ID
+      AND (UT.Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
       AND (ISNULL(UT.Code1, '0') = '0' OR ISNULL(UT.Code2, '0') = '0')
       AND EXISTS (
           SELECT 1 FROM tblUPITransactionDetails UT2
-          WHERE UT2.M_Consumerid = UT.M_Consumerid 
-            AND UT2.Status = 'Success'
+          WHERE UT2.Status = 'Success'
             AND UT2.Amount = UT.Amount
-            AND UT2.ReqDate BETWEEN DATEADD(hour, -24, UT.ReqDate) AND DATEADD(hour, 24, UT.ReqDate)
-            AND UT2.Id <> UT.Id
+            AND UT2.Id    <> UT.Id
+            AND (
+                -- Match by consumer ID (preferred)
+                UT2.M_Consumerid = UT.M_Consumerid
+                OR
+                -- Fallback: match by mobile number if consumer ID is same or missing
+                UT2.MobileNo = UT.MobileNo
+            )
+            AND UT2.ReqDate BETWEEN DATEADD(hour, -24, UT.ReqDate)
+                                AND DATEADD(hour,  24, UT.ReqDate)
+      );
+
+    -- =========================================================================
+    -- STEP 2.5: Auto-Cancel failed UPI transaction records where the claim has
+    -- already been successfully paid (confirmed via ClaimDetails.PaymentStatus).
+    -- This handles cases where STEP 1 & 2 miss records because Code1/Code2 are
+    -- blank/zero, or the success record falls outside the 24h window.
+    -- =========================================================================
+    UPDATE UT
+    SET UT.Status      = 'Cancelled',
+        UT.FinalStatus  = 'CANCELLED',
+        UT.FinalRemarks = 'Duplicate attempt of successful coupon claim'
+    FROM tblUPITransactionDetails UT
+    WHERE UT.Status = 'Failed'
+      AND (UT.Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
+      AND EXISTS (
+          SELECT 1
+          FROM ClaimDetails CD
+          WHERE CD.Comp_id  = UT.Comp_Id
+            AND CD.Mobileno = UT.MobileNo
+            AND CD.Amount   = UT.Amount
+            AND CD.PaymentStatus = 'Success'
+            AND CD.Isapproved    = 1
       );
 
     -- =========================================================================
