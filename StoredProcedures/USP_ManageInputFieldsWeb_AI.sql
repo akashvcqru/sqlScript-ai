@@ -15,7 +15,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_ManageInputFieldsWeb_AI]
     @FieldName VARCHAR(100),
     @Label VARCHAR(150),
     @FieldType VARCHAR(50),
-    @DefaultValidation VARCHAR(200) = NULL,
+    @DefaultValidation VARCHAR(1000) = NULL,
     @Placeholder VARCHAR(150) = NULL,
     @MaxLength INT = NULL,
     @IsActive BIT = 1,

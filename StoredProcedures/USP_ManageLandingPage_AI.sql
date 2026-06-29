@@ -70,7 +70,7 @@ BEGIN
                 DisplayOrder INT,
                 IsVisible BIT,
                 CustomLabel VARCHAR(150),
-                CustomValidation VARCHAR(200),
+                CustomValidation VARCHAR(1000),
                 DefaultValue VARCHAR(200)
             );
         END
@@ -120,7 +120,7 @@ BEGIN
                     DisplayOrder INT,
                     IsVisible BIT,
                     CustomLabel VARCHAR(150),
-                    CustomValidation VARCHAR(200),
+                    CustomValidation VARCHAR(1000),
                     DefaultValue VARCHAR(200)
                 );
             END
