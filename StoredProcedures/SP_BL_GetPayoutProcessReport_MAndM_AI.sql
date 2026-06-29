@@ -50,6 +50,24 @@ BEGIN
     END
 
     ------------------------------------------------------
+    -- Get matching Pro_IDs from Pro_Reg if Lot filter is provided
+    ------------------------------------------------------
+    IF OBJECT_ID('tempdb..#MatchingProIds') IS NOT NULL
+        DROP TABLE #MatchingProIds;
+        
+    CREATE TABLE #MatchingProIds (Pro_ID VARCHAR(50) PRIMARY KEY);
+
+    IF @Lot IS NOT NULL AND LTRIM(RTRIM(@Lot)) <> ''
+    BEGIN
+        INSERT INTO #MatchingProIds (Pro_ID)
+        SELECT DISTINCT Pro_ID 
+        FROM Pro_Reg WITH (NOLOCK)
+        WHERE RIGHT(UPPER(ISNULL(Pro_Name, '')), 4) = UPPER(@Lot)
+           OR RIGHT(UPPER(ISNULL(Pro_Name, '')), LEN(@Lot) + 1) = '_' + UPPER(@Lot)
+           OR UPPER(ISNULL(Pro_Name, '')) LIKE '%[_]' + UPPER(@Lot);
+    END
+
+    ------------------------------------------------------
     -- SBU Company Check Logic
     ------------------------------------------------------
     DECLARE @ActualCompId VARCHAR(15) = @Comp_Id;
@@ -236,16 +254,10 @@ BEGIN
         AND MC.M_Consumerid IN (
             SELECT DISTINCT pc.M_Consumerid 
             FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
-            LEFT JOIN dbo.M_Code mcd WITH (NOLOCK) ON mcd.Code1 = pc.Code1 AND mcd.Code2 = pc.Code2
-            LEFT JOIN dbo.Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = mcd.Pro_ID
             WHERE pc.Comp_Id = @Comp_Id
-              AND pc.Is_Success = 1
+              AND pc.Is_Success = ''1''
               AND (
-                    -- Match via Pro_Reg Pro_Name (canonical name from product registration)
-                    RIGHT(UPPER(ISNULL(pr.Pro_Name, '''')), 4) = UPPER(@Lot)
-                    OR RIGHT(UPPER(ISNULL(pr.Pro_Name, '''')), LEN(@Lot) + 1) = ''_'' + UPPER(@Lot)
-                    OR UPPER(ISNULL(pr.Pro_Name, '''')) LIKE ''%[_]'' + UPPER(@Lot)
-                    -- Match via Pro_Name stored directly on the transaction record
+                    pc.Pro_id IN (SELECT Pro_ID FROM #MatchingProIds)
                     OR RIGHT(UPPER(ISNULL(pc.Pro_Name, '''')), 4) = UPPER(@Lot)
                     OR RIGHT(UPPER(ISNULL(pc.Pro_Name, '''')), LEN(@Lot) + 1) = ''_'' + UPPER(@Lot)
                     OR UPPER(ISNULL(pc.Pro_Name, '''')) LIKE ''%[_]'' + UPPER(@Lot)
@@ -301,6 +313,7 @@ BEGIN
     FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
         FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+        WHERE Comp_Id = @Comp_Id
     ) VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
     LEFT JOIN #TempDealerMaster TD ON MC.employeeID = TD.DealerTechnicianId AND MC.distributorID = TD.DealerCode
@@ -315,7 +328,7 @@ BEGIN
         FROM dbo.ConsumerPointsCashDetails pc WITH (NOLOCK)
         WHERE pc.M_Consumerid = MC.M_Consumerid
           AND pc.Comp_Id = @Comp_Id
-          AND pc.Is_Success = 1
+          AND pc.Is_Success = ''1''
     ) PointsCash
     OUTER APPLY (
         SELECT ISNULL(SUM(t.Amount), 0) AS TotalRedeemed
@@ -352,6 +365,7 @@ BEGIN
         FROM (
             SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
             FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+            WHERE Comp_Id = @Comp_Id
         ) VKS
         INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
         LEFT JOIN #TempDealerMaster TD ON MC.employeeID = TD.DealerTechnicianId AND MC.distributorID = TD.DealerCode
@@ -414,5 +428,6 @@ BEGIN
     END
 
     DROP TABLE IF EXISTS #TempDealerMaster;
+    DROP TABLE IF EXISTS #MatchingProIds;
 END;
 GO
