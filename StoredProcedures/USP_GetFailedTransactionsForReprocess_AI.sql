@@ -211,32 +211,58 @@ BEGIN
     -- STEP 3: Select remaining genuine failed transactions for reprocessing
     -- =========================================================================
     SELECT 
-        Id, 
-        Comp_Id, 
-        M_Consumerid, 
-        MobileNo, 
-        ConsumerName, 
-        ConsumerEmailId, 
-        Code1, 
-        Code2, 
-        Amount, 
-        UPI_Id, 
-        account_no, 
-        ifsc_code, 
-        benef_name,
-		Remarks,
-		FinalRemarks,
-		FinalStatus
-    FROM tblUPITransactionDetails 
-    WHERE Status = 'Failed' and Remarks in(
+        UT.Id, 
+        UT.Comp_Id, 
+        UT.M_Consumerid, 
+        UT.MobileNo, 
+        UT.ConsumerName, 
+        UT.ConsumerEmailId, 
+        UT.Code1, 
+        UT.Code2, 
+        UT.Amount, 
+        UT.UPI_Id, 
+        CASE 
+            WHEN ISNULL(MBA.Account_No, '') <> '' THEN MBA.Account_No
+            WHEN ISNULL(UT.account_no, '') <> '' THEN UT.account_no
+            ELSE ISNULL(MBAA.Account_No, '')
+        END AS account_no, 
+        CASE 
+            WHEN ISNULL(MBA.Account_No, '') <> '' THEN MBA.IFSC_Code
+            WHEN ISNULL(UT.account_no, '') <> '' THEN UT.ifsc_code
+            ELSE ISNULL(MBAA.IFSC_Code, '')
+        END AS ifsc_code, 
+        CASE 
+            WHEN ISNULL(MBA.Account_No, '') <> '' THEN MBA.Account_HolderNm
+            WHEN ISNULL(UT.account_no, '') <> '' THEN UT.benef_name
+            ELSE ISNULL(MBAA.Account_HolderNm, '')
+        END AS benef_name,
+		UT.Remarks,
+		UT.FinalRemarks,
+		UT.FinalStatus
+    FROM tblUPITransactionDetails UT
+    OUTER APPLY (
+        SELECT TOP 1 Account_No, IFSC_Code, Account_HolderNm 
+        FROM dbo.M_BankAccount WITH (NOLOCK) 
+        WHERE M_Consumerid = UT.M_Consumerid 
+          AND ISNULL(Account_No, '') <> ''
+        ORDER BY Row_ID DESC
+    ) MBA
+    OUTER APPLY (
+        SELECT TOP 1 Account_No, IFSC_Code, Account_HolderNm 
+        FROM dbo.M_BankAccount_Audit WITH (NOLOCK) 
+        WHERE M_Consumerid = UT.M_Consumerid 
+          AND ISNULL(Account_No, '') <> ''
+        ORDER BY Row_ID DESC
+    ) MBAA
+    WHERE UT.Status = 'Failed' and UT.Remarks in(
 	'Insufficient wallet balance for debit'
 	,'Service Provider Downtime'
 	,'Insufficient Wallet Balance'
 	,'BENEFICIARY BANK IS DOWN',
 	'Beneficiary Bank is not responding, try again later'
 	,'TRANSACTION TYPE NOT SUPPORTED'
-	) and LEN(Code1)=5 and LEN(Code2)=8
-	and Comp_Id=@Comp_ID
-      AND ReqDate >'2026-05-10 00:00:17.100'
-    ORDER BY Id ASC;
+	) and LEN(UT.Code1)=5 and LEN(UT.Code2)=8
+	and UT.Comp_Id=@Comp_ID
+      AND UT.ReqDate >'2026-05-10 00:00:17.100'
+    ORDER BY UT.Id ASC;
 END;
