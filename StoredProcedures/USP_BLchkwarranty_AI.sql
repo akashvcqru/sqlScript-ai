@@ -23,7 +23,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_BLchkwarranty_AI]
     @Latitude VARCHAR(50) = NULL,
     @Longitude VARCHAR(50) = NULL,
     @Role_Id INT = NULL,
-    @Remark NVARCHAR(MAX) = NULL
+    @Remark NVARCHAR(MAX) = NULL,
+    @ImagePath NVARCHAR(400) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -48,8 +49,8 @@ BEGIN
     BEGIN
         SET @TableName = 'M_Code';
         SELECT TOP 1 
-            @RowID = Row_ID, 
-            @UseCount = ISNULL(Use_Count, 0), 
+            @RowID = mc.Row_ID, 
+            @UseCount = ISNULL(mc.Use_Count, 0), 
             @ActualCompID = pr.Comp_ID,
             @ProID = mc.Pro_ID
         FROM M_Code mc
@@ -60,8 +61,8 @@ BEGIN
     BEGIN
         SET @TableName = 'M_Code_PFL';
         SELECT TOP 1 
-            @RowID = Row_ID, 
-            @UseCount = ISNULL(Use_Count, 0), 
+            @RowID = mc.Row_ID, 
+            @UseCount = ISNULL(mc.Use_Count, 0), 
             @ActualCompID = pr.Comp_ID,
             @ProID = mc.Pro_ID
         FROM M_Code_PFL mc
@@ -343,12 +344,12 @@ BEGIN
         INSERT INTO [dbo].[WarrentyDetails] (
             Code, Mobile, Email, WarrantyPeriod, ExpirationDate, 
             PurchaseDate, Comment, IsWarrantyClaimed, VendorClaimStatus, 
-            claimdate, Brand, Comp_id, State, City, Pincode, Address
+            claimdate, Brand, Comp_id, State, City, Pincode, Address, ImagePath
         )
         VALUES (
             @CodeKey, @MobileNo, @Email, CAST(@WarrantyPeriod AS VARCHAR(50)), @ExpirationDate, 
             ISNULL(@PurchaseDate, GETDATE()), ISNULL(@Remark, 'Registered via Web API'), NULL, NULL, 
-            GETDATE(), @BrandName, ISNULL(@Comp_ID, @ActualCompID), @State, @City, @PinCode, @Address
+            GETDATE(), @BrandName, ISNULL(@Comp_ID, @ActualCompID), @State, @City, @PinCode, @Address, @ImagePath
         );
 
         -- Find or Create Consumer in M_Consumer (optional but good practice to sync)
