@@ -11,7 +11,8 @@ GO
 -- Used By: ReprocessTransactionService (Scenario 1 Execution)
 -- ====================================================================
 ALTER   PROCEDURE [dbo].[USP_GetFailedTransactionsForReprocess_AI]
-    @Comp_ID VARCHAR(50) = NULL
+    @Comp_ID VARCHAR(50) = NULL,
+    @TransactionIds VARCHAR(MAX) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -254,15 +255,29 @@ BEGIN
           AND ISNULL(Account_No, '') <> ''
         ORDER BY Row_ID DESC
     ) MBAA
-    WHERE UT.Status = 'Failed' and UT.Remarks in(
-	'Insufficient wallet balance for debit'
-	,'Service Provider Downtime'
-	,'Insufficient Wallet Balance'
-	,'BENEFICIARY BANK IS DOWN',
-	'Beneficiary Bank is not responding, try again later'
-	,'TRANSACTION TYPE NOT SUPPORTED'
-	) and LEN(UT.Code1)=5 and LEN(UT.Code2)=8
-	and UT.Comp_Id=@Comp_ID
-      AND UT.ReqDate >'2026-05-10 00:00:17.100'
+    WHERE UT.Status = 'Failed'
+      AND (
+          (
+              @TransactionIds IS NOT NULL 
+              AND UT.Id IN (SELECT TRY_CAST(value AS BIGINT) FROM STRING_SPLIT(@TransactionIds, ','))
+              AND (UT.Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
+          )
+          OR
+          (
+              @TransactionIds IS NULL
+              AND UT.Remarks IN (
+                  'Insufficient wallet balance for debit',
+                  'Service Provider Downtime',
+                  'Insufficient Wallet Balance',
+                  'BENEFICIARY BANK IS DOWN',
+                  'Beneficiary Bank is not responding, try again later',
+                  'TRANSACTION TYPE NOT SUPPORTED'
+              )
+              AND LEN(UT.Code1) = 5 
+              AND LEN(UT.Code2) = 8
+              AND UT.Comp_Id = @Comp_ID
+              AND UT.ReqDate > '2026-05-10 00:00:17.100'
+          )
+      )
     ORDER BY UT.Id ASC;
 END;
