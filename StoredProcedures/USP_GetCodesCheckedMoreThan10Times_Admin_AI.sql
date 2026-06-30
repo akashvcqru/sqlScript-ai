@@ -103,7 +103,8 @@ BEGIN
         c.Comp_Name AS CompanyName,
         fc.CodeCheckCount,
         fc.LastCodeCheckTime,
-        pr.Pro_Entry_Date AS ProRegDate
+        pr.Pro_Entry_Date AS ProRegDate,
+        CAST(CASE WHEN mc.Code1 IS NOT NULL THEN 1 ELSE 0 END AS BIT) AS IsMyCode
     FROM FlaggedCodes fc
     INNER JOIN Comp_Reg c WITH (NOLOCK) ON fc.Comp_ID = c.Comp_ID
     LEFT JOIN M_Code mc WITH (NOLOCK) ON mc.Code1 = TRY_CAST(fc.Received_Code1 AS NUMERIC(5,0)) AND mc.Code2 = TRY_CAST(fc.Received_Code2 AS NUMERIC(8,0))
