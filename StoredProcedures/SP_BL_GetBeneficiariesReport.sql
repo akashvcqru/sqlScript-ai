@@ -39,6 +39,11 @@ BEGIN
     ELSE
         INSERT INTO @CompanyList VALUES (@Comp_Id);
 
+    DECLARE @Multiplier DECIMAL(18,2) = 1.00;
+    SELECT TOP 1 @Multiplier = 1.00 + (calculation_value / 100.0) 
+    FROM loyalty_calculation 
+    WHERE comp_id = @Comp_Id AND isactive = 1 AND isdelete = 0;
+
     ---------------------------------------------------------
     -- DATE RANGE
     ---------------------------------------------------------
@@ -205,19 +210,48 @@ BEGIN
 
     -- 2. Get Earned Points
     SELECT
-        MC.M_Codeid,
-        MAX(CAST(
-            CASE 
-                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(BL.Cash, 0) * 1.10
-                ELSE ISNULL(BL.Points, 0)
-            END 
-        AS DECIMAL(18,2))) AS Points
+        M_Codeid,
+        SUM(Points) AS Points
     INTO #EarnedPoints
-    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-    INNER JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
-    INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-    INNER JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
-    GROUP BY MC.M_Codeid;
+    FROM (
+        SELECT
+            MC.M_Codeid,
+            CAST(
+                CASE 
+                    WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
+                    ELSE ISNULL(BL.Points, 0)
+                END 
+            AS DECIMAL(18,2)) AS Points
+        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        INNER JOIN (
+            SELECT Pkid, M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY M_Consumer_MCOdeid ORDER BY Createdate ASC) as rn
+            FROM BuiltLoyaltyMCodeCheck
+        ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
+        INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
+
+        UNION ALL
+
+        SELECT
+            MC.M_Codeid,
+            CAST(
+                CASE 
+                    WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
+                    ELSE ISNULL(BL.Points, 0)
+                END 
+            AS DECIMAL(18,2)) AS Points
+        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        INNER JOIN (
+            SELECT Pkid, M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY M_Consumer_MCOdeid ORDER BY Createdate ASC) as rn
+            FROM BuiltLoyaltyMCodeCheck
+        ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
+        INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
+        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID
+        INNER JOIN @CompanyList CL ON PR.Comp_ID = CL.Comp_Id
+        WHERE BL.compid IS NULL
+    ) x
+    GROUP BY M_Codeid;
 
     CREATE CLUSTERED INDEX IX_EarnedPoints_MCodeid ON #EarnedPoints(M_Codeid);
 
@@ -226,8 +260,8 @@ BEGIN
         US.M_Codeid,
         MAX(CAST(
             CASE 
-                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
-                ELSE CASE WHEN SST.Points IS NULL OR SST.Points = 0 THEN ISNULL(SST.IsCash, 0) ELSE SST.Points END
+                WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
+                ELSE ISNULL(SST.IsCash, 0) * @Multiplier
             END 
         AS DECIMAL(18,2))) AS ConfigPoints
     INTO #ConfigPoints
@@ -248,7 +282,7 @@ BEGIN
     -- 4. Aggregate into #Benefit
     SELECT
         MC.M_ConsumerId,
-        SUM(ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0))) AS Benefit,
+        SUM(ISNULL(P.Points, ISNULL(CP.ConfigPoints, 0))) AS Benefit,
         MAX(E.Enq_Date) AS LastScan
     INTO #Benefit
     FROM #UniqueScans E
@@ -269,7 +303,7 @@ BEGIN
     INTO #Referrals
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
-    WHERE LOWER(BL.ServiceName) = 'refral'
+    WHERE LOWER(BL.ServiceName) IN ('refral', 'referral')
       AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
       AND (@EndDate   IS NULL OR BL.UpdateDate < @EndDate)
     GROUP BY BL.M_Consumerid;
