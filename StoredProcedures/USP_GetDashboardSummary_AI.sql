@@ -155,7 +155,7 @@ BEGIN
     -- Aggregate into #ConfiguredPoints
     SELECT
         COALESCE(SS.Service_ID, 'SRV1001') AS Service_ID,
-        SUM(ISNULL(CP.ConfigPoints, ISNULL(EP.Points, 0))) AS ServiceTotalPoints,
+        SUM(ISNULL(EP.Points, ISNULL(CP.ConfigPoints, 0))) AS ServiceTotalPoints,
         SUM(ISNULL(CP.ConfigCash, 0)) AS ServiceTotalCash
     INTO #ConfiguredPoints
     FROM #UserScans US
@@ -172,7 +172,7 @@ BEGIN
     DECLARE @TotalConfigCash DECIMAL(18,2) = 0;
 
     SELECT 
-        @TotalConfigPoints = ISNULL(SUM(ISNULL(CP.ConfigPoints, ISNULL(EP.Points, 0))), 0),
+        @TotalConfigPoints = ISNULL(SUM(ISNULL(EP.Points, ISNULL(CP.ConfigPoints, 0))), 0),
         @TotalConfigCash = ISNULL(SUM(ISNULL(CP.ConfigCash, 0)), 0)
     FROM #UserScans US
     LEFT JOIN (
