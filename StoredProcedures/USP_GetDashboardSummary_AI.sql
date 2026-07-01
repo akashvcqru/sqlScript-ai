@@ -231,7 +231,11 @@ BEGIN
     FROM Transactions WITH (NOLOCK)
     WHERE CompId = REPLACE(@CompID, 'Comp-', '')
       AND IsSuccess = 1
-      AND M_CounserID = CAST(@M_Consumerid AS VARCHAR(50));
+      AND M_CounserID = CAST(@M_Consumerid AS VARCHAR(50)) AND 
+	  (
+        @CompID <> 'Comp-1152'
+        OR TransactionDate > '2022-11-25'
+      );
 
     DECLARE @UPIAmount DECIMAL(18,2) = 0;
     SELECT @UPIAmount = ISNULL(SUM(ISNULL(Amount, 0)), 0)
