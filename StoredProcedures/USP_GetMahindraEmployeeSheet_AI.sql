@@ -109,7 +109,7 @@ BEGIN
             Status, EmpKYCStatus, VendorCode, BankAccountNo, BankKycStatus, PanNo, PanKycStatus,
             IDNo, IDProof, BankKycUpdatedOn, PanCardKycUpdatedOn, BankKycProceedByAgencyOn,
             PanCardKycProceedByAgencyOn, SapVendorCodeConfirmationReadOn, AgencyRemarkBank,
-            AgencyRemarkPancard, ResignedDate, Age, EmpCount, D_Status, Created_Date, Created_By,
+            AgencyRemarkPancard, ResignedDate, Age, EmpCount, D_Status, Created_Date, Created_Date AS Enq_Date, Created_By,
             D_Name, Comp_id, Proprietor1, Proprietor2, Proprietor3
         FROM m_dealermaster_mahindra_emp WITH (NOLOCK)
         WHERE Comp_id = @Comp_id
