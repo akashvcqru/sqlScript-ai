@@ -92,10 +92,18 @@ BEGIN
             @OrigProIdTo NVARCHAR(50),
             @SeriesOrderTo INT,
             @SerialTo INT,
-            @TargetProId NVARCHAR(50);
+            @TargetProId NVARCHAR(50),
+            @TotalExpected INT,
+            @ActualCount INT,
+            @UsedCount INT,
+            @AlreadyReassignedCount INT,
+            @BatchNoStr NVARCHAR(50),
+            @TProRowId BIGINT,
+            @ServiceId NVARCHAR(50);
 
     DECLARE @RowNumber INT = 0;
     DECLARE @SuccessCount INT = 0;
+    DECLARE @FailedRows NVARCHAR(MAX) = '';
 
     BEGIN TRY
         BEGIN TRANSACTION;
@@ -115,15 +123,30 @@ BEGIN
         BEGIN
             SET @RowNumber = @RowNumber + 1;
 
+            -- Reset variables for each iteration
+            SET @SerialFrom = NULL;
+            SET @SeriesOrderFrom = NULL;
+            SET @OrigProId = NULL;
+            SET @SerialTo = NULL;
+            SET @SeriesOrderTo = NULL;
+            SET @OrigProIdTo = NULL;
+            SET @TargetProId = NULL;
+            SET @TotalExpected = NULL;
+            SET @ActualCount = NULL;
+            SET @UsedCount = NULL;
+            SET @AlreadyReassignedCount = NULL;
+            SET @BatchNoStr = NULL;
+            SET @TProRowId = NULL;
+            SET @ServiceId = NULL;
+
             -- 1. Parse AssignFromSeries (Expected format: PROID-ORDER-SERIAL, e.g., BJ02-0012-5436)
             DECLARE @LastHyphenFrom INT = CHARINDEX('-', REVERSE(@AssignFromSeries));
             DECLARE @SecondLastHyphenFrom INT = CHARINDEX('-', REVERSE(@AssignFromSeries), @LastHyphenFrom + 1);
             
             IF @LastHyphenFrom = 0 OR @SecondLastHyphenFrom = 0
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Invalid format for AssignFromSeries. Expected PROID-ORDER-SERIAL.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Invalid AssignFromSeries format)';
+                GOTO NEXT_ROW;
             END
 
             SET @SerialFrom = TRY_CAST(REVERSE(SUBSTRING(REVERSE(@AssignFromSeries), 1, @LastHyphenFrom - 1)) AS INT);
@@ -132,9 +155,8 @@ BEGIN
 
             IF @SerialFrom IS NULL OR @SeriesOrderFrom IS NULL OR @OrigProId IS NULL OR @OrigProId = ''
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Could not parse numeric or product values from AssignFromSeries.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Parse error in AssignFromSeries)';
+                GOTO NEXT_ROW;
             END
 
             -- 2. Parse AssignToSeries (Expected format: PROID-ORDER-SERIAL, e.g., BJ02-0012-5440)
@@ -143,9 +165,8 @@ BEGIN
 
             IF @LastHyphenTo = 0 OR @SecondLastHyphenTo = 0
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Invalid format for AssignToSeries. Expected PROID-ORDER-SERIAL.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Invalid AssignToSeries format)';
+                GOTO NEXT_ROW;
             END
 
             SET @SerialTo = TRY_CAST(REVERSE(SUBSTRING(REVERSE(@AssignToSeries), 1, @LastHyphenTo - 1)) AS INT);
@@ -154,25 +175,22 @@ BEGIN
 
             IF @SerialTo IS NULL OR @SeriesOrderTo IS NULL OR @OrigProIdTo IS NULL OR @OrigProIdTo = ''
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Could not parse numeric or product values from AssignToSeries.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Parse error in AssignToSeries)';
+                GOTO NEXT_ROW;
             END
 
             -- Validation: Must belong to same original product
             IF @OrigProId <> @OrigProIdTo
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': From and To series must belong to the same product.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (From and To products mismatch)';
+                GOTO NEXT_ROW;
             END
 
             -- Validation: From should not be greater than To
             IF @SeriesOrderFrom > @SeriesOrderTo OR (@SeriesOrderFrom = @SeriesOrderTo AND @SerialFrom > @SerialTo)
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': From series cannot be greater than To series.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (From series greater than To series)';
+                GOTO NEXT_ROW;
             END
 
             -- 3. Set TargetProId from AssignToProID
@@ -180,44 +198,35 @@ BEGIN
 
             IF @TargetProId IS NULL OR @TargetProId = ''
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Target Product ID is empty.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Target product empty)';
+                GOTO NEXT_ROW;
             END
 
             -- Validation: Original and Target cannot be the same
             IF @OrigProId = @TargetProId
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Target product cannot be the same as original product.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Target same as original product)';
+                GOTO NEXT_ROW;
             END
 
             -- 4. Check company ownership of products in Pro_Reg
             IF NOT EXISTS (SELECT 1 FROM Pro_Reg WITH(NOLOCK) WHERE Pro_ID = @OrigProId AND Comp_ID = @Comp_ID)
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Original product ' + @OrigProId + ' does not belong to this company.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Original product not owned by company)';
+                GOTO NEXT_ROW;
             END
 
             IF NOT EXISTS (SELECT 1 FROM Pro_Reg WITH(NOLOCK) WHERE Pro_ID = @TargetProId AND Comp_ID = @Comp_ID)
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Target product ' + @TargetProId + ' does not belong to this company.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Target product not owned by company)';
+                GOTO NEXT_ROW;
             END
 
             -- 5. Validate that codes exist in the specified range and are not used (Use_Count is 0 or NULL) and not already reassigned
-            DECLARE @TotalExpected INT;
             IF @SeriesOrderFrom = @SeriesOrderTo
                 SET @TotalExpected = @SerialTo - @SerialFrom + 1;
             ELSE
                 SET @TotalExpected = (10000 - @SerialFrom) + ((@SeriesOrderTo - @SeriesOrderFrom - 1) * 10000) + (@SerialTo + 1);
-
-            DECLARE @ActualCount INT;
-            DECLARE @UsedCount INT;
-            DECLARE @AlreadyReassignedCount INT;
 
             SELECT 
                 @ActualCount = COUNT(*),
@@ -237,36 +246,30 @@ BEGIN
 
             IF ISNULL(@ActualCount, 0) < @TotalExpected
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Specified series range contains missing codes in M_Code.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Missing codes in M_Code)';
+                GOTO NEXT_ROW;
             END
 
             IF ISNULL(@UsedCount, 0) > 0
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Specified series range contains already used codes.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Contains already used codes)';
+                GOTO NEXT_ROW;
             END
 
             IF ISNULL(@AlreadyReassignedCount, 0) > 0
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Specified series range contains codes that have already been reassigned.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Contains already reassigned codes)';
+                GOTO NEXT_ROW;
             END
 
             -- 6. Validate ExpiryDate is not in the past
             IF @ExpiryDate IS NOT NULL AND CAST(@ExpiryDate AS DATE) < CAST(GETDATE() AS DATE)
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Row ' + CAST(@RowNumber AS VARCHAR(10)) + ': Expiry Date cannot be in the past.' AS message;
-                RETURN;
+                SET @FailedRows = @FailedRows + CASE WHEN @FailedRows = '' THEN '' ELSE ', ' END + CAST(@RowNumber AS VARCHAR(10)) + ' (Expiry date in the past)';
+                GOTO NEXT_ROW;
             END
 
             -- 7. Get Batch ID (T_Pro_Row_ID) from M_Code for first code in the range
-            DECLARE @BatchNoStr NVARCHAR(50) = NULL;
-            DECLARE @TProRowId BIGINT = NULL;
 
             SELECT TOP 1 @BatchNoStr = Batch_No
             FROM M_Code WITH(NOLOCK)
@@ -281,7 +284,7 @@ BEGIN
             END
 
             -- 8. Get active ServiceId from M_ServiceSubscription for the original product
-            DECLARE @ServiceId NVARCHAR(50) = '';
+            SET @ServiceId = '';
             SELECT TOP 1 @ServiceId = Service_ID 
             FROM M_ServiceSubscription WITH (NOLOCK)
             WHERE Pro_ID = @OrigProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
@@ -343,6 +346,7 @@ BEGIN
 
             SET @SuccessCount = @SuccessCount + 1;
 
+        NEXT_ROW:
             FETCH NEXT FROM reassign_cursor INTO 
                 @AssignFromSeries, @AssignToSeries, @AssignToProID, 
                 @BatchNumber, @ManufacturingDate, @ExpiryDate;
@@ -353,7 +357,17 @@ BEGIN
 
         COMMIT TRANSACTION;
 
-        SELECT 1 AS success, 'Bulk reassignment completed successfully. ' + CAST(@SuccessCount AS VARCHAR(10)) + ' ranges reassigned.' AS message;
+        IF @SuccessCount > 0
+        BEGIN
+            IF ISNULL(@FailedRows, '') = ''
+                SELECT 1 AS success, 'Bulk reassignment completed successfully. ' + CAST(@SuccessCount AS VARCHAR(10)) + ' ranges reassigned.' AS message;
+            ELSE
+                SELECT 1 AS success, 'Bulk reassignment completed. ' + CAST(@SuccessCount AS VARCHAR(10)) + ' ranges reassigned. Skipped rows with issues: ' + @FailedRows AS message;
+        END
+        ELSE
+        BEGIN
+            SELECT 0 AS success, 'Bulk reassignment failed. All rows had issues: ' + @FailedRows AS message;
+        END
 
     END TRY
     BEGIN CATCH

@@ -11,7 +11,8 @@ GO
 -- Used By: ReprocessTransactionService (Scenario 1 Execution)
 -- ====================================================================
 ALTER   PROCEDURE [dbo].[USP_GetFailedTransactionsForReprocess_AI]
-    @Comp_ID VARCHAR(50) = NULL
+    @Comp_ID VARCHAR(50) = NULL,
+    @TransactionIds VARCHAR(MAX) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -143,6 +144,7 @@ BEGIN
     FROM tblUPITransactionDetails UT
     WHERE UT.Status = 'Failed'
       AND (UT.Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
+      AND (ISNULL(NULLIF(LTRIM(RTRIM(UT.Code1)), '0'), '') = '' OR ISNULL(NULLIF(LTRIM(RTRIM(UT.Code2)), '0'), '') = '')
       AND EXISTS (
           SELECT 1
           FROM ClaimDetails CD
@@ -154,35 +156,128 @@ BEGIN
       );
 
     -- =========================================================================
+    -- STEP 2.7: Auto-Cancel failed Coupon check transaction records where the user
+    -- has already successfully claimed/redeemed the amount via manual payout.
+    -- Uses running totals to ensure we only cancel failed transactions up to the
+    -- cumulative successfully claimed amount, and only for claims requested after
+    -- the failed transaction date.
+    -- =========================================================================
+    ;WITH FailedCouponTxns AS (
+        SELECT 
+            Id,
+            MobileNo,
+            Comp_Id,
+            Amount,
+            ReqDate,
+            SUM(Amount) OVER (PARTITION BY MobileNo, Comp_Id ORDER BY Id ASC) AS CumulativeFailed
+        FROM tblUPITransactionDetails
+        WHERE Status = 'Failed'
+          AND ISNULL(Code1, '0') <> '0'
+          AND ISNULL(Code2, '0') <> '0'
+          AND LEN(Code1) = 5
+          AND LEN(Code2) = 8
+          AND (Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
+    ),
+    SuccessfulManualPayouts AS (
+        SELECT 
+            Id,
+            MobileNo,
+            Comp_Id,
+            Amount,
+            ReqDate,
+            SUM(Amount) OVER (PARTITION BY MobileNo, Comp_Id ORDER BY Id ASC) AS CumulativePaid
+        FROM tblUPITransactionDetails
+        WHERE Status = 'Success'
+          AND (ISNULL(NULLIF(LTRIM(RTRIM(Code1)), '0'), '') = '' OR ISNULL(NULLIF(LTRIM(RTRIM(Code2)), '0'), '') = '')
+          AND (Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
+    ),
+    Matched AS (
+        SELECT 
+            F.Id
+        FROM FailedCouponTxns F
+        INNER JOIN SuccessfulManualPayouts P
+           ON P.MobileNo = F.MobileNo 
+          AND P.Comp_Id = F.Comp_Id
+          AND P.ReqDate >= F.ReqDate
+          AND P.CumulativePaid >= F.CumulativeFailed
+    )
+    UPDATE UT
+    SET UT.Status      = 'Cancelled',
+        UT.FinalStatus  = 'CANCELLED',
+        UT.FinalRemarks = 'Claimed via manual payout'
+    FROM tblUPITransactionDetails UT
+    INNER JOIN Matched M ON UT.Id = M.Id;
+
+    -- =========================================================================
     -- STEP 3: Select remaining genuine failed transactions for reprocessing
     -- =========================================================================
     SELECT 
-        Id, 
-        Comp_Id, 
-        M_Consumerid, 
-        MobileNo, 
-        ConsumerName, 
-        ConsumerEmailId, 
-        Code1, 
-        Code2, 
-        Amount, 
-        UPI_Id, 
-        account_no, 
-        ifsc_code, 
-        benef_name,
-		Remarks,
-		FinalRemarks,
-		FinalStatus
-    FROM tblUPITransactionDetails 
-    WHERE Status = 'Failed' and Remarks in(
-	'Insufficient wallet balance for debit'
-	,'Service Provider Downtime'
-	,'Insufficient Wallet Balance'
-	,'BENEFICIARY BANK IS DOWN',
-	'Beneficiary Bank is not responding, try again later'
-	,'TRANSACTION TYPE NOT SUPPORTED'
-	) and LEN(Code1)=5 and LEN(Code2)=8
-	and Comp_Id=@Comp_ID
-      AND ReqDate >'2026-05-10 00:00:17.100'
-    ORDER BY Id ASC;
+        UT.Id, 
+        UT.Comp_Id, 
+        UT.M_Consumerid, 
+        UT.MobileNo, 
+        UT.ConsumerName, 
+        UT.ConsumerEmailId, 
+        UT.Code1, 
+        UT.Code2, 
+        UT.Amount, 
+        UT.UPI_Id, 
+        CASE 
+            WHEN ISNULL(MBA.Account_No, '') <> '' THEN MBA.Account_No
+            WHEN ISNULL(UT.account_no, '') <> '' THEN UT.account_no
+            ELSE ISNULL(MBAA.Account_No, '')
+        END AS account_no, 
+        CASE 
+            WHEN ISNULL(MBA.Account_No, '') <> '' THEN MBA.IFSC_Code
+            WHEN ISNULL(UT.account_no, '') <> '' THEN UT.ifsc_code
+            ELSE ISNULL(MBAA.IFSC_Code, '')
+        END AS ifsc_code, 
+        CASE 
+            WHEN ISNULL(MBA.Account_No, '') <> '' THEN MBA.Account_HolderNm
+            WHEN ISNULL(UT.account_no, '') <> '' THEN UT.benef_name
+            ELSE ISNULL(MBAA.Account_HolderNm, '')
+        END AS benef_name,
+		UT.Remarks,
+		UT.FinalRemarks,
+		UT.FinalStatus
+    FROM tblUPITransactionDetails UT
+    OUTER APPLY (
+        SELECT TOP 1 Account_No, IFSC_Code, Account_HolderNm 
+        FROM dbo.M_BankAccount WITH (NOLOCK) 
+        WHERE M_Consumerid = UT.M_Consumerid 
+          AND ISNULL(Account_No, '') <> ''
+        ORDER BY Row_ID DESC
+    ) MBA
+    OUTER APPLY (
+        SELECT TOP 1 Account_No, IFSC_Code, Account_HolderNm 
+        FROM dbo.M_BankAccount_Audit WITH (NOLOCK) 
+        WHERE M_Consumerid = UT.M_Consumerid 
+          AND ISNULL(Account_No, '') <> ''
+        ORDER BY Row_ID DESC
+    ) MBAA
+    WHERE UT.Status = 'Failed'
+      AND (
+          (
+              @TransactionIds IS NOT NULL 
+              AND UT.Id IN (SELECT TRY_CAST(value AS BIGINT) FROM STRING_SPLIT(@TransactionIds, ','))
+              AND (UT.Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
+          )
+          OR
+          (
+              @TransactionIds IS NULL
+              AND UT.Remarks IN (
+                  'Insufficient wallet balance for debit',
+                  'Service Provider Downtime',
+                  'Insufficient Wallet Balance',
+                  'BENEFICIARY BANK IS DOWN',
+                  'Beneficiary Bank is not responding, try again later',
+                  'TRANSACTION TYPE NOT SUPPORTED'
+              )
+              AND LEN(UT.Code1) = 5 
+              AND LEN(UT.Code2) = 8
+              AND UT.Comp_Id = @Comp_ID
+              AND UT.ReqDate > '2026-05-10 00:00:17.100'
+          )
+      )
+    ORDER BY UT.Id ASC;
 END;

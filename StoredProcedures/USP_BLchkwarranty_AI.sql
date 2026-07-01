@@ -23,7 +23,11 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_BLchkwarranty_AI]
     @Latitude VARCHAR(50) = NULL,
     @Longitude VARCHAR(50) = NULL,
     @Role_Id INT = NULL,
-    @Remark NVARCHAR(MAX) = NULL
+    @Remark NVARCHAR(MAX) = NULL,
+    @ImagePath NVARCHAR(400) = NULL,
+    @BillNo NVARCHAR(50) = NULL,
+    @PurchaseFrom VARCHAR(50) = NULL,
+    @ImagePathBill NVARCHAR(200) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -36,6 +40,7 @@ BEGIN
     DECLARE @ProID VARCHAR(50) = NULL;
     DECLARE @TableName NVARCHAR(50) = 'M_Code';
     DECLARE @M_ConsumerID INT = NULL;
+    DECLARE @ResolvedServiceId VARCHAR(50) = 'SRV1023';
 
     -- 1. Normalize Mobile (add 91 if 10 digits)
     IF @MobileNo IS NOT NULL AND LEN(@MobileNo) = 10
@@ -48,8 +53,8 @@ BEGIN
     BEGIN
         SET @TableName = 'M_Code';
         SELECT TOP 1 
-            @RowID = Row_ID, 
-            @UseCount = ISNULL(Use_Count, 0), 
+            @RowID = mc.Row_ID, 
+            @UseCount = ISNULL(mc.Use_Count, 0), 
             @ActualCompID = pr.Comp_ID,
             @ProID = mc.Pro_ID
         FROM M_Code mc
@@ -60,8 +65,8 @@ BEGIN
     BEGIN
         SET @TableName = 'M_Code_PFL';
         SELECT TOP 1 
-            @RowID = Row_ID, 
-            @UseCount = ISNULL(Use_Count, 0), 
+            @RowID = mc.Row_ID, 
+            @UseCount = ISNULL(mc.Use_Count, 0), 
             @ActualCompID = pr.Comp_ID,
             @ProID = mc.Pro_ID
         FROM M_Code_PFL mc
@@ -85,11 +90,11 @@ BEGIN
         RETURN;
     END
 
-    -- Check Service Subscription for E-Warranty ('SRV1023')
+    -- Check Service Subscription for E-Warranty (@ResolvedServiceId)
     DECLARE @Subscribe_Id NVARCHAR(100) = NULL;
     SELECT TOP 1 @Subscribe_Id = Subscribe_Id 
     FROM M_ServiceSubscription 
-    WHERE Pro_ID = @ProID AND Service_ID = 'SRV1023' AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0;
+    WHERE Pro_ID = @ProID AND Service_ID = @ResolvedServiceId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0;
 
     IF @Subscribe_Id IS NULL
     BEGIN
@@ -111,7 +116,7 @@ BEGIN
     DECLARE @PageId INT;
     SELECT TOP 1 @PageId = PageId 
     FROM LandingPage 
-    WHERE Comp_Id = @ActualCompID AND Service_Id = 'SRV1023' AND IsActive = 1;
+    WHERE Comp_Id = @ActualCompID AND Service_Id = @ResolvedServiceId AND IsActive = 1;
 
     IF @PageId IS NOT NULL
     BEGIN
@@ -308,7 +313,7 @@ BEGIN
         @ProductImage = ISNULL(LP.ProductImage1, '')
     FROM Pro_Reg P
     INNER JOIN Comp_Reg C ON P.Comp_ID = C.Comp_ID
-    LEFT JOIN LandingPage LP ON LP.Comp_Id = C.Comp_ID AND LP.Service_Id = 'SRV1023'
+    LEFT JOIN LandingPage LP ON LP.Comp_Id = C.Comp_ID AND LP.Service_Id = @ResolvedServiceId
     WHERE P.Pro_ID = @ProID;
 
     IF @BrandName IS NULL
@@ -343,12 +348,14 @@ BEGIN
         INSERT INTO [dbo].[WarrentyDetails] (
             Code, Mobile, Email, WarrantyPeriod, ExpirationDate, 
             PurchaseDate, Comment, IsWarrantyClaimed, VendorClaimStatus, 
-            claimdate, Brand, Comp_id, State, City, Pincode, Address
+            claimdate, Brand, Comp_id, State, City, Pincode, Address, ImagePath,
+            BillNo, PurchaseFrom, ImagePathBill
         )
         VALUES (
             @CodeKey, @MobileNo, @Email, CAST(@WarrantyPeriod AS VARCHAR(50)), @ExpirationDate, 
             ISNULL(@PurchaseDate, GETDATE()), ISNULL(@Remark, 'Registered via Web API'), NULL, NULL, 
-            GETDATE(), @BrandName, ISNULL(@Comp_ID, @ActualCompID), @State, @City, @PinCode, @Address
+            GETDATE(), @BrandName, ISNULL(@Comp_ID, @ActualCompID), @State, @City, @PinCode, @Address, @ImagePath,
+            @BillNo, @PurchaseFrom, @ImagePathBill
         );
 
         -- Find or Create Consumer in M_Consumer (optional but good practice to sync)
@@ -368,8 +375,8 @@ BEGIN
 
                 DECLARE @RandomPassword NVARCHAR(5) = RIGHT('00000' + CAST(ABS(CHECKSUM(NEWID())) % 100000 AS VARCHAR(5)), 5);
 
-                INSERT INTO M_Consumer (User_ID, ConsumerName, Email, MobileNo, City, state, PinCode, Entry_Date, IsActive, IsDelete, Password, Comp_id)
-                VALUES (@GeneratedUserID, ISNULL(@ConsumerName, 'Consumer'), @Email, @MobileNo, @City, @State, @PinCode, GETDATE(), 1, 0, @RandomPassword, @LogCompID);
+                INSERT INTO M_Consumer (User_ID, ConsumerName, Email, MobileNo, City, state, PinCode, Entry_Date, IsActive, IsDelete, Password, Comp_id, Address, gender, Agegroup, Other_Role)
+                VALUES (@GeneratedUserID, ISNULL(@ConsumerName, 'Consumer'), @Email, @MobileNo, @City, @State, @PinCode, GETDATE(), 1, 0, @RandomPassword, @LogCompID, @Address, NULL, NULL, NULL);
             END
             ELSE
             BEGIN
@@ -379,7 +386,8 @@ BEGIN
                     City = ISNULL(@City, City),
                     state = ISNULL(@State, state),
                     PinCode = ISNULL(@PinCode, PinCode),
-                    Comp_id = ISNULL(Comp_id, @LogCompID)
+                    Comp_id = ISNULL(Comp_id, @LogCompID),
+                    Address = ISNULL(@Address, Address)
                 WHERE M_Consumerid = @M_ConsumerID;
             END
         END

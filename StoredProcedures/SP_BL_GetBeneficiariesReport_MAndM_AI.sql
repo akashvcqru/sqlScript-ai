@@ -211,7 +211,7 @@ BEGIN
     INTO #Referrals
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     WHERE BL.compid = @ActualCompId
-      AND LOWER(BL.ServiceName) = 'refral'
+      AND LOWER(BL.ServiceName) IN ('refral', 'referral')
       AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
       AND (@EndDate   IS NULL OR BL.UpdateDate < @EndDate)
     GROUP BY BL.M_Consumerid;
