@@ -9,7 +9,7 @@ GO
 -- =============================================
 -- Author:      Antigravity
 -- Create date: 2026-07-02
--- Description: Retrieves duplicate UPI/Payout transactions from tblUPITransactionDetails for all companies or filtered by company.
+-- Description: Retrieves duplicate UPI/Payout transactions from tblUPITransactionDetails based on grouping criteria.
 -- =============================================
 ALTER PROCEDURE [dbo].[USP_GetDuplicateTransaction_Admin_AI]
 (
@@ -18,7 +18,7 @@ ALTER PROCEDURE [dbo].[USP_GetDuplicateTransaction_Admin_AI]
       @ToDate           DATE = NULL,
       @datePreset       NVARCHAR(20) = NULL,
       @MobileNo         NVARCHAR(20) = NULL,   -- Search parameter (sub-search on mobile number)
-      @DuplicateType    NVARCHAR(20) = 'CODE', -- 'CODE' or 'TIME'
+      @DuplicateType    NVARCHAR(20) = 'CODE', -- 'CODE', 'CLAIM' or 'TIME'
       @Page             INT = 1,
       @Limit            INT = 10,
       @IsExport         BIT = 0
@@ -27,13 +27,27 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DROP TABLE IF EXISTS #TempDuplicates;
     DROP TABLE IF EXISTS #FinalData;
 
-    CREATE TABLE #TempDuplicates (
-        Id BIGINT NOT NULL,
-        DupCount INT NOT NULL,
-        DupReason NVARCHAR(100) NOT NULL
+    -- Pre-declare temporary table to prevent parser error due to SELECT INTO in multiple branches
+    CREATE TABLE #FinalData (
+        MobileNo VARCHAR(15) NULL,
+        Code1 VARCHAR(200) NULL, -- Increased length for string aggregations in TIME checks
+        Code2 VARCHAR(200) NULL,
+        ActualAmount DECIMAL(18, 2) NOT NULL,
+        ExtraPayCount INT NOT NULL,
+        ExtraPayAmount DECIMAL(18, 2) NOT NULL,
+        TotalTransactions INT NOT NULL,
+        SuccessCount INT NOT NULL,
+        PendingCount INT NOT NULL,
+        FailedCount INT NOT NULL,
+        TotalPaidAmount DECIMAL(18, 2) NOT NULL,
+        TxnIds VARCHAR(MAX) NULL,
+        IFSCCode VARCHAR(50) NULL,
+        AccountNo VARCHAR(50) NULL,
+        BeneficiaryName NVARCHAR(100) NULL,
+        Comp_Id VARCHAR(50) NULL,
+        CompName NVARCHAR(150) NULL
     );
 
     -- 1. Date window resolution
@@ -77,100 +91,108 @@ BEGIN
         END
     END
 
-    -- 2. Fetch duplicate IDs
-    IF UPPER(@DuplicateType) = 'CODE'
+    -- 2. Fetch duplicate entries using GROUP BY and HAVING COUNT(*) > 1
+    IF UPPER(@DuplicateType) = 'TIME'
     BEGIN
-        -- Find duplicate scratch codes (Code1 + Code2)
-        WITH DuplicateCodes AS (
-            SELECT Code1, Code2, Comp_Id, COUNT(*) AS DupCount
-            FROM tblUPITransactionDetails WITH (NOLOCK)
-            WHERE ReqDate >= @StartDate
-              AND ReqDate < @EndDate
-              AND (@Compid IS NULL OR Comp_Id = @Compid)
-              AND (@MobileNo IS NULL OR MobileNo LIKE '%' + @MobileNo + '%')
-              AND Code1 IS NOT NULL AND Code1 <> ''
-              AND Code2 IS NOT NULL AND Code2 <> ''
-              AND Status IN ('Success', 'Pending')
-            GROUP BY Code1, Code2, Comp_Id
-            HAVING COUNT(*) > 1
-        )
-        INSERT INTO #TempDuplicates (Id, DupCount, DupReason)
-        SELECT t.Id, dc.DupCount, 'Duplicate Scratch Code' AS DupReason
-        FROM tblUPITransactionDetails t WITH (NOLOCK)
-        INNER JOIN DuplicateCodes dc 
-            ON t.Code1 = dc.Code1 
-            AND t.Code2 = dc.Code2 
-            AND t.Comp_Id = dc.Comp_Id;
+        -- Group by MobileNo and Amount (Rapid payout checks)
+        INSERT INTO #FinalData (MobileNo, Code1, Code2, ActualAmount, ExtraPayCount, ExtraPayAmount, TotalTransactions, SuccessCount, PendingCount, FailedCount, TotalPaidAmount, TxnIds, IFSCCode, AccountNo, BeneficiaryName, Comp_Id, CompName)
+        SELECT
+            p.MobileNo,
+            STRING_AGG(p.Code1, ', ') AS Code1,
+            STRING_AGG(p.Code2, ', ') AS Code2,
+            p.Amount AS ActualAmount,
+            CASE
+                WHEN SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) > 0
+                THEN SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) - 1
+                ELSE 0
+            END AS ExtraPayCount,
+            CASE
+                WHEN SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) > 0
+                THEN p.Amount * (SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) - 1)
+                ELSE 0
+            END AS ExtraPayAmount,
+            COUNT(*) AS TotalTransactions,
+            SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) AS SuccessCount,
+            SUM(CASE WHEN p.Status = 'Pending' THEN 1 ELSE 0 END) AS PendingCount,
+            SUM(CASE WHEN p.Status = 'Failed' THEN 1 ELSE 0 END) AS FailedCount,
+            p.Amount * SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) AS TotalPaidAmount,
+            STRING_AGG(CAST(p.Id AS VARCHAR(20)), ', ') AS TxnIds,
+            MAX(p.ifsc_code) AS IFSCCode,
+            MAX(p.account_no) AS AccountNo,
+            MAX(p.benef_name) AS BeneficiaryName,
+            MAX(p.Comp_Id) AS Comp_Id,
+            ISNULL(MAX(c.Comp_Name), 'Unknown') AS CompName
+        FROM tblUPITransactionDetails p WITH (NOLOCK)
+        LEFT JOIN Comp_Reg c WITH (NOLOCK) ON c.Comp_ID = p.Comp_Id
+        WHERE p.ReqDate >= @StartDate
+          AND p.ReqDate < @EndDate
+          AND (@Compid IS NULL OR p.Comp_Id = @Compid)
+          AND (@MobileNo IS NULL OR p.MobileNo LIKE '%' + @MobileNo + '%')
+          AND p.Status = 'Success'
+        GROUP BY
+            p.MobileNo,
+            p.Amount
+        HAVING COUNT(*) > 1;
     END
     ELSE
     BEGIN
-        -- Find rapid payouts (same mobile + amount in 5 minutes time window)
-        WITH RapidPayouts AS (
-            SELECT t1.Id
-            FROM tblUPITransactionDetails t1 WITH (NOLOCK)
-            INNER JOIN tblUPITransactionDetails t2 WITH (NOLOCK)
-                ON t1.Comp_Id = t2.Comp_Id 
-                AND t1.MobileNo = t2.MobileNo 
-                AND t1.Amount = t2.Amount
-                AND t1.Id <> t2.Id
-                AND ABS(DATEDIFF(MINUTE, t1.ReqDate, t2.ReqDate)) <= 5
-            WHERE t1.Status IN ('Success', 'Pending')
-              AND t2.Status IN ('Success', 'Pending')
-              AND t1.ReqDate >= @StartDate
-              AND t1.ReqDate < @EndDate
-              AND (@Compid IS NULL OR t1.Comp_Id = @Compid)
-              AND (@MobileNo IS NULL OR t1.MobileNo LIKE '%' + @MobileNo + '%')
-        )
-        INSERT INTO #TempDuplicates (Id, DupCount, DupReason)
-        SELECT DISTINCT Id, 2 AS DupCount, 'Rapid Payout Duplication' AS DupReason
-        FROM RapidPayouts;
+        -- Default: CLAIM / CODE duplication (Group by MobileNo, Amount, Code1, Code2)
+        INSERT INTO #FinalData (MobileNo, Code1, Code2, ActualAmount, ExtraPayCount, ExtraPayAmount, TotalTransactions, SuccessCount, PendingCount, FailedCount, TotalPaidAmount, TxnIds, IFSCCode, AccountNo, BeneficiaryName, Comp_Id, CompName)
+        SELECT
+            p.MobileNo,
+            p.Code1,
+            p.Code2,
+            p.Amount AS ActualAmount,
+            CASE
+                WHEN SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) > 0
+                THEN SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) - 1
+                ELSE 0
+            END AS ExtraPayCount,
+            CASE
+                WHEN SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) > 0
+                THEN p.Amount * (SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) - 1)
+                ELSE 0
+            END AS ExtraPayAmount,
+            COUNT(*) AS TotalTransactions,
+            SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) AS SuccessCount,
+            SUM(CASE WHEN p.Status = 'Pending' THEN 1 ELSE 0 END) AS PendingCount,
+            SUM(CASE WHEN p.Status = 'Failed' THEN 1 ELSE 0 END) AS FailedCount,
+            p.Amount * SUM(CASE WHEN p.Status = 'Success' THEN 1 ELSE 0 END) AS TotalPaidAmount,
+            STRING_AGG(CAST(p.Id AS VARCHAR(20)), ', ') AS TxnIds,
+            MAX(p.ifsc_code) AS IFSCCode,
+            MAX(p.account_no) AS AccountNo,
+            MAX(p.benef_name) AS BeneficiaryName,
+            MAX(p.Comp_Id) AS Comp_Id,
+            ISNULL(MAX(c.Comp_Name), 'Unknown') AS CompName
+        FROM tblUPITransactionDetails p WITH (NOLOCK)
+        LEFT JOIN Comp_Reg c WITH (NOLOCK) ON c.Comp_ID = p.Comp_Id
+        WHERE p.ReqDate >= @StartDate
+          AND p.ReqDate < @EndDate
+          AND (@Compid IS NULL OR p.Comp_Id = @Compid)
+          AND (@MobileNo IS NULL OR p.MobileNo LIKE '%' + @MobileNo + '%')
+          AND p.Status = 'Success'
+        GROUP BY
+            p.MobileNo,
+            p.Amount,
+            p.Code1,
+            p.Code2
+        HAVING COUNT(*) > 1;
     END
 
-    -- 3. Gather full details including company name & consumer name
-    SELECT
-        ISNULL(c.Comp_Name, 'Unknown') AS CompName,
-        p.Id AS TransId,
-        p.OrderId,
-        p.RefenceId AS ReferenceId,
-        p.ConsumerName,
-        p.MobileNo,
-        p.Code1,
-        p.Code2,
-        COALESCE(p.UPI_Id, p.account_no) AS [UPI_Id/AC],
-        p.ifsc_code,
-        p.account_no,
-        p.benef_name,
-        p.Amount AS Amount,
-        p.Amount - ISNULL(p.tdsAmount, 0) AS FinalPayment,
-        p.tdsAmount,
-        p.tdsper,
-        p.Status AS BankStatus,
-        p.Remarks AS BankRemark,
-        p.ReqDate,
-        CONVERT(VARCHAR(20), p.ReqDate, 120) AS ReqDate_str,
-        p.Remarks AS FinalStatus,
-        p.FinalRemarks AS FinalRemark,
-        td.DupReason AS DuplicateReason,
-        td.DupCount AS DuplicateCount
-    INTO #FinalData
-    FROM tblUPITransactionDetails p WITH (NOLOCK)
-    INNER JOIN #TempDuplicates td ON p.Id = td.Id
-    LEFT JOIN Comp_Reg c WITH (NOLOCK) ON c.Comp_ID = p.Comp_Id
-    ORDER BY p.ReqDate DESC;
-
-    -- 4. Paged Output & Metadata
+    -- 3. Paged Output & Metadata
     DECLARE @TotalRecords INT = (SELECT COUNT(*) FROM #FinalData);
 
     IF @IsExport = 1
     BEGIN
-        SELECT * FROM #FinalData;
+        SELECT * FROM #FinalData
+        ORDER BY ActualAmount DESC;
     END
     ELSE
     BEGIN
         DECLARE @Offset INT = (@Page - 1) * @Limit;
 
         SELECT * FROM #FinalData
-        ORDER BY ReqDate DESC
+        ORDER BY ActualAmount DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
         -- Metadata
