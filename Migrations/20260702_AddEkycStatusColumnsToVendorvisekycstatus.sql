@@ -42,3 +42,15 @@ BEGIN
     ALTER TABLE [dbo].[tbl_Vendorvisekycstatus] ADD [upi_ekycStatus] [varchar](20) NULL;
 END
 GO
+
+IF NOT EXISTS (
+    SELECT * 
+    FROM sys.columns 
+    WHERE object_id = OBJECT_ID(N'[dbo].[tbl_Vendorvisekycstatus]') 
+      AND name = 'Updated_date'
+)
+BEGIN
+    ALTER TABLE [dbo].[tbl_Vendorvisekycstatus] ADD [Updated_date] [datetime] NULL;
+END
+GO
+
