@@ -11,10 +11,10 @@ ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
      @FromDate DATE  = NULL,                -- NEW
     @ToDate DATE  = NULL,                  -- NEW
     @CodeStatusFilter NVARCHAR(20) = NULL,     -- NEW (Verified, Already Scanned, Invalid)
-     @StateFilter NVARCHAR(100) = NULL,       -- Ã¢Å“â€¦ NEW
-    @DialModeFilter NVARCHAR(50) = NULL,     -- Ã¢Å“â€¦ NEW
-    @Page INT = NULL,                        -- Ã¢Å“â€¦ NEW
-    @Limit INT = NULL,                      -- Ã¢Å“â€¦ NEW
+     @StateFilter NVARCHAR(100) = NULL,       -- ✅ NEW
+    @DialModeFilter NVARCHAR(50) = NULL,     -- ✅ NEW
+    @Page INT = NULL,                        -- ✅ NEW
+    @Limit INT = NULL,                      -- ✅ NEW
      @IsExport BIT =NULL,
        @Search nvarchar(30) = null
 AS
@@ -221,27 +221,34 @@ BEGIN
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#Points') IS NOT NULL DROP TABLE #Points;
 
+    DECLARE @Multiplier DECIMAL(18,2) = 1.00;
+    SELECT TOP 1 @Multiplier = 1.00 + (ISNULL(TRY_CAST(calculation_value AS DECIMAL(18,2)), 0.00) / 100.0) 
+    FROM loyalty_calculation 
+    WHERE comp_id = @Comp_Id AND isactive = 1 AND isdelete = 0;
+ 
     SELECT
         MC.M_Codeid,
         MAX(CAST(
             CASE 
-                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(BL.Cash, 0) * 1.10
-                WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0)
-                ELSE ISNULL(BL.Points, 0)
+                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
+                WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
+                ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
             END 
         AS DECIMAL(18,2))) AS Points,
         MAX(CAST(
             CASE 
-                WHEN ss.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0)
-                ELSE ISNULL(BL.Points, 0)
+                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
+                WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
+                ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
             END 
         AS DECIMAL(18,2))) AS WornPoint
     INTO #Points
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-    INNER JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    INNER JOIN (
+        SELECT Pkid, M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY M_Consumer_MCOdeid ORDER BY Createdate ASC) as rn
+        FROM BuiltLoyaltyMCodeCheck
+    ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
     INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-    LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON BL.SST_id = sst.SST_Id
-    LEFT JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
     WHERE 
     (
         (@Comp_Id IN ('Comp-1567','Comp-1650') AND BL.compid IN ('Comp-1567','Comp-1650'))
@@ -383,7 +390,7 @@ BEGIN
         G.City,
         PR.Pro_Name,
         CASE 
-            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.ConfigPoints, ISNULL(P.Points, 0)) 
+            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.Points, ISNULL(CP.ConfigPoints, 0)) 
             ELSE 0 
         END AS Points,
         CASE 
@@ -398,7 +405,7 @@ BEGIN
             ELSE 0 
         END AS AssignPoint,
         CASE 
-            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.WornPoint, 0)
+            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.WornPoint, ISNULL(CP.ConfigPoints, 0)) 
             ELSE 0 
         END AS WornPoint,
         ISNULL(R.ReferralPoints, 0) AS ReferralPoints
