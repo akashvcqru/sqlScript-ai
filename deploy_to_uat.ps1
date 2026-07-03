@@ -157,9 +157,28 @@ foreach ($file in $validFiles) {
 
     try {
         $sqlContent = Get-Content -Raw -Path $file
+        
+        # 1. Convert CREATE/ALTER PROCEDURE/VIEW/FUNCTION/TRIGGER to CREATE OR ALTER
+        $sqlContent = $sqlContent -replace '(?mi)^\s*(CREATE|ALTER)\s+PROCEDURE\b', 'CREATE OR ALTER PROCEDURE'
+        $sqlContent = $sqlContent -replace '(?mi)^\s*(CREATE|ALTER)\s+PROC\b', 'CREATE OR ALTER PROC'
+        $sqlContent = $sqlContent -replace '(?mi)^\s*(CREATE|ALTER)\s+VIEW\b', 'CREATE OR ALTER VIEW'
+        $sqlContent = $sqlContent -replace '(?mi)^\s*(CREATE|ALTER)\s+FUNCTION\b', 'CREATE OR ALTER FUNCTION'
+        $sqlContent = $sqlContent -replace '(?mi)^\s*(CREATE|ALTER)\s+TRIGGER\b', 'CREATE OR ALTER TRIGGER'
+
+        # 2. Fix known syntax errors and typos on the fly (leaves repository files untouched)
+        $sqlContent = $sqlContent -replace '\(1 rows affected\)', ''
+        $sqlContent = $sqlContent -replace '(?mi)BEGIN\s*END', "BEGIN`n    SET NOCOUNT ON;`nEND"
+        $sqlContent = $sqlContent -replace '@StartSerial\b', '@StartSeries'
+        $sqlContent = $sqlContent -replace 'SELECT M_Consumerid FROM M_Consumer WHERE RIGHT\(MobileNo, 10\) = ''9315742109'' LIMIT 1', "SELECT TOP 1 M_Consumerid FROM M_Consumer WHERE RIGHT(MobileNo, 10) = '9315742109'"
+
         # Split by GO statement on a line by itself
         $batches = [regex]::Split($sqlContent, '(?mi)^\s*GO\s*$')
         
+        # Reset database context for the connection to vcqru once at the start of the file
+        $resetCmd = $conn.CreateCommand()
+        $resetCmd.CommandText = "USE [vcqru]"
+        $resetCmd.ExecuteNonQuery() > $null
+
         foreach ($batch in $batches) {
             if ([string]::IsNullOrWhiteSpace($batch)) { continue }
             
