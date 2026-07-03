@@ -42,7 +42,7 @@ BEGIN
         INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
         WHERE PE.MobileNo = @MobileNo
           AND PE.Is_Success = '1'
-          AND (PR.Comp_ID = @CompId OR (@CompId IN ('Comp-1650', 'Comp-1567') AND PR.Comp_ID IN ('Comp-1650', 'Comp-1567')))
+          AND PR.Comp_ID = @CompId --(PR.Comp_ID = @CompId OR (@CompId IN ('Comp-1650', 'Comp-1567') AND PR.Comp_ID IN ('Comp-1650', 'Comp-1567')))
           AND SS.IsActive = 1 AND SS.IsDelete = 0
           AND SST.IsActive = 1 AND SST.IsDelete = 0
           AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
@@ -62,7 +62,7 @@ BEGIN
     SELECT @OtherPoints = COALESCE(SUM(CAST(Points AS DECIMAL(18,2))), 0)
     FROM BLoyaltyPointsEarned
     WHERE M_Consumerid = @M_Consumerid 
-      AND (compid = @CompId OR (@CompId IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567')))
+      AND compid = @CompId  --(compid = @CompId OR (@CompId IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567')))
       AND ServiceName IN ('Referral', 'KYCRewards', 'InvoiceBenifit', 'InvoiceRewards');
 
     -- 3. Extra Amount for specific company (if still needed)

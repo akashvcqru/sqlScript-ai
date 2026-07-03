@@ -115,12 +115,34 @@ BEGIN
         [aadharUploadedate] = GETDATE()
     WHERE [M_Consumerid] = @ActualId AND [MobileNo] = @MobileNo                                
                                 
-    -- Update tbl_Vendorvisekycstatus if Vrkabel_User_Type is updated
-    IF @Vrkabel_User_Type IS NOT NULL AND @Vrkabel_User_Type > 0
+    -- Update tbl_Vendorvisekycstatus if Vrkabel_User_Type is updated or other profile details are updated
+    IF @Comp_id IS NOT NULL AND @Comp_id <> ''
     BEGIN
         UPDATE tbl_Vendorvisekycstatus
-        SET Vrkabel_User_Type = @Vrkabel_User_Type
-        WHERE M_consumerId = @ActualId AND Comp_id = @Comp_id
+        SET 
+            Name = CASE WHEN @ConsumerName IS NOT NULL AND LTRIM(RTRIM(@ConsumerName)) <> '' THEN @ConsumerName ELSE Name END,
+            EmailId = CASE WHEN @Email IS NOT NULL AND LTRIM(RTRIM(@Email)) <> '' THEN @Email ELSE EmailId END,
+            usercity = CASE WHEN @City IS NOT NULL AND LTRIM(RTRIM(@City)) <> '' THEN @City ELSE usercity END,
+            userpin = CASE WHEN @PinCode IS NOT NULL AND LTRIM(RTRIM(@PinCode)) <> '' THEN @PinCode ELSE userpin END,
+            userstate = CASE WHEN @state IS NOT NULL AND LTRIM(RTRIM(@state)) <> '' THEN @state ELSE userstate END,
+            userupi = CASE WHEN @UPI IS NOT NULL AND LTRIM(RTRIM(@UPI)) <> '' THEN @UPI ELSE userupi END,
+            shop_file = CASE WHEN @shop_file IS NOT NULL AND LTRIM(RTRIM(@shop_file)) <> '' THEN @shop_file ELSE shop_file END,
+            Vrkabel_User_Type = CASE WHEN @Vrkabel_User_Type IS NOT NULL AND @Vrkabel_User_Type > 0 THEN @Vrkabel_User_Type ELSE Vrkabel_User_Type END
+        WHERE M_consumerId = @ActualId AND Comp_id = @Comp_id;
+    END
+    ELSE
+    BEGIN
+        UPDATE tbl_Vendorvisekycstatus
+        SET 
+            Name = CASE WHEN @ConsumerName IS NOT NULL AND LTRIM(RTRIM(@ConsumerName)) <> '' THEN @ConsumerName ELSE Name END,
+            EmailId = CASE WHEN @Email IS NOT NULL AND LTRIM(RTRIM(@Email)) <> '' THEN @Email ELSE EmailId END,
+            usercity = CASE WHEN @City IS NOT NULL AND LTRIM(RTRIM(@City)) <> '' THEN @City ELSE usercity END,
+            userpin = CASE WHEN @PinCode IS NOT NULL AND LTRIM(RTRIM(@PinCode)) <> '' THEN @PinCode ELSE userpin END,
+            userstate = CASE WHEN @state IS NOT NULL AND LTRIM(RTRIM(@state)) <> '' THEN @state ELSE userstate END,
+            userupi = CASE WHEN @UPI IS NOT NULL AND LTRIM(RTRIM(@UPI)) <> '' THEN @UPI ELSE userupi END,
+            shop_file = CASE WHEN @shop_file IS NOT NULL AND LTRIM(RTRIM(@shop_file)) <> '' THEN @shop_file ELSE shop_file END,
+            Vrkabel_User_Type = CASE WHEN @Vrkabel_User_Type IS NOT NULL AND @Vrkabel_User_Type > 0 THEN @Vrkabel_User_Type ELSE Vrkabel_User_Type END
+        WHERE M_consumerId = @ActualId;
     END
 
     SELECT 'Success' AS Result                                

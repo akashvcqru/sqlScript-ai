@@ -31,7 +31,7 @@ begin
         INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
         WHERE PE.MobileNo = @MobileNo
           AND PE.Is_Success = '1'
-          AND (PR.Comp_ID = @CompId OR (@CompId IN ('Comp-1650', 'Comp-1567') AND PR.Comp_ID IN ('Comp-1650', 'Comp-1567')))
+          AND PR.Comp_ID = @CompId --(PR.Comp_ID = @CompId OR (@CompId IN ('Comp-1650', 'Comp-1567') AND PR.Comp_ID IN ('Comp-1650', 'Comp-1567')))
           AND SS.IsActive = 1 AND SS.IsDelete = 0
           AND SST.IsActive = 1 AND SST.IsDelete = 0
           AND (SS.Service_ID = @Service_ID OR @Service_ID IS NULL)

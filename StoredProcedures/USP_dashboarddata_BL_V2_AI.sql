@@ -42,7 +42,7 @@ BEGIN
         INNER JOIN M_Code ON M_Code.Code1 = Pro_Enq.Received_Code1 AND M_Code.Code2 = Pro_Enq.Received_Code2  
         INNER JOIN Pro_Reg ON Pro_Reg.Pro_ID = M_Code.Pro_ID  
         WHERE Pro_Enq.MobileNo = @MobileNo
-          AND (Pro_Reg.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND Pro_Reg.Comp_ID IN ('Comp-1650', 'Comp-1567')));
+          AND Pro_Reg.Comp_ID = @compid-- (Pro_Reg.Comp_ID = @compid OR (@compid IN ('Comp-1650', 'Comp-1567') AND Pro_Reg.Comp_ID IN ('Comp-1650', 'Comp-1567')));
     END
 
     -- Result Set 1: Overall Stats (Simplified)

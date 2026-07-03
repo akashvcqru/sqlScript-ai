@@ -28,9 +28,10 @@ BEGIN
             pr.Pro_ID AS ProductID,
             COUNT(pe.Enq_Date) AS CodeCheckCount,
             MAX(pe.Enq_Date) AS LastCodeCheckTime,
-            pr.Pro_Entry_Date AS ProRegDate
+            pr.Pro_Entry_Date AS ProRegDate,
+            CAST(CASE WHEN EXISTS (SELECT 1 FROM M_Code m WITH (NOLOCK) WHERE m.Code1 = TRY_CAST(pe.Received_Code1 AS NUMERIC(5,0)) AND m.Code2 = TRY_CAST(pe.Received_Code2 AS NUMERIC(8,0))) THEN 1 ELSE 0 END AS BIT) AS IsMyCode
         FROM Pro_Enq pe WITH (NOLOCK)
-        INNER JOIN M_Code_PFL mc WITH (NOLOCK) ON pe.Received_Code1 = mc.Code1 AND pe.Received_Code2 = mc.Code2
+        INNER JOIN M_Code_PFL mc WITH (NOLOCK) ON mc.Code1 = TRY_CAST(pe.Received_Code1 AS NUMERIC(5,0)) AND mc.Code2 = TRY_CAST(pe.Received_Code2 AS NUMERIC(8,0))
         INNER JOIN Pro_Reg pr WITH (NOLOCK) ON mc.Pro_ID = pr.Pro_ID
         WHERE pr.Comp_ID = @Comp_Id
           AND (pe.Comp_ID = @Comp_Id OR ISNULL(pe.Comp_ID, '') = '')
@@ -46,9 +47,10 @@ BEGIN
             pr.Pro_ID AS ProductID,
             COUNT(pe.Enq_Date) AS CodeCheckCount,
             MAX(pe.Enq_Date) AS LastCodeCheckTime,
-            pr.Pro_Entry_Date AS ProRegDate
+            pr.Pro_Entry_Date AS ProRegDate,
+            CAST(1 AS BIT) AS IsMyCode
         FROM Pro_Enq pe WITH (NOLOCK)
-        INNER JOIN M_Code mc WITH (NOLOCK) ON pe.Received_Code1 = mc.Code1 AND pe.Received_Code2 = mc.Code2
+        INNER JOIN M_Code mc WITH (NOLOCK) ON mc.Code1 = TRY_CAST(pe.Received_Code1 AS NUMERIC(5,0)) AND mc.Code2 = TRY_CAST(pe.Received_Code2 AS NUMERIC(8,0))
         INNER JOIN Pro_Reg pr WITH (NOLOCK) ON mc.Pro_ID = pr.Pro_ID
         WHERE pr.Comp_ID = @Comp_Id
           AND (pe.Comp_ID = @Comp_Id OR ISNULL(pe.Comp_ID, '') = '')
