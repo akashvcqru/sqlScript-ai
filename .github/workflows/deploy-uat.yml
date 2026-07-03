@@ -1,0 +1,22 @@
+name: Deploy SQL to UAT (Database)
+
+on:
+  push:
+    branches: 
+      - uat  # Triggers automatically when code is pushed to the uat branch
+  workflow_dispatch:  # Allows you to click "Run workflow" manually on GitHub
+
+jobs:
+  deploy-uat:
+    runs-on: [self-hosted, uat-server]
+    environment: Uat Server
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run UAT DB Deployment Script
+        shell: powershell
+        env:
+          DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
+        run: |
+          powershell -ExecutionPolicy Bypass -File ./deploy_db.ps1 -TargetEnv "UAT"
