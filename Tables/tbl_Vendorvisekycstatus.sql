@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[tbl_Vendorvisekycstatus]    Script Date: 3/2/2026 12:27:13 PM ******/
+/****** Object:  Table [dbo].[tbl_Vendorvisekycstatus]    Script Date: 3/2/2026 12:27:13 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -33,6 +33,11 @@ CREATE TABLE [dbo].[tbl_Vendorvisekycstatus](
 	[dealer_state] [varchar](150) NULL,
 	[DealerType] [int] NOT NULL,
 	[referenceby] [int] NULL,
+	[pan_ekycStatus] [varchar](20) NULL,
+	[aadhar_ekycStatus] [varchar](20) NULL,
+	[bank_ekycStatus] [varchar](20) NULL,
+	[upi_ekycStatus] [varchar](20) NULL,
+	[Updated_date] [datetime] NULL,
 PRIMARY KEY CLUSTERED 
 (
 	[Id] ASC
