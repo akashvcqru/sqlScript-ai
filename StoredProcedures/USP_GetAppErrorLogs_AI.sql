@@ -4,7 +4,9 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetAppErrorLogs_AI]
     @Limit           INT = 10,
     @Search          NVARCHAR(250) = NULL,
     @ApplicationType VARCHAR(50) = NULL,
-    @DatePreset      VARCHAR(50) = NULL
+    @DatePreset      VARCHAR(50) = NULL,
+    @FromDate        DATETIME = NULL,
+    @ToDate          DATETIME = NULL
 )
 AS
 BEGIN
@@ -24,38 +26,70 @@ BEGIN
     DECLARE @StartDate DATETIME = NULL;
     DECLARE @EndDate DATETIME = NULL;
 
-    IF @DatePreset IS NOT NULL AND LTRIM(RTRIM(@DatePreset)) <> ''
+    -- Explicit Date Range overrides DatePreset
+    IF @FromDate IS NOT NULL AND @ToDate IS NOT NULL
     BEGIN
-        SET @DatePreset = LOWER(LTRIM(RTRIM(@DatePreset)));
-        IF @DatePreset = 'today'
+        SET @StartDate = CAST(@FromDate AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
+    END
+    ELSE
+    BEGIN
+        IF @DatePreset IS NOT NULL AND LTRIM(RTRIM(@DatePreset)) <> ''
         BEGIN
-            SET @StartDate = CAST(GETDATE() AS DATE);
-            SET @EndDate = GETDATE();
-        END
-        ELSE IF @DatePreset = 'yesterday'
-        BEGIN
-            SET @StartDate = CAST(DATEADD(day, -1, GETDATE()) AS DATE);
-            SET @EndDate = DATEADD(second, 86399, CAST(CAST(DATEADD(day, -1, GETDATE()) AS DATE) AS DATETIME));
-        END
-        ELSE IF @DatePreset = 'last 7 days'
-        BEGIN
-            SET @StartDate = CAST(DATEADD(day, -7, GETDATE()) AS DATE);
-            SET @EndDate = GETDATE();
-        END
-        ELSE IF @DatePreset = 'last 30 days'
-        BEGIN
-            SET @StartDate = CAST(DATEADD(day, -30, GETDATE()) AS DATE);
-            SET @EndDate = GETDATE();
-        END
-        ELSE IF @DatePreset = 'this month'
-        BEGIN
-            SET @StartDate = CAST(DATEADD(day, -DAY(GETDATE()) + 1, GETDATE()) AS DATE);
-            SET @EndDate = GETDATE();
-        END
-        ELSE IF @DatePreset = 'last month'
-        BEGIN
-            SET @StartDate = CAST(DATEADD(month, -1, DATEADD(day, -DAY(GETDATE()) + 1, GETDATE())) AS DATE);
-            SET @EndDate = DATEADD(second, 86399, CAST(DATEADD(day, -DAY(GETDATE()), GETDATE()) AS DATE));
+            SET @DatePreset = UPPER(LTRIM(RTRIM(@DatePreset)));
+            
+            IF @DatePreset = 'TODAY'
+            BEGIN
+                SET @StartDate = CAST(GETDATE() AS DATE);
+                SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+            END
+            ELSE IF @DatePreset = 'LASTDAY'
+            BEGIN
+                SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
+                SET @EndDate   = CAST(GETDATE() AS DATE);
+            END
+            ELSE IF @DatePreset = 'WEEK'
+            BEGIN
+                SET DATEFIRST 1;
+                SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
+                SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+            END
+            ELSE IF @DatePreset = 'LASTWEEK'
+            BEGIN
+                SET DATEFIRST 1;
+                SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+                SET @EndDate   = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+            END
+            ELSE IF @DatePreset = 'MONTH'
+            BEGIN
+                SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+                SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+            END
+            ELSE IF @DatePreset = 'LASTMONTH'
+            BEGIN
+                SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+                SET @EndDate   = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0);
+            END
+            ELSE IF @DatePreset = 'QUARTER'
+            BEGIN
+                SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+                SET @EndDate   = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
+            END
+            ELSE IF @DatePreset = 'YEAR'
+            BEGIN
+                SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+                SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+            END
+            ELSE IF @DatePreset = 'LASTYEAR'
+            BEGIN
+                SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+                SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            END
+            ELSE IF @DatePreset = 'ALL' OR @DatePreset = 'NULL'
+            BEGIN
+                SET @StartDate = NULL;
+                SET @EndDate   = NULL;
+            END
         END
     END
 
@@ -93,7 +127,7 @@ BEGIN
     LEFT JOIN dbo.Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = mc.Comp_id
     WHERE 
         (@StartDate IS NULL OR el.CreatedAt >= @StartDate)
-        AND (@EndDate IS NULL OR el.CreatedAt <= @EndDate)
+        AND (@EndDate IS NULL OR el.CreatedAt < @EndDate)
         AND (@ApplicationType IS NULL OR LTRIM(RTRIM(@ApplicationType)) = '' OR el.ApplicationType = @ApplicationType)
         AND (@SearchPattern IS NULL OR 
              el.Username LIKE @SearchPattern 
@@ -125,7 +159,7 @@ BEGIN
     LEFT JOIN dbo.Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = mc.Comp_id
     WHERE 
         (@StartDate IS NULL OR el.CreatedAt >= @StartDate)
-        AND (@EndDate IS NULL OR el.CreatedAt <= @EndDate)
+        AND (@EndDate IS NULL OR el.CreatedAt < @EndDate)
         AND (@ApplicationType IS NULL OR LTRIM(RTRIM(@ApplicationType)) = '' OR el.ApplicationType = @ApplicationType)
         AND (@SearchPattern IS NULL OR 
              el.Username LIKE @SearchPattern 

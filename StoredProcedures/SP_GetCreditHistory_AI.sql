@@ -6,7 +6,8 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_GetCreditHistory_AI]
-    @UserId INT
+    @UserId INT,
+    @Comp_Id VARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -14,6 +15,7 @@ BEGIN
     FROM dealer_credit_limits a 
 	INNER JOIN comp_reg b ON a.comp_id = b.comp_id
 	WHERE M_Consumerid = @UserId 
+      AND (@Comp_Id IS NULL OR a.comp_id = @Comp_Id)
     ORDER BY last_updated_at DESC
 END
 GO

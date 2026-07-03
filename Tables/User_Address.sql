@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[User_Address]    Script Date: 3/2/2026 12:27:13 PM ******/
+/****** Object:  Table [dbo].[User_Address]    Script Date: 3/2/2026 12:27:13 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -16,6 +16,7 @@ CREATE TABLE [dbo].[User_Address](
 	[Country] [nvarchar](100) NOT NULL,
 	[IsDefault] [bit] NOT NULL,
 	[CreatedDate] [datetime] NOT NULL,
+	[IsDeleted] [bit] NOT NULL DEFAULT ((0)),
 PRIMARY KEY CLUSTERED 
 (
 	[AddressId] ASC

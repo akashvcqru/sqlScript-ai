@@ -101,7 +101,7 @@ BEGIN
         LEFT JOIN Comp_Reg cr 
             ON cr.Comp_ID = pr.Comp_ID
         WHERE pe.MobileNo = @MobileNo
-          AND pe.Comp_ID = @Comp_ID
+          AND pr.Comp_ID = @Comp_ID
           AND (@Year IS NULL OR YEAR(pe.Enq_Date) = @Year)
           AND (@Month IS NULL OR MONTH(pe.Enq_Date) = @Month)
         ORDER BY pe.Enq_Date DESC;
@@ -133,7 +133,7 @@ BEGIN
         LEFT JOIN Comp_Reg cr   
             ON cr.Comp_ID = pr.Comp_ID  
         WHERE pe.MobileNo = @MobileNo   
-          AND pe.Comp_ID = @Comp_ID  
+          AND pr.Comp_ID = @Comp_ID  
     )
     --ConsumerData AS (  
         SELECT   

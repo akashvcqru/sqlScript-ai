@@ -159,11 +159,13 @@ BEGIN
         SET @BaseWhere += N'
         AND (CD.PaymentStatus = @PaymentStatus OR (@PaymentStatus = ''Pending'' AND CD.PaymentStatus IS NULL))';
 
-    -- Mobile Search
+    -- Mobile or Claim ID Search
     IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
         SET @BaseWhere += N'
-        AND REPLACE(CD.Mobileno,'' '','''')
-            LIKE ''%'' + REPLACE(@Search,'' '','''') + ''%''';
+        AND (
+            REPLACE(CD.Mobileno,'' '','''') LIKE ''%'' + REPLACE(@Search,'' '','''') + ''%''
+            OR CAST(CD.Row_id AS VARCHAR(20)) LIKE ''%'' + LTRIM(RTRIM(@Search)) + ''%''
+        )';
 
     ---------------------------------------------------------
     -- DATA QUERY

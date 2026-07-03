@@ -12,54 +12,72 @@ BEGIN
 
     DECLARE @StartDate DATETIME = NULL;
     DECLARE @EndDate   DATETIME = NULL;
-    DECLARE @Today     DATETIME = CAST(GETDATE() AS DATE);
-    DECLARE @Now       DATETIME = GETDATE();
-
-    -- Parse and handle DatePreset if provided
-    IF @DatePreset IS NOT NULL AND LTRIM(RTRIM(@DatePreset)) <> ''
-    BEGIN
-        SET @DatePreset = LOWER(LTRIM(RTRIM(@DatePreset)));
-        
-        IF @DatePreset = 'today' OR @DatePreset = 'day'
-        BEGIN
-            SET @StartDate = @Today;
-            SET @EndDate   = @Now;
-        END
-        ELSE IF @DatePreset = 'yesterday'
-        BEGIN
-            SET @StartDate = DATEADD(DAY, -1, @Today);
-            -- Yesterday end of day (23:59:59.997 due to 3.33ms datetime rounding)
-            SET @EndDate   = DATEADD(MILLISECOND, -3, @Today);
-        END
-        ELSE IF @DatePreset = 'week' OR @DatePreset = 'last 7 days'
-        BEGIN
-            SET @StartDate = DATEADD(DAY, -7, @Today);
-            SET @EndDate   = @Now;
-        END
-        ELSE IF @DatePreset = 'last 30 days'
-        BEGIN
-            SET @StartDate = DATEADD(DAY, -30, @Today);
-            SET @EndDate   = @Now;
-        END
-        ELSE IF @DatePreset = 'month' OR @DatePreset = 'this month'
-        BEGIN
-            SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
-            SET @EndDate   = @Now;
-        END
-        ELSE IF @DatePreset = 'last month'
-        BEGIN
-            DECLARE @LastMonthStart DATETIME = DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1));
-            SET @StartDate = @LastMonthStart;
-            -- Last month end of day (one tick before first day of current month)
-            SET @EndDate   = DATEADD(MILLISECOND, -3, DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1));
-        END
-    END
 
     -- Explicit Date Range overrides DatePreset
     IF @FromDate IS NOT NULL AND @ToDate IS NOT NULL
     BEGIN
-        SET @StartDate = @FromDate;
-        SET @EndDate   = @ToDate;
+        SET @StartDate = CAST(@FromDate AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
+    END
+    ELSE
+    BEGIN
+        IF @DatePreset IS NOT NULL AND LTRIM(RTRIM(@DatePreset)) <> ''
+        BEGIN
+            SET @DatePreset = UPPER(LTRIM(RTRIM(@DatePreset)));
+            
+            IF @DatePreset = 'TODAY'
+            BEGIN
+                SET @StartDate = CAST(GETDATE() AS DATE);
+                SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+            END
+            ELSE IF @DatePreset = 'LASTDAY'
+            BEGIN
+                SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
+                SET @EndDate   = CAST(GETDATE() AS DATE);
+            END
+            ELSE IF @DatePreset = 'WEEK'
+            BEGIN
+                SET DATEFIRST 1;
+                SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
+                SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+            END
+            ELSE IF @DatePreset = 'LASTWEEK'
+            BEGIN
+                SET DATEFIRST 1;
+                SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+                SET @EndDate   = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+            END
+            ELSE IF @DatePreset = 'MONTH'
+            BEGIN
+                SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+                SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+            END
+            ELSE IF @DatePreset = 'LASTMONTH'
+            BEGIN
+                SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+                SET @EndDate   = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0);
+            END
+            ELSE IF @DatePreset = 'QUARTER'
+            BEGIN
+                SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+                SET @EndDate   = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
+            END
+            ELSE IF @DatePreset = 'YEAR'
+            BEGIN
+                SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+                SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+            END
+            ELSE IF @DatePreset = 'LASTYEAR'
+            BEGIN
+                SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+                SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            END
+            ELSE IF @DatePreset = 'ALL' OR @DatePreset = 'NULL'
+            BEGIN
+                SET @StartDate = NULL;
+                SET @EndDate   = NULL;
+            END
+        END
     END
 
     -- Query for total count (only if not exporting)
@@ -70,7 +88,7 @@ BEGIN
         LEFT JOIN Comp_Reg cr ON cr.Comp_ID = t.Comp_id
         WHERE (@Search IS NULL OR t.Comp_id LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
           AND (@StartDate IS NULL OR t.CreatedAt >= @StartDate)
-          AND (@EndDate IS NULL OR t.CreatedAt <= @EndDate);
+          AND (@EndDate IS NULL OR t.CreatedAt < @EndDate);
     END
 
     -- Query for ticket list
@@ -90,7 +108,7 @@ BEGIN
     LEFT JOIN Comp_Reg cr ON cr.Comp_ID = t.Comp_id
     WHERE (@Search IS NULL OR t.Comp_id LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
       AND (@StartDate IS NULL OR t.CreatedAt >= @StartDate)
-      AND (@EndDate IS NULL OR t.CreatedAt <= @EndDate)
+      AND (@EndDate IS NULL OR t.CreatedAt < @EndDate)
     GROUP BY 
         t.TicketId,  
         t.M_Consumerid,  

@@ -22,7 +22,35 @@ begin
  ,isnull(bankekycStatus,0)bankekycStatus,PanHolderName,AadharHolderName,m.UPIId,Shop_address,FirmName,Agegroup    
  ,Pancard_Status,Aadhar_Status,Passbook_Status,Ekyc_status,Location,AddressProof    
  ,UpiidImage,UPIKYCSTATUS,teslapayoutmode,Selfie_image,
-
+ (SELECT TOP 1 total_credit_limit FROM dealer_credit_limits WHERE M_Consumerid = m.M_Consumerid AND Comp_id = @Comp_Id ORDER BY last_updated_at DESC) AS TotalCredit,
+ (SELECT TOP 1 deposit_amount FROM dealer_security_deposits WHERE M_Consumerid = m.M_Consumerid AND Comp_id = @Comp_Id ORDER BY last_updated_at DESC) AS DepositAmount,
+CASE 
+    WHEN @Comp_Id = 'Comp-1152' THEN
+        CASE 
+            WHEN (m.employeeID IS NOT NULL AND m.employeeID <> '') AND (m.distributorID IS NOT NULL AND m.distributorID <> '') THEN
+                CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM m_dealermaster_mahindra_emp 
+                        WHERE DealerCode = m.distributorID AND DealerTechnicianId = m.employeeID
+                    ) 
+                    AND NOT EXISTS (
+                        SELECT 1 FROM m_dealermaster 
+                        WHERE DealerCode = m.distributorID AND DealerTechnicianId = m.employeeID
+                    ) THEN 'Account is deactivated'
+                    WHEN EXISTS (
+                        SELECT 1 FROM m_dealermaster_mahindra_emp 
+                        WHERE DealerCode = m.distributorID AND DealerTechnicianId = m.employeeID
+                    ) 
+                    OR EXISTS (
+                        SELECT 1 FROM m_dealermaster 
+                        WHERE DealerCode = m.distributorID AND DealerTechnicianId = m.employeeID
+                    ) THEN 'Active'
+                    ELSE 'Invalid Id and Dealer Code'
+                END
+            ELSE 'Invalid Id and Dealer Code'
+        END
+    ELSE ''
+END AS [Active Status],
 CASE 
     WHEN u.User_Type IS NULL THEN '' 
     ELSE u.User_Type 
