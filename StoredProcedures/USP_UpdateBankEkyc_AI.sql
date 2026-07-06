@@ -39,13 +39,13 @@ BEGIN
             SELECT value FROM STRING_SPLIT(UPPER(@AccountHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
         )
         BEGIN
-            -- Reject KYC
-            UPDATE tbl_Vendorvisekycstatus
-            SET VRKbl_KYC_status = 2, kycremark = 'Name mismatch with Bank Account'
-            WHERE M_consumerId = @M_ConsumerId;
+            -- Update ConsumerName with AccountHolderName instead of rejecting
+            UPDATE M_Consumer
+            SET ConsumerName = @AccountHolderName
+            WHERE M_ConsumerId = @M_ConsumerId;
 
-            SELECT 'Bank KYC Rejected due to name mismatch' AS Message, 2 AS Success;
-            RETURN;
+            -- Refresh local variable for subsequent EKYC steps
+            SET @ConsumerName = @AccountHolderName;
         END
     END
 

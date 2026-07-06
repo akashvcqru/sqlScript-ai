@@ -239,6 +239,9 @@ FROM
         -- Additional Details
         VKS.Entry_Date,
         MC.M_Consumerid,
+        VKS.systemgeneratedremark,
+        VKS.updateddate,
+        VKS.rejectedkyc,
 
         -- IspanOperative Status
         CASE 
