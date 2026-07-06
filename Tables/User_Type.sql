@@ -22,6 +22,7 @@ CREATE TABLE [dbo].[User_Type](
 	[CanSeePoints] [bit] NOT NULL,
 	[isClaimTypeDealer] [bit] NOT NULL,
 	[isNeedsDealer] [bit] NOT NULL,
+	[CanAddInvoice] [bit] NULL,
 	[IsSupervisorApprovalRequired] [bit] NULL,
 	[SupervisorValue] [decimal](18, 2) NULL,
 	[SupervisorGet] [varchar](50) NULL,

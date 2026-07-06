@@ -4,11 +4,15 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 --exec [dbo].[SP_BL_UpdateKycStatus_AI] 'Comp-2031','1','156308','Approved'
-CREATE PROCEDURE [dbo].[SP_BL_UpdateKycStatus_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_UpdateKycStatus_AI]
     @Comp_Id        VARCHAR(15),
     @Status         NVARCHAR(20), --1,2
     @m_consumerid   NVARCHAR(20),
-    @Comments       NVARCHAR(200) = NULL 
+    @Comments       NVARCHAR(200) = NULL,
+    @bankAprovedStatus VARCHAR(20) = NULL,
+    @panAprovedStatus  VARCHAR(20) = NULL,
+    @upiAprovedStatus  VARCHAR(20) = NULL,
+    @addhrAprovedStatus VARCHAR(20) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -38,7 +42,12 @@ BEGIN
 
         UPDATE tbl_Vendorvisekycstatus
         SET VRKbl_KYC_status = @Status,
-            kycremark = @Comments
+            kycremark = @Comments,
+            pan_ekycStatus = CASE WHEN @panAprovedStatus IS NOT NULL THEN @panAprovedStatus ELSE pan_ekycStatus END,
+            aadhar_ekycStatus = CASE WHEN @addhrAprovedStatus IS NOT NULL THEN @addhrAprovedStatus ELSE aadhar_ekycStatus END,
+            bank_ekycStatus = CASE WHEN @bankAprovedStatus IS NOT NULL THEN @bankAprovedStatus ELSE bank_ekycStatus END,
+            upi_ekycStatus = CASE WHEN @upiAprovedStatus IS NOT NULL THEN @upiAprovedStatus ELSE upi_ekycStatus END,
+            Updated_date = CASE WHEN @panAprovedStatus IS NOT NULL OR @addhrAprovedStatus IS NOT NULL OR @bankAprovedStatus IS NOT NULL OR @upiAprovedStatus IS NOT NULL THEN GETDATE() ELSE Updated_date END
         WHERE Comp_id = @Comp_Id 
           AND M_consumerId = @m_consumerid;
 

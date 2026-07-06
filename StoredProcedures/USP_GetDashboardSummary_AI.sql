@@ -197,27 +197,6 @@ BEGIN
       AND BL.ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards');
 
     ---------------------------------------------------------
-    -- CHANNEL PREFERENCE AND TRANSACTION CHECKS (FROM SP_BL_GetBeneficiariesReport)
-    ---------------------------------------------------------
-    DECLARE @HasTransactions INT = 0;
-    IF EXISTS (
-        SELECT 1 FROM Transactions WITH (NOLOCK)
-        WHERE CompId IN (SELECT REPLACE(Comp_Id, 'Comp-', '') FROM @CompanyList) AND IsSuccess = 1
-    ) SET @HasTransactions = 1;
-
-    DECLARE @HasUPI INT = 0;
-    IF EXISTS (
-        SELECT 1 FROM tblUPITransactionDetails WITH (NOLOCK)
-        WHERE Comp_Id = @CompID AND Status = 'Success' AND LEN(Code1) > 3
-    ) SET @HasUPI = 1;
-
-    DECLARE @HasBPoints INT = 0;
-    IF EXISTS (
-        SELECT 1 FROM BPointsTransaction WITH (NOLOCK)
-        INNER JOIN @CompanyList CL ON companyid = CL.Comp_Id
-        WHERE bpstatus IN ('Accepted', 'SUCCESS')
-    ) SET @HasBPoints = 1;
-
     -- Calculate specific totals for this consumer
     DECLARE @BPointsAmount DECIMAL(18,2) = 0;
     SELECT @BPointsAmount = ISNULL(SUM(ISNULL(RedeemPoints, 0)), 0)
@@ -253,16 +232,7 @@ BEGIN
       AND CD.Mobileno = @MobileNo;
 
     DECLARE @RedeemAmount DECIMAL(18,2) = 0;
-    SET @RedeemAmount = CASE 
-        WHEN @HasTransactions = 1 OR @HasUPI = 1 OR @HasBPoints = 1 THEN
-            @BPointsAmount + 
-            CASE 
-                WHEN @HasTransactions = 1 THEN @TransactionsAmount
-                ELSE @UPIAmount
-            END
-        ELSE 
-            @ClaimsAmount
-    END;
+    SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount;
 
     -- Result Set 1: Overall Stats
     SELECT 

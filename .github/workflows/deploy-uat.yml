@@ -1,0 +1,42 @@
+name: Deploy SQL to UAT (Database)
+
+on:
+  push:
+    branches: 
+      - uat  # Triggers automatically when code is pushed to the uat branch
+  workflow_dispatch:  # Allows you to click "Run workflow" manually on GitHub
+
+jobs:
+  deploy-uat:
+    runs-on: [self-hosted, uat-server]
+    environment: Uat Server
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run UAT DB Deployment Script
+        shell: powershell
+        env:
+          DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
+        run: |
+          powershell -ExecutionPolicy Bypass -File ./deploy_db.ps1 -TargetEnv "UAT"
+
+      - name: Send Email Notification
+        if: always()
+        run: |
+          $SmtpServer = "smtp.gmail.com"
+          $SmtpPort = 587
+          $Username = "akash@vcqru.com"
+          $Password = "ruuh ryhh vckn gleu"
+
+          $Subject = "SQL Deployment ${{ job.status }}: UAT Database"
+          $Body = "The SQL Script UAT deployment for ${{ github.repository }} has ${{ job.status }}. `n`nCheck details here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          $SecurePassword = $Password | ConvertTo-SecureString -AsPlainText -Force
+          $Creds = New-Object System.Management.Automation.PSCredential($Username, $SecurePassword)
+
+          Send-MailMessage -SmtpServer $SmtpServer -Port $SmtpPort -UseSsl `
+            -From $Username -To "akash@vcqru.com" `
+            -Subject $Subject -Body $Body -Credential $Creds
+        shell: powershell
+
