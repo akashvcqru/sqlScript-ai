@@ -65,7 +65,7 @@ BEGIN
                 SELECT TOP (@BatchSize) Series_Order, Series_Serial
                 FROM M_Code
                 WHERE Pro_ID = @Pro_ID
-                  AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
+                  AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSeries))
                 ORDER BY Series_Order, Series_Serial
             )
             SELECT 
