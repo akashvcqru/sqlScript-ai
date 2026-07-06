@@ -1,8 +1,11 @@
 USE [Vcqru]
 GO
 
+
+
+
 -- exec [dbo].[SP_BL_GetBeneficiariesReport] 'Comp-1727','MONTH',NULL,NULL,'Approved',NULL,1,10
-ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
+CREATE PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
 (
     @Comp_Id     NVARCHAR(50),  
     @datePreset  NVARCHAR(20) = NULL,   -- TODAY, WEEK, LASTWEEK, MONTH, QUARTER, ALL
@@ -118,15 +121,33 @@ BEGIN
     END
 
     ---------------------------------------------------------
-    -- CLEAN TEMP TABLES
+    DROP TABLE IF EXISTS #Candidates, #Users, #State, #Benefit, #Claims, #TDS, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals;
+
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Users, #State, #Benefit, #Claims, #TDS, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals;
+    -- CANDIDATE USERS FOR THIS COMPANY
+    ---------------------------------------------------------
+    SELECT DISTINCT M_ConsumerId
+    INTO #Candidates
+    FROM (
+        SELECT M_ConsumerId FROM tbl_VendorViseKYCStatus WITH (NOLOCK) WHERE Comp_Id = @Comp_Id
+        UNION
+        SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON CD.Mobileno = MC.MobileNo WHERE CD.Comp_id = @Comp_Id
+        UNION
+        SELECT MC.M_Consumerid 
+        FROM BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
+        INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
+        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
+        WHERE PR.Comp_Id = @Comp_Id
+    ) x;
+
+    CREATE CLUSTERED INDEX IX_Candidates_ConsumerId ON #Candidates(M_ConsumerId);
 
     ---------------------------------------------------------
     -- USERS + KYC
     ---------------------------------------------------------
     SELECT DISTINCT
-        V.M_ConsumerId,
+        C.M_ConsumerId,
         MC.ConsumerName,
         MC.MobileNo,
         MC.PinCode,
@@ -139,14 +160,14 @@ BEGIN
             ELSE 'Pending'
         END AS KYCStatus
     INTO #Users
-    FROM
-    (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY M_ConsumerId ORDER BY Entry_date DESC) AS rn
+    FROM #Candidates C
+    INNER JOIN M_Consumer MC WITH (NOLOCK) ON C.M_ConsumerId = MC.M_ConsumerId
+    LEFT JOIN (
+        SELECT M_ConsumerId, VRKbl_KYC_status, ROW_NUMBER() OVER (PARTITION BY M_ConsumerId ORDER BY Entry_date DESC) as rn
         FROM tbl_VendorViseKYCStatus WITH (NOLOCK)
         WHERE Comp_Id = @Comp_Id
-    ) V
-    INNER JOIN M_Consumer MC WITH (NOLOCK) ON V.M_ConsumerId = MC.M_ConsumerId
-    WHERE V.rn = 1 AND MC.IsDelete = 0;
+    ) V ON V.M_ConsumerId = C.M_ConsumerId AND V.rn = 1
+    WHERE MC.IsDelete = 0;
 
     CREATE CLUSTERED INDEX IX_Users_ConsumerId ON #Users(M_ConsumerId);
     CREATE INDEX IX_Users_MobileNo ON #Users(MobileNo);
@@ -500,5 +521,7 @@ BEGIN
         FROM #FinalData;
     END
 END
+
+
 
 GO
