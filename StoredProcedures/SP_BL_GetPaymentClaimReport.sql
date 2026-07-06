@@ -175,17 +175,8 @@ BEGIN
         CD.Row_id AS Claim_id,
         CD.Claim_date,
         CD.Mobileno,
-        CASE 
-            WHEN CD.Comp_id = ''Comp-1466'' THEN ISNULL(CD.RequestAmmount, CD.Amount)
-            ELSE CD.Amount 
-        END AS Points,
-        CASE 
-            WHEN CD.Comp_id = ''Comp-1727'' THEN (ISNULL(CD.Amount, 0) / 2.0) - ISNULL(CD.tdsAmount, 0)
-            WHEN CD.Gifts_Redeemed IS NOT NULL AND LTRIM(RTRIM(CD.Gifts_Redeemed)) <> '''' AND LTRIM(RTRIM(CD.Gifts_Redeemed)) <> ''0'' AND TRY_CAST(CD.Gifts_Redeemed AS DECIMAL(18,2)) IS NOT NULL THEN TRY_CAST(CD.Gifts_Redeemed AS DECIMAL(18,2))
-            WHEN CD.RequestAmmount IS NOT NULL AND CD.RequestAmmount <> 0 THEN CD.RequestAmmount
-            WHEN CD.PointsValue IS NOT NULL AND CD.PointsValue <> 0 THEN CD.PointsValue
-            ELSE CD.Amount 
-        END AS PointsValue,
+        CD.Amount AS Points,
+        ISNULL(CD.RequestAmmount, ISNULL(CD.Amount, CD.PointsValue)) AS PointsValue,
         ISNULL(CD.tdsAmount, 0) AS tdsAmount,
         ISNULL(CD.tdsper, 0) AS tdsper,
         MC.ConsumerName,
