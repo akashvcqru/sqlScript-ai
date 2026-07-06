@@ -35,13 +35,13 @@ BEGIN
             SELECT value FROM STRING_SPLIT(UPPER(@PanHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
         )
         BEGIN
-            -- Reject KYC
-            UPDATE tbl_Vendorvisekycstatus
-            SET VRKbl_KYC_status = 2, kycremark = 'Name mismatch with PAN'
-            WHERE M_consumerId = @M_ConsumerId;
+            -- Update ConsumerName with PanHolderName instead of rejecting
+            UPDATE M_Consumer
+            SET ConsumerName = @PanHolderName
+            WHERE M_ConsumerId = @M_ConsumerId;
 
-            SELECT 'PAN KYC Rejected due to name mismatch' AS Message, 2 AS Success;
-            RETURN;
+            -- Refresh local variable for subsequent EKYC steps
+            SET @ConsumerName = @PanHolderName;
         END
     END
 
