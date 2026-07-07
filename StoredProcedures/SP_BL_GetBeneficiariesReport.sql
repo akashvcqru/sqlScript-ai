@@ -364,7 +364,7 @@ BEGIN
     INTO #Claims
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
-    WHERE CD.Isapproved = 1 and PaymentStatus='Success'
+    WHERE CD.Isapproved = 1
       AND CD.Mobileno IN (SELECT MobileNo FROM #Users)
       AND (CD.action_date IS NULL OR ((@StartDate IS NULL OR CD.action_date >= @StartDate) AND (@EndDate IS NULL OR CD.action_date < @EndDate)))
     GROUP BY CD.Mobileno;
