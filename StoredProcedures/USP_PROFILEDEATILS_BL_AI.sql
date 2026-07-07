@@ -36,7 +36,7 @@ CASE
                     AND NOT EXISTS (
                         SELECT 1 FROM m_dealermaster 
                         WHERE DealerCode = m.distributorID AND DealerTechnicianId = m.employeeID
-                    ) THEN 'Account is deactivated'
+                    ) THEN 'Your account is currently inactive. Please contact your Customer Care Manager for assistance.'
                     WHEN EXISTS (
                         SELECT 1 FROM m_dealermaster_mahindra_emp 
                         WHERE DealerCode = m.distributorID AND DealerTechnicianId = m.employeeID
