@@ -211,7 +211,7 @@ BEGIN
     -- 1. Get Enquiries (Source: Pro_Enq)
     INSERT INTO #UniqueScans (MobileNo, M_Codeid, Enq_Date, Pro_ID, Series_Order, Series_Serial, rn)
     SELECT 
-        PE.MobileNo,
+        REPLACE(PE.MobileNo, '+', '') AS MobileNo,
         M.Row_ID AS M_Codeid,
         PE.Enq_Date,
         M.Pro_ID,
@@ -223,7 +223,7 @@ BEGIN
     INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
     INNER JOIN @CompanyList CL ON PR.Comp_Id = CL.Comp_Id
     WHERE PE.Is_Success = '1'
-      AND PE.MobileNo IN (SELECT MobileNo FROM #Users)
+      AND REPLACE(PE.MobileNo, '+', '') IN (SELECT MobileNo FROM #Users)
       AND (@StartDate IS NULL OR PE.Enq_Date >= @StartDate)
       AND (@EndDate IS NULL OR PE.Enq_Date < @EndDate);
 

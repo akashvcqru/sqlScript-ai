@@ -1,6 +1,6 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 5/5/2026 12:47:13 PM ******/
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 7/7/2026 5:33:35 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -249,14 +249,11 @@ BEGIN
         FROM BuiltLoyaltyMCodeCheck
     ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
     INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
+    INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID
     LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON BL.SST_id = sst.SST_Id
     LEFT JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
-    WHERE BL.compid = @Comp_Id
-    -- (
-    --     (@Comp_Id IN ('Comp-1567','Comp-1650') AND BL.compid IN ('Comp-1567','Comp-1650'))
-    --     OR
-    --     (@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND BL.compid = @Comp_Id)
-    -- )
+    WHERE BL.compid = @Comp_Id OR (BL.compid IS NULL AND PR.Comp_ID = @Comp_Id)
     GROUP BY MC.M_Codeid;
 
     CREATE INDEX IX_Points_MCodeid ON #Points(M_Codeid);
