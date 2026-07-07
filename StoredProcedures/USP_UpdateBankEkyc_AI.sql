@@ -28,24 +28,61 @@ BEGIN
        AND @IfscCode IS NOT NULL AND LTRIM(RTRIM(@IfscCode)) <> '' AND UPPER(@IfscCode) LIKE '[A-Z][A-Z][A-Z][A-Z]0[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]'
        AND ISNULL(@AccountHolderName, '') <> '' AND ISNULL(@ConsumerName, '') <> ''
     BEGIN
-        -- Check name mismatch (using the exact token check from the insert query)
-        IF EXISTS (
-            SELECT value FROM STRING_SPLIT(UPPER(@AccountHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
-            EXCEPT
-            SELECT value FROM STRING_SPLIT(UPPER(@ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
-        ) OR EXISTS (
-            SELECT value FROM STRING_SPLIT(UPPER(@ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
-            EXCEPT
-            SELECT value FROM STRING_SPLIT(UPPER(@AccountHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
-        )
-        BEGIN
-            -- Update ConsumerName with AccountHolderName instead of rejecting
-            UPDATE M_Consumer
-            SET ConsumerName = @AccountHolderName
-            WHERE M_ConsumerId = @M_ConsumerId;
+        -- Clean and Split comparison logic in T-SQL
+        DECLARE @CleanName1 NVARCHAR(200) = LTRIM(RTRIM(UPPER(@AccountHolderName)));
+        DECLARE @CleanName2 NVARCHAR(200) = LTRIM(RTRIM(UPPER(@ConsumerName)));
 
-            -- Refresh local variable for subsequent EKYC steps
-            SET @ConsumerName = @AccountHolderName;
+        IF @CleanName1 LIKE 'MR %' SET @CleanName1 = LTRIM(SUBSTRING(@CleanName1, 4, LEN(@CleanName1)))
+        ELSE IF @CleanName1 LIKE 'MRS %' SET @CleanName1 = LTRIM(SUBSTRING(@CleanName1, 5, LEN(@CleanName1)))
+        ELSE IF @CleanName1 LIKE 'MS %' SET @CleanName1 = LTRIM(SUBSTRING(@CleanName1, 4, LEN(@CleanName1)));
+
+        IF @CleanName2 LIKE 'MR %' SET @CleanName2 = LTRIM(SUBSTRING(@CleanName2, 4, LEN(@CleanName2)))
+        ELSE IF @CleanName2 LIKE 'MRS %' SET @CleanName2 = LTRIM(SUBSTRING(@CleanName2, 5, LEN(@CleanName2)))
+        ELSE IF @CleanName2 LIKE 'MS %' SET @CleanName2 = LTRIM(SUBSTRING(@CleanName2, 4, LEN(@CleanName2)));
+
+        DECLARE @TotalTokens INT = 0;
+        DECLARE @MatchCount INT = 0;
+        DECLARE @MatchPercentage DECIMAL(5,2) = 0.00;
+
+        SELECT @TotalTokens = COUNT(1) FROM STRING_SPLIT(@CleanName1, ' ') WHERE LTRIM(RTRIM(value)) <> '';
+
+        IF @TotalTokens > 0
+        BEGIN
+            SELECT @MatchCount = COUNT(DISTINCT t1.value)
+            FROM (SELECT value FROM STRING_SPLIT(@CleanName1, ' ') WHERE LTRIM(RTRIM(value)) <> '') t1
+            CROSS APPLY (SELECT value FROM STRING_SPLIT(@CleanName2, ' ') WHERE LTRIM(RTRIM(value)) <> '') t2
+            WHERE t2.value LIKE '%' + t1.value + '%';
+
+            SET @MatchPercentage = CAST(@MatchCount AS DECIMAL(5,2)) / CAST(@TotalTokens AS DECIMAL(5,2)) * 100.00;
+        END
+
+        -- If match is less than 60%, return early with mismatch message
+        IF @MatchPercentage < 60.00
+        BEGIN
+            SELECT 'Name mismatch' AS Message, 0 AS Success, @AccountHolderName AS HolderName;
+            RETURN;
+        END
+        ELSE
+        BEGIN
+            -- Check if they are not identical tokens
+            IF EXISTS (
+                SELECT value FROM STRING_SPLIT(UPPER(@AccountHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+                EXCEPT
+                SELECT value FROM STRING_SPLIT(UPPER(@ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+            ) OR EXISTS (
+                SELECT value FROM STRING_SPLIT(UPPER(@ConsumerName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+                EXCEPT
+                SELECT value FROM STRING_SPLIT(UPPER(@AccountHolderName), ' ') WHERE LTRIM(RTRIM(value)) <> ''
+            )
+            BEGIN
+                -- Update ConsumerName with AccountHolderName instead of rejecting
+                UPDATE M_Consumer
+                SET ConsumerName = @AccountHolderName
+                WHERE M_ConsumerId = @M_ConsumerId;
+
+                -- Refresh local variable for subsequent EKYC steps
+                SET @ConsumerName = @AccountHolderName;
+            END
         END
     END
 
