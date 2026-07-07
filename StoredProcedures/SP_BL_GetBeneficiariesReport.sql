@@ -364,7 +364,7 @@ BEGIN
     INTO #Claims
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
-    WHERE CD.Isapproved = 1
+    WHERE CD.Isapproved = 1 and PaymentStatus='Success'
       AND CD.Mobileno IN (SELECT MobileNo FROM #Users)
       AND (CD.action_date IS NULL OR ((@StartDate IS NULL OR CD.action_date >= @StartDate) AND (@EndDate IS NULL OR CD.action_date < @EndDate)))
     GROUP BY CD.Mobileno;
@@ -381,6 +381,8 @@ BEGIN
     FROM tblUPITransactionDetails WITH (NOLOCK)
     WHERE Comp_Id = @Comp_Id
       AND Status = 'Success'
+      AND LEN(ISNULL(Code1, '')) > 1
+      AND LEN(ISNULL(Code2, '')) > 6
       AND M_Consumerid IN (SELECT CAST(M_ConsumerId AS VARCHAR(50)) FROM #Users)
       AND (@StartDate IS NULL OR ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR ReqDate <  @EndDate)
@@ -435,6 +437,7 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM tblUPITransactionDetails WITH (NOLOCK)
         WHERE Comp_Id = @Comp_Id AND Status = 'Success'
+          AND LEN(ISNULL(Code1, '')) > 1 AND LEN(ISNULL(Code2, '')) > 6
     ) SET @HasUPI = 1;
 
     DECLARE @HasBPoints INT = 0;
@@ -460,17 +463,9 @@ BEGIN
         U.KYCStatus,
         ISNULL(B.Benefit,0) AS PointsEarned,
         ISNULL(R.ReferralAmount,0) AS RefralAmount,
-        ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + 
-        CASE 
-            WHEN @Comp_Id IN ('Comp-1274') THEN ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0)
-            ELSE 0 
-        END AS RedeemAmount,
+        ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0) AS RedeemAmount,
         ISNULL(B.Benefit, 0) + ISNULL(R.ReferralAmount, 0) - (
-            ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + 
-            CASE 
-                WHEN @Comp_Id IN ('Comp-1274') THEN ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0)
-                ELSE 0 
-            END
+            ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0)
         ) AS BalanceAmount,
         ISNULL(TDS.TDSAmount, 0) AS TDSAmount,
         B.LastScan,
