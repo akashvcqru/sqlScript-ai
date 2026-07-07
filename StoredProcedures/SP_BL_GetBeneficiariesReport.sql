@@ -1,11 +1,10 @@
 USE [Vcqru]
 GO
-
-
-
-
--- exec [dbo].[SP_BL_GetBeneficiariesReport] 'Comp-1727','MONTH',NULL,NULL,'Approved',NULL,1,10
-CREATE PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
 (
     @Comp_Id     NVARCHAR(50),  
     @datePreset  NVARCHAR(20) = NULL,   -- TODAY, WEEK, LASTWEEK, MONTH, QUARTER, ALL
@@ -461,8 +460,18 @@ BEGIN
         U.KYCStatus,
         ISNULL(B.Benefit,0) AS PointsEarned,
         ISNULL(R.ReferralAmount,0) AS RefralAmount,
-        ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) AS RedeemAmount,
-        ISNULL(B.Benefit, 0) + ISNULL(R.ReferralAmount, 0) - (ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0)) AS BalanceAmount,
+        ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + 
+        CASE 
+            WHEN @Comp_Id IN ('Comp-1274') THEN ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0)
+            ELSE 0 
+        END AS RedeemAmount,
+        ISNULL(B.Benefit, 0) + ISNULL(R.ReferralAmount, 0) - (
+            ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + 
+            CASE 
+                WHEN @Comp_Id IN ('Comp-1274') THEN ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0)
+                ELSE 0 
+            END
+        ) AS BalanceAmount,
         ISNULL(TDS.TDSAmount, 0) AS TDSAmount,
         B.LastScan,
         ROW_NUMBER() OVER (ORDER BY ISNULL(B.Benefit,0) DESC, U.M_ConsumerId) AS RN

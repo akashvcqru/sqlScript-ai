@@ -176,7 +176,7 @@ BEGIN
         CD.Claim_date,
         CD.Mobileno,
         CD.Amount AS Points,
-        ISNULL(CD.RequestAmmount, ISNULL(CD.Amount, CD.PointsValue)) AS PointsValue,
+        (ISNULL(CD.Amount, 0) - ISNULL(CD.tdsAmount, 0)) AS PointsValue,
         ISNULL(CD.tdsAmount, 0) AS tdsAmount,
         ISNULL(CD.tdsper, 0) AS tdsper,
         MC.ConsumerName,
