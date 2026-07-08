@@ -202,6 +202,9 @@ BEGIN
         VKS.Entry_Date,
         MC.M_Consumerid,
         VKS.systemgeneratedremark,
+        VKS.Updated_date AS Updated_date,
+        VKS.Updated_date AS updateddate,
+        VKS.rejectedkyc,
 
         -- IspanOperative Status
         CASE 
