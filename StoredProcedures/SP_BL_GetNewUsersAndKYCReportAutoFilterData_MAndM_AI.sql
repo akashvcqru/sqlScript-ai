@@ -240,8 +240,7 @@ FROM
         VKS.Entry_Date,
         MC.M_Consumerid,
         VKS.systemgeneratedremark,
-        VKS.Updated_date,
-        VKS.rejectedkyc,
+        VKS.updateddate,
 
         -- IspanOperative Status
         CASE 

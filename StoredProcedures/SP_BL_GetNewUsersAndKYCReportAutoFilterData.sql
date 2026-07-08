@@ -173,15 +173,6 @@ BEGIN
         MC.City,
         MC.PinCode,
         MC.[State] AS state,
-        MC.Other_Role,
-
-        -- Determine User Type based on Vrkabel_User_Type
-        CASE
-            WHEN MC.Vrkabel_User_Type = ''1'' THEN ''Agent''
-            WHEN MC.Vrkabel_User_Type = ''2'' THEN ''Distributor''
-            WHEN MC.Vrkabel_User_Type = ''3'' THEN ''Mechanic''
-            ELSE ''Unknown''
-        END AS Vrkabel_User_Type,
 
         -- Determine KYC Status
         CASE 
@@ -190,22 +181,12 @@ BEGIN
             ELSE ''Approved''
         END AS VRKbl_KYC_status,
 
-        -- Legacy KYCStatus for compatibility
-        CASE 
-            WHEN VKS.VRKbl_KYC_status = 2 THEN ''KYC Rejected''
-            WHEN VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL THEN ''KYC Pending''
-            ELSE ''KYC Approved''
-        END AS KYCStatus,
-
         -- KYC channel-wise statuses
         CASE WHEN MC.panekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.panekycStatus, '''') END AS panekycStatus,
         CASE WHEN MC.aadharkycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.aadharkycStatus, '''') END AS aadharkycStatus,
         CASE WHEN (MC.bankekycStatus IN (''1'', ''Online'') OR EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
         MC.pancard_number,
-        MC.gender,
-        MC.shop_file,
-        VKS.kycremark AS remark,
         VKS.kycremark, -- Keep original name too
 
         -- Bank Information (Latest Bank Record)
@@ -215,17 +196,12 @@ BEGIN
         MB.Branch,
         MB.IFSC_Code,
 
-        -- Shop Information (Workplace Address)
-        MC.Shop_address AS Workplacestate,
-
         -- Additional Details
         MC.UPIId,
         MC.Selfie_image,
         VKS.Entry_Date,
         MC.M_Consumerid,
         VKS.systemgeneratedremark,
-        VKS.Updated_date,
-        VKS.rejectedkyc,
 
         -- IspanOperative Status
         CASE 
