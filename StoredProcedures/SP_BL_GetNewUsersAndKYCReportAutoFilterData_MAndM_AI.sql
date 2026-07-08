@@ -241,7 +241,6 @@ FROM
         MC.M_Consumerid,
         VKS.systemgeneratedremark,
         VKS.updateddate,
-        VKS.rejectedkyc,
 
         -- IspanOperative Status
         CASE 
