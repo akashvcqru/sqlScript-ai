@@ -181,6 +181,12 @@ BEGIN
             ELSE ''Approved''
         END AS VRKbl_KYC_status,
 
+        CASE 
+            WHEN VKS.VRKbl_KYC_status = 2 THEN ''Rejected''
+            WHEN VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL THEN ''Pending''
+            ELSE ''Approved''
+        END AS KYCStatus,
+
         -- KYC channel-wise statuses
         CASE WHEN MC.panekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.panekycStatus, '''') END AS panekycStatus,
         CASE WHEN MC.aadharkycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.aadharkycStatus, '''') END AS aadharkycStatus,
