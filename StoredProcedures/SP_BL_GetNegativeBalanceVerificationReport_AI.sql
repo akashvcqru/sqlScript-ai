@@ -51,6 +51,7 @@ BEGIN
     DECLARE @EndDate   DATETIME;
 
     DECLARE @Preset NVARCHAR(20) = UPPER(ISNULL(@datePreset, ''));
+    IF (@Preset = '') SET @Preset = 'LAST7DAYS';
 
     IF (@Preset = 'TODAY')
     BEGIN
@@ -99,7 +100,12 @@ BEGIN
         SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
         SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
     END
-    ELSE -- ALL / NULL / Empty
+    ELSE IF (@Preset = 'LAST7DAYS' OR @Preset = '7DAYS')
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -7, CAST(GETDATE() AS DATE));
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE -- ALL or fallback
     BEGIN
         SET @StartDate = CAST(@CompanyStartDate AS DATE);
         SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
@@ -108,11 +114,31 @@ BEGIN
     ---------------------------------------------------------
     -- CLEANUP TEMP TABLES
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Users, #Benefit, #Referrals, #Claims, #UPI, #BPoints, #Balances, #Enq, #Codes, #MCode, #Pro, #Geo, #Points, #ScanReferrals, #CodeConfigPoints, #RawScans, #Redemptions, #CodeServices, #CombinedTimeline, #PagedTimeline;
+    DROP TABLE IF EXISTS #ActiveConsumerIds, #ActiveConsumerMCodes, #FilteredBMC, #Users, #Benefit, #Referrals, #Claims, #UPI, #BPoints, #Balances, #Enq, #Codes, #MCode, #Pro, #Geo, #Points, #ScanReferrals, #CodeConfigPoints, #RawScans, #Redemptions, #CodeServices, #CombinedTimeline, #PagedTimeline;
 
     ---------------------------------------------------------
     -- IDENTIFY ALL REGISTERED CONSUMERS
     ---------------------------------------------------------
+    -- Gather active consumers for this company
+    SELECT DISTINCT M_ConsumerId
+    INTO #ActiveConsumerIds
+    FROM (
+        SELECT M_Consumerid FROM dbo.BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id AND M_Consumerid IS NOT NULL
+        UNION
+        SELECT MC.M_ConsumerId 
+        FROM dbo.ClaimDetails CD WITH (NOLOCK)
+        INNER JOIN dbo.M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = CD.Mobileno AND MC.IsDelete = 0
+        WHERE CD.Comp_id = @Comp_Id
+        UNION
+        SELECT CAST(M_Consumerid AS INT) 
+        FROM dbo.tblUPITransactionDetails WITH (NOLOCK) 
+        WHERE Comp_Id = @Comp_Id AND ISNUMERIC(M_Consumerid) = 1
+        UNION
+        SELECT RedeemBy FROM dbo.BPointsTransaction WITH (NOLOCK) WHERE companyid = @Comp_Id AND RedeemBy IS NOT NULL
+    ) AS ActiveUsers;
+
+    CREATE CLUSTERED INDEX IX_ActiveConsumerIds ON #ActiveConsumerIds(M_ConsumerId);
+
     SELECT DISTINCT 
         MC.M_ConsumerId, 
         REPLACE(MC.MobileNo, '+', '') AS MobileNo,
@@ -120,6 +146,7 @@ BEGIN
         MC.State
     INTO #Users
     FROM dbo.M_Consumer MC WITH (NOLOCK)
+    INNER JOIN #ActiveConsumerIds A ON A.M_ConsumerId = MC.M_ConsumerId
     WHERE MC.IsDelete = 0;
 
     CREATE CLUSTERED INDEX IX_Users_ConsumerId ON #Users(M_ConsumerId);
@@ -316,6 +343,26 @@ BEGIN
     FROM loyalty_calculation 
     WHERE comp_id = @Comp_Id AND isactive = 1 AND isdelete = 0;
  
+    -- 1. Gather active consumer MCode IDs for this company
+    SELECT M_Consumer_MCodeid, M_Codeid
+    INTO #ActiveConsumerMCodes
+    FROM M_Consumer_M_Code WITH (NOLOCK)
+    WHERE compid = @Comp_Id;
+
+    CREATE CLUSTERED INDEX IX_ActiveConsumerMCodes ON #ActiveConsumerMCodes(M_Consumer_MCodeid);
+    CREATE INDEX IX_ActiveConsumerMCodes_Code ON #ActiveConsumerMCodes(M_Codeid);
+
+    -- 2. Filter BuiltLoyaltyMCodeCheck to only those relevant to this company
+    SELECT 
+        BMC.Pkid, 
+        BMC.M_Consumer_MCOdeid,
+        ROW_NUMBER() OVER (PARTITION BY BMC.M_Consumer_MCOdeid ORDER BY BMC.Createdate ASC) as rn
+    INTO #FilteredBMC
+    FROM BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
+    INNER JOIN #ActiveConsumerMCodes AMC ON BMC.M_Consumer_MCOdeid = AMC.M_Consumer_MCodeid;
+
+    CREATE CLUSTERED INDEX IX_FilteredBMC_Pkid ON #FilteredBMC(Pkid);
+
     SELECT
         MC.M_Codeid,
         MAX(CAST(
@@ -334,11 +381,8 @@ BEGIN
         AS DECIMAL(18,2))) AS WornPoint
     INTO #Points
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-    INNER JOIN (
-        SELECT Pkid, M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY M_Consumer_MCOdeid ORDER BY Createdate ASC) as rn
-        FROM BuiltLoyaltyMCodeCheck
-    ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
-    INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    INNER JOIN #FilteredBMC BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
+    INNER JOIN #ActiveConsumerMCodes MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
     INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
     INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID
     LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON BL.SST_id = sst.SST_Id
