@@ -28,6 +28,17 @@ BEGIN
         RETURN;
     END;
 
+    -- Declare a table variable to hold the targeted Comp_Id list
+    DECLARE @TargetCompanies TABLE (CompId VARCHAR(15));
+    IF @Comp_Id IN ('Comp-1650', 'Comp-1567')
+    BEGIN
+        INSERT INTO @TargetCompanies (CompId) VALUES ('Comp-1650'), ('Comp-1567');
+    END
+    ELSE
+    BEGIN
+        INSERT INTO @TargetCompanies (CompId) VALUES (@Comp_Id);
+    END
+
     ------------------------------------------------------
     -- Safely update tables using a transaction
     ------------------------------------------------------
@@ -37,7 +48,7 @@ BEGIN
         UPDATE M_Consumer 
         SET VRKbl_KYC_status = @Status,
             remark = @Comments
-        WHERE Comp_id = @Comp_Id 
+        WHERE Comp_id IN (SELECT CompId FROM @TargetCompanies)
           AND M_Consumerid = @m_consumerid AND IsDelete=0;
 
         UPDATE tbl_Vendorvisekycstatus
@@ -48,20 +59,20 @@ BEGIN
             bank_ekycStatus = CASE WHEN @bankAprovedStatus IS NOT NULL THEN @bankAprovedStatus ELSE bank_ekycStatus END,
             upi_ekycStatus = CASE WHEN @upiAprovedStatus IS NOT NULL THEN @upiAprovedStatus ELSE upi_ekycStatus END,
             Updated_date = CASE WHEN @panAprovedStatus IS NOT NULL OR @addhrAprovedStatus IS NOT NULL OR @bankAprovedStatus IS NOT NULL OR @upiAprovedStatus IS NOT NULL THEN GETDATE() ELSE Updated_date END
-        WHERE Comp_id = @Comp_Id 
+        WHERE Comp_id IN (SELECT CompId FROM @TargetCompanies)
           AND M_consumerId = @m_consumerid;
 
 		  IF EXISTS (
 				SELECT 1 
 				FROM UserData_MHCroneJob
-				WHERE Comp_id = @Comp_Id 
+				WHERE Comp_id IN (SELECT CompId FROM @TargetCompanies)
 				  AND M_consumerId = @m_consumerid
 			)
 			BEGIN
 				UPDATE UserData_MHCroneJob
 				SET VRKbl_KYC_status = @Status,
 					kycremark = @Comments
-				WHERE Comp_id = @Comp_Id 
+				WHERE Comp_id IN (SELECT CompId FROM @TargetCompanies)
 				  AND M_consumerId = @m_consumerid;
 			END
 
