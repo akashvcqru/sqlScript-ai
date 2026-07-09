@@ -146,8 +146,8 @@ BEGIN
     INTO #Enq
     FROM Pro_Enq WITH (NOLOCK)
 	INNER JOIN M_code M WITH (NOLOCK) 
-	    ON Received_Code1 = CAST(code1 AS VARCHAR(50))
-	   AND Received_Code2 = CAST(Code2 AS VARCHAR(50))
+	    ON M.Code1 = TRY_CAST(Received_Code1 AS NUMERIC(5,0))
+	   AND M.Code2 = TRY_CAST(Received_Code2 AS NUMERIC(8,0))
     INNER JOIN Pro_Reg PR WITH (NOLOCK)
         ON PR.Pro_ID = M.Pro_ID
     WHERE PR.Comp_ID = @Comp_Id
@@ -280,10 +280,16 @@ BEGIN
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN (
         SELECT Pkid, M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY M_Consumer_MCOdeid ORDER BY Createdate ASC) as rn
-        FROM BuiltLoyaltyMCodeCheck WITH (NOLOCK)
+        FROM BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
+        WHERE EXISTS (
+            SELECT 1 
+            FROM M_Consumer_M_Code MC2 WITH (NOLOCK)
+            INNER JOIN #MCode M2 ON MC2.M_Codeid = M2.M_Codeid
+            WHERE MC2.M_Consumer_MCOdeid = BMC.M_Consumer_MCOdeid
+        )
     ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
     INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-    INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
+    INNER JOIN #MCode M ON MC.M_Codeid = M.M_Codeid
     INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID
     LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON BL.SST_id = sst.SST_Id
     LEFT JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
@@ -361,17 +367,14 @@ BEGIN
     -- SERVICE NAMES ASSIGNED
     ---------------------------------------------------------
     SELECT 
-        M.Row_ID AS M_Codeid,
+        M.M_Codeid,
         STRING_AGG(S.ServiceName, ', ') AS AssignedServices
     INTO #CodeServices
-    FROM #Codes DC
-    INNER JOIN M_Code M WITH (NOLOCK) 
-        ON M.Code1 = TRY_CAST(DC.Received_Code1 AS NUMERIC(5,0)) 
-       AND M.Code2 = TRY_CAST(DC.Received_Code2 AS NUMERIC(8,0))
+    FROM #MCode M
     INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = M.Pro_ID
     INNER JOIN M_Service S WITH (NOLOCK) ON S.Service_ID = SS.Service_ID
     WHERE SS.IsActive = 1 AND SS.IsDelete = 0 AND SS.Comp_ID = @Comp_Id
-    GROUP BY M.Row_ID;
+    GROUP BY M.M_Codeid;
 
     CREATE CLUSTERED INDEX IX_CodeServices ON #CodeServices(M_Codeid);
 
