@@ -58,7 +58,7 @@ BEGIN
             aadhar_ekycStatus = CASE WHEN @addhrAprovedStatus IS NOT NULL THEN @addhrAprovedStatus ELSE aadhar_ekycStatus END,
             bank_ekycStatus = CASE WHEN @bankAprovedStatus IS NOT NULL THEN @bankAprovedStatus ELSE bank_ekycStatus END,
             upi_ekycStatus = CASE WHEN @upiAprovedStatus IS NOT NULL THEN @upiAprovedStatus ELSE upi_ekycStatus END,
-            Updated_date = CASE WHEN @panAprovedStatus IS NOT NULL OR @addhrAprovedStatus IS NOT NULL OR @bankAprovedStatus IS NOT NULL OR @upiAprovedStatus IS NOT NULL THEN GETDATE() ELSE Updated_date END
+            Updated_date = GETDATE()
         WHERE Comp_id IN (SELECT CompId FROM @TargetCompanies)
           AND M_consumerId = @m_consumerid;
 
