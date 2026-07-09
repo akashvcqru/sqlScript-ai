@@ -167,7 +167,7 @@ BEGIN
           WHERE M_ConsumerID = @ConsumerId;
 
 
-        SELECT 'Your account is currently inactive. Please contact your Customer Care Manager for assistance.' AS Status;
+        SELECT 'Your account is currently inactive. Please contact Customer Care or FDW for further assistance.' AS Status;
         RETURN;
     END
 	ELSE
