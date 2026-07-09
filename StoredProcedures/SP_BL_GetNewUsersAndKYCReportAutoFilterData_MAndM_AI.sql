@@ -241,7 +241,6 @@ FROM
         MC.M_Consumerid,
         VKS.systemgeneratedremark,
         VKS.Updated_date AS Updated_date,
-        VKS.Updated_date AS updateddate,
 
         -- IspanOperative Status
         CASE 
