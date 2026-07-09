@@ -799,8 +799,8 @@ BEGIN
             WHEN RecordType = 'Referral' THEN 'REFERRAL'
             ELSE UPPER(RecordType)
         END AS TransactionType,
-        -- Sort: Highest negative point/cash balance users first, and chronological ledger order per user
-        ROW_NUMBER() OVER (ORDER BY BAL.FinalBalanceAmount ASC, CT.MobileNo, EnquiryDate ASC, SortOrder ASC, CT_ID ASC) AS RN
+        -- Sort: Enquiry/TransactionDate DESC
+        ROW_NUMBER() OVER (ORDER BY EnquiryDate DESC, SortOrder ASC, CT_ID ASC) AS RN
     INTO #PagedTimeline
     FROM #CombinedTimeline CT
     INNER JOIN #Balances BAL ON BAL.MobileNo = CT.MobileNo
@@ -812,7 +812,7 @@ BEGIN
     IF @IsExport = 1
     BEGIN
         SELECT
-            CompanyName, ProductName, [Service name], Amount, Balance, AssignPoint, WornPoint, Frequency,
+            CompanyName, ProductName, [Service name], Amount, AssignPoint, WornPoint, Frequency,
             MobileNumber, Code1, Code2, SuccessStatus, ModeOfVerification, [Enquiry/TransactionDate], Location, TransactionType
         FROM #PagedTimeline
         ORDER BY RN;
@@ -820,7 +820,7 @@ BEGIN
     ELSE
     BEGIN
         SELECT
-            CompanyName, ProductName, [Service name], Amount, Balance, AssignPoint, WornPoint, Frequency,
+            CompanyName, ProductName, [Service name], Amount, AssignPoint, WornPoint, Frequency,
             MobileNumber, Code1, Code2, SuccessStatus, ModeOfVerification, [Enquiry/TransactionDate], Location, TransactionType
         FROM #PagedTimeline
         WHERE RN BETWEEN @Offset + 1 AND @Offset + @Limit
