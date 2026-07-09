@@ -138,6 +138,7 @@ BEGIN
     INNER JOIN Pro_Reg PR WITH (NOLOCK)
         ON PR.Pro_ID = M.Pro_ID
     WHERE PR.Comp_ID = @Comp_Id
+      AND Is_Success = 1
       AND Enq_Date >= @StartDate
       AND Enq_Date <  @EndDate;
 
@@ -145,7 +146,7 @@ BEGIN
     CREATE INDEX IX_Enq_Mobile ON #Enq(MobileNo);
 
     ---------------------------------------------------------
-    -- IDENTIFY CODES CHECKED MULTIPLE TIMES (OVERALL)
+    -- IDENTIFY CODES CHECKED MULTIPLE TIMES WITH IS_SUCCESS = 1 (OVERALL)
     ---------------------------------------------------------
     SELECT 
         Received_Code1,
@@ -155,7 +156,7 @@ BEGIN
     INTO #DuplicateCodes
     FROM Pro_Enq WITH (NOLOCK)
     WHERE Comp_ID = @Comp_Id
-      AND Is_Success IN (1, 2)
+      AND Is_Success = 1
     GROUP BY Received_Code1, Received_Code2
     HAVING COUNT(*) > 1;
 
