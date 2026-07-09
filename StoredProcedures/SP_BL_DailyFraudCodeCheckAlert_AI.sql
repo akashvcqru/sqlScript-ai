@@ -14,7 +14,9 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_DailyFraudCodeCheckAlert_AI]
 (
     @Comp_Id         NVARCHAR(50),
-    @datePreset      NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, ALL, LAST7DAYS
+    @datePreset      NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, ALL, LAST7DAYS, CUSTOM
+    @fromDate        NVARCHAR(30) = NULL,
+    @toDate          NVARCHAR(30) = NULL,
     @Page            INT = NULL,
     @Limit           INT = NULL,
     @IsExport        BIT = NULL,
@@ -50,7 +52,13 @@ BEGIN
     DECLARE @EndDate   DATETIME;
 
     DECLARE @Preset NVARCHAR(20) = UPPER(ISNULL(@datePreset, ''));
-    IF (@Preset = '' OR @Preset = 'NULL') SET @Preset = 'LAST7DAYS';
+    IF (@Preset = '' OR @Preset = 'NULL') 
+    BEGIN
+        IF (@fromDate IS NOT NULL AND @toDate IS NOT NULL)
+            SET @Preset = 'CUSTOM';
+        ELSE
+            SET @Preset = 'LAST7DAYS';
+    END
 
     IF (@Preset = 'TODAY')
     BEGIN
@@ -103,6 +111,11 @@ BEGIN
     BEGIN
         SET @StartDate = DATEADD(DAY, -7, CAST(GETDATE() AS DATE));
         SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'CUSTOM' AND @fromDate IS NOT NULL AND @toDate IS NOT NULL)
+    BEGIN
+        SET @StartDate = CAST(@fromDate AS DATE);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@toDate AS DATE));
     END
     ELSE -- ALL or fallback
     BEGIN
