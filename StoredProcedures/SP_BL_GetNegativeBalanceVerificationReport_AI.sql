@@ -15,6 +15,8 @@ CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetNegativeBalanceVerificationReport_AI]
 (
     @Comp_Id         NVARCHAR(50),
     @datePreset      NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, ALL
+    @fromDate        NVARCHAR(30) = NULL,
+    @toDate          NVARCHAR(30) = NULL,
     @Page            INT = NULL,
     @Limit           INT = NULL,
     @IsExport        BIT = NULL,
@@ -104,6 +106,11 @@ BEGIN
     BEGIN
         SET @StartDate = DATEADD(DAY, -7, CAST(GETDATE() AS DATE));
         SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'CUSTOM' AND @fromDate IS NOT NULL AND @toDate IS NOT NULL)
+    BEGIN
+        SET @StartDate = CAST(@fromDate AS DATE);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@toDate AS DATE));
     END
     ELSE -- ALL or fallback
     BEGIN
@@ -779,7 +786,7 @@ BEGIN
     SELECT
         @CompanyName AS CompanyName,
         CASE WHEN ProductName IS NOT NULL AND Pro_ID IS NOT NULL THEN CONCAT(ProductName, ' (', Pro_ID, ')') ELSE ProductName END AS ProductName,
-        CS.AssignedServices AS [Service name],
+        CS.AssignedServices AS ServiceName,
         Amount,
         -- Running Balance per user (MobileNo)
         SUM(Amount) OVER (PARTITION BY CT.MobileNo ORDER BY EnquiryDate ASC, SortOrder ASC, CT_ID ASC) AS Balance,
@@ -791,7 +798,7 @@ BEGIN
         CT.Code2,
         SuccessStatus,
         ModeOfVerification,
-        EnquiryDate AS [Enquiry/TransactionDate],
+        EnquiryDate AS EnquiryTransactionDate,
         CONCAT(COALESCE(City, ''), CASE WHEN City IS NOT NULL AND State IS NOT NULL THEN ', ' ELSE '' END, COALESCE(State, '')) AS Location,
         CASE 
             WHEN RecordType = 'Scan' THEN 'VERIFICATION'
@@ -812,16 +819,16 @@ BEGIN
     IF @IsExport = 1
     BEGIN
         SELECT
-            CompanyName, ProductName, [Service name], Amount, AssignPoint, WornPoint, Frequency,
-            MobileNumber, Code1, Code2, SuccessStatus, ModeOfVerification, [Enquiry/TransactionDate], Location, TransactionType
+            CompanyName, ProductName, ServiceName, Amount, AssignPoint, WornPoint, Frequency,
+            MobileNumber, Code1, Code2, SuccessStatus, ModeOfVerification, EnquiryTransactionDate, Location, TransactionType
         FROM #PagedTimeline
         ORDER BY RN;
     END
     ELSE
     BEGIN
         SELECT
-            CompanyName, ProductName, [Service name], Amount, AssignPoint, WornPoint, Frequency,
-            MobileNumber, Code1, Code2, SuccessStatus, ModeOfVerification, [Enquiry/TransactionDate], Location, TransactionType
+            CompanyName, ProductName, ServiceName, Amount, AssignPoint, WornPoint, Frequency,
+            MobileNumber, Code1, Code2, SuccessStatus, ModeOfVerification, EnquiryTransactionDate, Location, TransactionType
         FROM #PagedTimeline
         WHERE RN BETWEEN @Offset + 1 AND @Offset + @Limit
         ORDER BY RN;
