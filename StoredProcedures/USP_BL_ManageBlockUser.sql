@@ -97,6 +97,7 @@ BEGIN
         IF @IsExport = 1
         BEGIN
             SELECT 
+                mc.M_Consumerid AS M_Consumerid,
                 mc.Entry_Date AS Registration_Date,
                 mc.ConsumerName,
                 mc.MobileNo AS MobileNumber,
@@ -124,6 +125,7 @@ BEGIN
         ELSE
         BEGIN
             SELECT 
+                mc.M_Consumerid AS M_Consumerid,
                 mc.Entry_Date AS Registration_Date,
                 mc.ConsumerName,
                 mc.MobileNo AS MobileNumber,
