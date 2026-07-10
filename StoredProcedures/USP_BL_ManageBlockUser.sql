@@ -107,7 +107,6 @@ BEGIN
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE vks.Comp_id = @Comp_Id 
-              AND mc.IsActive = '1' AND mc.IsDelete = '1'
               AND (
                   (mc.IsDelete = '1')
                   OR (vks.IsDelete = 1)
@@ -121,7 +120,7 @@ BEGIN
                   OR mc.ConsumerName LIKE '%' + @Search + '%' 
                   OR mc.MobileNo LIKE '%' + @Search + '%'
               )
-            ORDER BY Registration_Date DESC;
+            ORDER BY mc.Entry_Date DESC;
         END
         ELSE
         BEGIN
@@ -136,10 +135,9 @@ BEGIN
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE vks.Comp_id = @Comp_Id 
-              AND mc.IsActive = '1' AND mc.IsDelete = '1'
               AND (
-                  (mc.IsActive = '1' AND mc.IsDelete = '1')
-                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
+                  (mc.IsDelete = '1')
+                  OR (vks.IsDelete = 1)
               )
               AND (
                   (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
@@ -150,7 +148,7 @@ BEGIN
                   OR mc.ConsumerName LIKE '%' + @Search + '%' 
                   OR mc.MobileNo LIKE '%' + @Search + '%'
               )
-            ORDER BY Registration_Date DESC
+            ORDER BY mc.Entry_Date DESC
             OFFSET (@Page - 1) * @Limit ROWS FETCH NEXT @Limit ROWS ONLY;
 
             -- Pagination metadata
@@ -163,8 +161,8 @@ BEGIN
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE vks.Comp_id = @Comp_Id 
               AND (
-                  (mc.IsActive = '1' AND mc.IsDelete = '1')
-                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
+                  (mc.IsDelete = '1')
+                  OR (vks.IsDelete = 1)
               )
               AND (
                   (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
