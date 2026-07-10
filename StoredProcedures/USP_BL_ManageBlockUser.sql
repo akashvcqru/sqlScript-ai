@@ -106,10 +106,7 @@ BEGIN
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE vks.Comp_id = @Comp_Id 
-              AND (
-                  (mc.IsActive = '1' AND mc.IsDelete = '1')
-                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
-              )
+              AND mc.IsActive = '1' AND mc.IsDelete = '1'
               AND (
                   (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
                   OR (mc.block_date IS NULL AND @Win = 'ALL')
@@ -119,7 +116,28 @@ BEGIN
                   OR mc.ConsumerName LIKE '%' + @Search + '%' 
                   OR mc.MobileNo LIKE '%' + @Search + '%'
               )
-            ORDER BY mc.Entry_Date DESC;
+            UNION
+            SELECT 
+                mc.Entry_Date AS Registration_Date,
+                mc.ConsumerName,
+                mc.MobileNo AS MobileNumber,
+                mc.PinCode,
+                mc.City,
+                mc.block_date AS block_date
+            FROM M_Consumer mc WITH (NOLOCK)
+            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+            WHERE vks.Comp_id = @Comp_Id 
+              AND vks.IsActive = 1 AND vks.IsDelete = 1
+              AND (
+                  (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
+                  OR (mc.block_date IS NULL AND @Win = 'ALL')
+              )
+              AND (
+                  @Search IS NULL 
+                  OR mc.ConsumerName LIKE '%' + @Search + '%' 
+                  OR mc.MobileNo LIKE '%' + @Search + '%'
+              )
+            ORDER BY Registration_Date DESC;
         END
         ELSE
         BEGIN
@@ -133,10 +151,7 @@ BEGIN
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE vks.Comp_id = @Comp_Id 
-              AND (
-                  (mc.IsActive = '1' AND mc.IsDelete = '1')
-                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
-              )
+              AND mc.IsActive = '1' AND mc.IsDelete = '1'
               AND (
                   (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
                   OR (mc.block_date IS NULL AND @Win = 'ALL')
@@ -146,7 +161,28 @@ BEGIN
                   OR mc.ConsumerName LIKE '%' + @Search + '%' 
                   OR mc.MobileNo LIKE '%' + @Search + '%'
               )
-            ORDER BY mc.Entry_Date DESC
+            UNION
+            SELECT 
+                mc.Entry_Date AS Registration_Date,
+                mc.ConsumerName,
+                mc.MobileNo AS MobileNumber,
+                mc.PinCode,
+                mc.City,
+                mc.block_date AS block_date
+            FROM M_Consumer mc WITH (NOLOCK)
+            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+            WHERE vks.Comp_id = @Comp_Id 
+              AND vks.IsActive = 1 AND vks.IsDelete = 1
+              AND (
+                  (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
+                  OR (mc.block_date IS NULL AND @Win = 'ALL')
+              )
+              AND (
+                  @Search IS NULL 
+                  OR mc.ConsumerName LIKE '%' + @Search + '%' 
+                  OR mc.MobileNo LIKE '%' + @Search + '%'
+              )
+            ORDER BY Registration_Date DESC
             OFFSET (@Page - 1) * @Limit ROWS FETCH NEXT @Limit ROWS ONLY;
 
             -- Pagination metadata
@@ -155,22 +191,37 @@ BEGIN
                 @Page AS CurrentPage,
                 @Limit AS Limit,
                 CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-            FROM M_Consumer mc WITH (NOLOCK)
-            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
-            WHERE vks.Comp_id = @Comp_Id 
-              AND (
-                  (mc.IsActive = '1' AND mc.IsDelete = '1')
-                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
-              )
-              AND (
-                  (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
-                  OR (mc.block_date IS NULL AND @Win = 'ALL')
-              )
-              AND (
-                  @Search IS NULL 
-                  OR mc.ConsumerName LIKE '%' + @Search + '%' 
-                  OR mc.MobileNo LIKE '%' + @Search + '%'
-              );
+            FROM (
+                SELECT mc.M_Consumerid
+                FROM M_Consumer mc WITH (NOLOCK)
+                INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+                WHERE vks.Comp_id = @Comp_Id 
+                  AND mc.IsActive = '1' AND mc.IsDelete = '1'
+                  AND (
+                      (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
+                      OR (mc.block_date IS NULL AND @Win = 'ALL')
+                  )
+                  AND (
+                      @Search IS NULL 
+                      OR mc.ConsumerName LIKE '%' + @Search + '%' 
+                      OR mc.MobileNo LIKE '%' + @Search + '%'
+                  )
+                UNION
+                SELECT mc.M_Consumerid
+                FROM M_Consumer mc WITH (NOLOCK)
+                INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+                WHERE vks.Comp_id = @Comp_Id 
+                  AND vks.IsActive = 1 AND vks.IsDelete = 1
+                  AND (
+                      (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
+                      OR (mc.block_date IS NULL AND @Win = 'ALL')
+                  )
+                  AND (
+                      @Search IS NULL 
+                      OR mc.ConsumerName LIKE '%' + @Search + '%' 
+                      OR mc.MobileNo LIKE '%' + @Search + '%'
+                  )
+            ) t;
         END
     END
     ELSE IF @Action = 'ADD'
