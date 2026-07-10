@@ -233,9 +233,20 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess','success')  and s.Service_ID = 'SRV10
         '' AS Code2,  
         @MobileNo AS MobileNo,  
         @M_Consumer_id AS M_Consumerid,  
-        CONCAT('+', bll.Points) AS Points,  
+        CASE 
+            WHEN bll.Points IS NOT NULL AND bll.Points <> '' THEN CONCAT('+', bll.Points)
+            WHEN bll.cash IS NOT NULL AND bll.cash <> '' THEN CONCAT('+', bll.cash)
+            ELSE '+0'
+        END AS Points,  
         bll.ServiceName,  
-        bll.ServiceName AS ServiceNameNew,
+        CASE 
+            WHEN bll.ServiceName = 'Referral' THEN 'Referral'
+            WHEN bll.ServiceName = 'KYCRewards' THEN 'KYC Rewards'
+            WHEN bll.ServiceName = 'Supervisor' THEN 'Supervisor'
+            WHEN bll.ServiceName = 'InvoiceBenifit' THEN 'Invoice Benefit'
+            WHEN bll.ServiceName = 'InvoiceRewards' THEN 'Invoice Rewards'
+            ELSE bll.ServiceName 
+        END AS ServiceNameNew,
         'Green' AS ColourCode,
         CASE 
             WHEN bll.ServiceName = 'InvoiceBenifit' THEN 
@@ -254,7 +265,7 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess','success')  and s.Service_ID = 'SRV10
     FROM BLoyaltyPointsEarned bll  
     INNER JOIN Comp_Reg cr ON cr.Comp_ID = bll.compid  
     WHERE bll.M_Consumerid = @M_Consumer_id   
-      AND bll.ServiceName IN ('Referral', 'InvoiceBenifit', 'InvoiceRewards')   
+      AND bll.ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards')   
       AND bll.compid = @Comp_ID  
   
     ORDER BY Enq_Date DESC;  
