@@ -31,7 +31,10 @@ BEGIN
             bl.Code2,  
             bl.MobileNo,
             @M_Consumer_id AS M_Consumerid,
-            CONCAT('+', bl.cash) AS Points,  
+            CASE 
+                WHEN bl.cash IS NOT NULL AND bl.cash <> '' AND bl.cash <> '0' THEN CONCAT('+', bl.cash)
+                ELSE '0'
+            END AS Points,  
             ms.ServiceName,  
             ms.ServiceName AS ServiceNameNew,
             CASE  
@@ -67,7 +70,11 @@ BEGIN
             pe.Received_Code2 AS Code2,  
             pe.MobileNo,
             @M_Consumer_id AS M_Consumerid,
-            CONCAT('+', CASE WHEN pe.Is_Success = 1 THEN CAST(CAST(ISNULL(sst.IsCash, 0) * 1.10 AS INT) AS VARCHAR(50)) ELSE '0' END) AS Points,  
+            CASE 
+                WHEN pe.Is_Success = 1 AND ISNULL(sst.IsCash, 0) <> 0 
+                THEN CONCAT('+', CAST(CAST(sst.IsCash * 1.10 AS INT) AS VARCHAR(50))) 
+                ELSE '0' 
+            END AS Points,  
             s.ServiceName,  
             s.ServiceName AS ServiceNameNew,
             CASE  
@@ -149,9 +156,11 @@ BEGIN
         t2.*,  
         --CONCAT('+', bl.Points) AS Points,  
 		CASE
-    WHEN bl.Points IS NOT NULL and bl.Points <> ''
+    WHEN bl.Points IS NOT NULL AND bl.Points <> '' AND bl.Points <> '0'
         THEN CONCAT('+', bl.Points)
-    ELSE CONCAT('+', bl.cash)
+    WHEN bl.cash IS NOT NULL AND bl.cash <> '' AND bl.cash <> '0'
+        THEN CONCAT('+', bl.cash)
+    ELSE '0'
 END AS Points,
         bl.ServiceName,  
         c.ServiceName AS ServiceNameNew,
@@ -174,7 +183,7 @@ END AS Points,
 
 	SELECT   
     t2.*,   
-    CONCAT('+', 0) AS Points,   
+    '0' AS Points,   
     s.ServiceName AS ServiceName,  
     s.ServiceName AS ServiceNameNew,
     CASE  
@@ -208,7 +217,7 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess','success')  and s.Service_ID = 'SRV10
   
     SELECT   
         t2.*,   
-        CONCAT('+', 0) AS Points,   
+        '0' AS Points,   
         'buildloyalty' AS ServiceName,  
         'buildloyalty' AS ServiceNameNew,
         CASE  
@@ -234,9 +243,9 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess','success')  and s.Service_ID = 'SRV10
         @MobileNo AS MobileNo,  
         @M_Consumer_id AS M_Consumerid,  
         CASE 
-            WHEN bll.Points IS NOT NULL AND bll.Points <> '' THEN CONCAT('+', bll.Points)
-            WHEN bll.cash IS NOT NULL AND bll.cash <> '' THEN CONCAT('+', bll.cash)
-            ELSE '+0'
+            WHEN bll.Points IS NOT NULL AND bll.Points <> '' AND bll.Points <> '0' THEN CONCAT('+', bll.Points)
+            WHEN bll.cash IS NOT NULL AND bll.cash <> '' AND bll.cash <> '0' THEN CONCAT('+', bll.cash)
+            ELSE '0'
         END AS Points,  
         bll.ServiceName,  
         CASE 
