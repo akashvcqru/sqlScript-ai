@@ -17,33 +17,45 @@ GO
 -- Populate unique industry types if they don't already exist
 IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[tbl_Industry_Type]') AND type in (N'U'))
 BEGIN
-    INSERT INTO [dbo].[tbl_Industry_Type] (Industry_Type, IsActive, CreatedAt)
+    DECLARE @colName NVARCHAR(100) = 'Industry_Type';
+    IF COL_LENGTH('dbo.tbl_Industry_Type', 'Industry_Name') IS NOT NULL
+        SET @colName = 'Industry_Name';
+
+    DECLARE @dateColName NVARCHAR(100) = 'CreatedAt';
+    IF COL_LENGTH('dbo.tbl_Industry_Type', 'CreatedDate') IS NOT NULL
+        SET @dateColName = 'CreatedDate';
+
+    DECLARE @sql NVARCHAR(MAX);
+    SET @sql = N'
+    INSERT INTO [dbo].[tbl_Industry_Type] (' + QUOTENAME(@colName) + N', IsActive, ' + QUOTENAME(@dateColName) + N')
     SELECT val, 1, GETDATE()
     FROM (
         VALUES 
-        (N'Dairy'),
-        (N'FMCG'),
-        (N'Home Care'),
-        (N'Pharma'),
-        (N'Tobacco'),
-        (N'Infrastructure'),
-        (N'Electronics'),
-        (N'Agriculture'),
-        (N'Apparel'),
-        (N'Beverage'),
-        (N'Lubricants'),
-        (N'Alcohol'),
-        (N'Publishing'),
-        (N'Electricals'),
-        (N'Automotive'),
-        (N'Paint Industry'),
-        (N'Personal Care'),
-        (N'Construction'),
-        (N'Luxury'),
-        (N'Fashion'),
-        (N'Luxury/Fashion'),
-        (N'Nutrition')
+        (N''Dairy''),
+        (N''FMCG''),
+        (N''Home Care''),
+        (N''Pharma''),
+        (N''Tobacco''),
+        (N''Infrastructure''),
+        (N''Electronics''),
+        (N''Agriculture''),
+        (N''Apparel''),
+        (N''Beverage''),
+        (N''Lubricants''),
+        (N''Alcohol''),
+        (N''Publishing''),
+        (N''Electricals''),
+        (N''Automotive''),
+        (N''Paint Industry''),
+        (N''Personal Care''),
+        (N''Construction''),
+        (N''Luxury''),
+        (N''Fashion''),
+        (N''Luxury/Fashion''),
+        (N''Nutrition'')
     ) AS v(val)
-    WHERE val NOT IN (SELECT Industry_Type FROM [dbo].[tbl_Industry_Type]);
+    WHERE val NOT IN (SELECT ' + QUOTENAME(@colName) + N' FROM [dbo].[tbl_Industry_Type]);
+    ';
+    EXEC sp_executesql @sql;
 END
 GO
