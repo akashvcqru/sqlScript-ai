@@ -34,6 +34,7 @@ BEGIN
         MobileNo VARCHAR(15) NULL,
         Amount DECIMAL(18, 2) NULL,
         CompName NVARCHAR(150) NULL,
+        CompId VARCHAR(50) NULL,
         IsApproved INT NOT NULL,
         VendorComment NVARCHAR(MAX) NULL,
         [UpiId/AC] VARCHAR(100) NULL,
@@ -84,13 +85,14 @@ BEGIN
     END
 
     -- Fetch high value claims prioritizing company threshold or falling back to default threshold
-    INSERT INTO #FinalData (ClaimId, ClaimDate, MobileNo, Amount, CompName, IsApproved, VendorComment, [UpiId/AC], PaymentRemarks, PaymentStatus, ClaimMode)
+    INSERT INTO #FinalData (ClaimId, ClaimDate, MobileNo, Amount, CompName, CompId, IsApproved, VendorComment, [UpiId/AC], PaymentRemarks, PaymentStatus, ClaimMode)
     SELECT
         cd.Row_id AS ClaimId,
         cd.Claim_date AS ClaimDate,
         cd.Mobileno AS MobileNo,
         CAST(cd.RequestAmmount AS DECIMAL(18,2)) AS Amount,
         ISNULL(c.Comp_Name, 'Unknown') AS CompName,
+        cd.Comp_id AS CompId,
         cd.Isapproved AS IsApproved,
         cd.vendor_comment AS VendorComment,
         ISNULL(cd.UPIID, cd.BankRefID) AS [UpiId/AC],
