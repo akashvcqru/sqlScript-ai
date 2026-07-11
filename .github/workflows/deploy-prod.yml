@@ -6,6 +6,7 @@ on:
       - main  # Triggers automatically when code is pushed/merged to the main branch
   workflow_dispatch:  # Allows you to click "Run workflow" manually on GitHub
 
+  
 jobs:
   deploy-prod:
     runs-on: [self-hosted, prod-server]
