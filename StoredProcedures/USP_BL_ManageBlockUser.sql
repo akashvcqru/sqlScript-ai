@@ -97,6 +97,7 @@ BEGIN
         IF @IsExport = 1
         BEGIN
             SELECT 
+                mc.M_Consumerid AS M_Consumerid,
                 mc.Entry_Date AS Registration_Date,
                 mc.ConsumerName,
                 mc.MobileNo AS MobileNumber,
@@ -107,8 +108,8 @@ BEGIN
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE vks.Comp_id = @Comp_Id 
               AND (
-                  (mc.IsActive = '1' AND mc.IsDelete = '1')
-                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
+                  (mc.IsDelete = '1')
+                  OR (vks.IsDelete = 1)
               )
               AND (
                   (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
@@ -124,6 +125,7 @@ BEGIN
         ELSE
         BEGIN
             SELECT 
+                mc.M_Consumerid AS M_Consumerid,
                 mc.Entry_Date AS Registration_Date,
                 mc.ConsumerName,
                 mc.MobileNo AS MobileNumber,
@@ -134,8 +136,8 @@ BEGIN
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE vks.Comp_id = @Comp_Id 
               AND (
-                  (mc.IsActive = '1' AND mc.IsDelete = '1')
-                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
+                  (mc.IsDelete = '1')
+                  OR (vks.IsDelete = 1)
               )
               AND (
                   (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
@@ -159,8 +161,8 @@ BEGIN
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE vks.Comp_id = @Comp_Id 
               AND (
-                  (mc.IsActive = '1' AND mc.IsDelete = '1')
-                  OR (vks.IsActive = 1 AND vks.IsDelete = 1)
+                  (mc.IsDelete = '1')
+                  OR (vks.IsDelete = 1)
               )
               AND (
                   (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
