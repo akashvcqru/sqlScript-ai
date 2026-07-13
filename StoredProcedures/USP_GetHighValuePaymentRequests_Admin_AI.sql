@@ -101,16 +101,11 @@ BEGIN
         cd.Claim_mode AS ClaimMode
     FROM ClaimDetails cd WITH (NOLOCK)
     LEFT JOIN Comp_Reg c WITH (NOLOCK) ON c.Comp_ID = cd.Comp_id
-    OUTER APPLY (
-        SELECT TOP 1 Amount 
-        FROM tbl_HighValuePaymentConfig cfg WITH (NOLOCK) 
-        WHERE cfg.Isactive = 1 AND (cfg.Comp_ID = cd.Comp_id OR cfg.Comp_ID = 'DEFAULT')
-        ORDER BY CASE WHEN cfg.Comp_ID = 'DEFAULT' THEN 1 ELSE 0 END ASC
-    ) resolved_cfg
     WHERE cd.Claim_date >= @StartDate
       AND cd.Claim_date < @EndDate
       AND (@Compid IS NULL OR cd.Comp_id = @Compid)
-      AND (cd.IsHighValue = 1 OR cd.RequestAmmount >= ISNULL(resolved_cfg.Amount, 10000.0))
+      AND cd.IsHighValue = 1
+      AND cd.Isapproved = 0
       AND (
           @Search IS NULL 
           OR cd.Mobileno LIKE '%' + @Search + '%' 
