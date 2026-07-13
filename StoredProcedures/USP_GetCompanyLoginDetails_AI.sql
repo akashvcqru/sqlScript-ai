@@ -96,7 +96,8 @@ BEGIN
 
     -- ── 6. Return onboardingStatus + distinct services list ─────────────────
     DECLARE @BalanceAmount DECIMAL(18, 2) = 0;
-    SELECT @BalanceAmount = ISNULL(balance_amount, 0) FROM Paytm_balance WHERE Comp_ID = @CompID;
+    SELECT @BalanceAmount = ISNULL(Amount, 0) FROM Paytm_balance WHERE Comp_ID = @CompID;
+
 
     SELECT DISTINCT
         1                                AS success,
