@@ -8,11 +8,11 @@ GO
 
 -- =============================================
 -- Author:      Antigravity
--- Create date: 24-Apr-2026
--- Description: Get Warranty Report for Company Dashboard with Pagination and TimeWindow
--- Reference:   GetWarrantyDetails
+-- Create date: 14-Jul-2026
+-- Description: Get Warranty Code Check Report for Company Dashboard with Pagination, TimeWindow, and filters
+-- Reference:   frmManfEnquiryW.aspx.cs
 -- =============================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_WarrantyReport_AI]
+CREATE OR ALTER PROCEDURE [dbo].[USP_WarrantyCodeCheckReport_AI]
 (
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,
@@ -87,7 +87,7 @@ BEGIN
     END
 
     ------------------------------------------------------
-    -- Search Param
+    -- Search & Filter Params
     ------------------------------------------------------
     DECLARE @SearchParam NVARCHAR(102) = NULL;
     IF @Search IS NOT NULL AND @Search <> ''
@@ -98,47 +98,43 @@ BEGIN
     ------------------------------------------------------
     ;WITH MainResult AS (
         SELECT    
-            war.[id],    
-            CASE 
-                WHEN @Comp_Id = 'Comp-1913' THEN war.Serialno
-                ELSE war.[BillNo]
-            END AS [BillNo],
-            war.OldSerialno,
-            pr.[Pro_Name] AS [Product_Name],    
-            CONCAT(Mc.[Code1], Mc.[Code2]) AS [Code],    
-            war.[Mobile],    
-            war.[WarrantyPeriod],    
-            war.[PurchaseDate],    
-            war.[ExpirationDate],    
-            DATEDIFF(DAY, GETDATE(), war.[ExpirationDate]) AS [NumberOfDays],    
-            war.[ImagePathBill],    
-            ISNULL(CAST(war.[IsWarrantyClaimed] AS VARCHAR(10)), '') AS [IsWarrantyClaimed],
-            war.[ImagePath],    
-            war.[VendorComments],    
-            war.[Comment],    
-            CASE 
-                WHEN war.[IsWarrantyClaimed] = '0' THEN 'Pending' 
-                WHEN war.[IsWarrantyClaimed] ='1' THEN 'Approved' 
-                WHEN war.[IsWarrantyClaimed] ='2' THEN 'Reject' 
-                ELSE ISNULL(war.[VendorClaimStatus], '') 
-            END AS VendorClaimStatus,   
-            war.claimdate as [ClaimDate],  
-            CASE 
-                WHEN @Comp_Id = 'Comp-1827' THEN war.SerialNo
-                WHEN @Comp_Id = 'Comp-1993' THEN war.SerialNo
-                ELSE war.[State]
-            END AS [State],
-            war.Comp_id
+            war.[PurchaseDate] AS PurchaseDate,
+            pr.[Pro_Name] AS Pro_Name,
+            pr.[Pro_ID] AS Pro_ID,
+            CAST(Mc.[Code1] AS VARCHAR(20)) + CAST(Mc.[Code2] AS VARCHAR(20)) AS Code,
+            war.[Serialno] AS SerialNo,
+            war.[Email] AS Email,
+            war.[Mobile] AS MobileNo,
+            war.[WarrantyPeriod] AS WarrantyDurationMonth,
+            war.[ExpirationDate] AS Exp_Date,
+            war.[BillNo] AS BillNumber,
+            war.[ImagePath] AS ProductImage,
+            war.[ImagePathBill] AS BillInvoice,
+            war.[Comment] AS UserComment,
+            war.[Battary_volt] AS Battary_volt,
+            war.[Brand] AS Brand,
+            war.[Ratting] AS Ratting,
+            war.[batryType] AS batryType,
+            war.[Model] AS Model
         FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
         INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
         INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
         WHERE pr.[Comp_ID] = @Comp_Id
-          AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
-          AND (@EndDate IS NULL OR war.claimdate <= @EndDate)
-          AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam)
+          -- Date filtering on PurchaseDate (reference page load/filtering logic uses PurchaseDate)
+          AND (@StartDate IS NULL OR war.PurchaseDate >= @StartDate)
+          AND (@EndDate IS NULL OR war.PurchaseDate <= @EndDate)
+          -- General Search filter (includes Code search without hyphen)
+          AND (@SearchParam IS NULL OR 
+               war.Mobile LIKE @SearchParam OR 
+               war.BillNo LIKE @SearchParam OR 
+               war.Serialno LIKE @SearchParam OR 
+               war.Email LIKE @SearchParam OR
+               pr.Pro_Name LIKE @SearchParam OR
+               (CAST(Mc.[Code1] AS VARCHAR(20)) + CAST(Mc.[Code2] AS VARCHAR(20))) LIKE @SearchParam OR
+               war.[Code] LIKE @SearchParam)
     )
     SELECT * FROM MainResult
-    ORDER BY [ClaimDate] DESC
+    ORDER BY PurchaseDate DESC
     OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
     ------------------------------------------------------
@@ -153,8 +149,17 @@ BEGIN
     INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
     INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
     WHERE pr.[Comp_ID] = @Comp_Id
-      AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
-      AND (@EndDate IS NULL OR war.claimdate <= @EndDate)
-      AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam);
+      -- Date filtering on PurchaseDate
+      AND (@StartDate IS NULL OR war.PurchaseDate >= @StartDate)
+      AND (@EndDate IS NULL OR war.PurchaseDate <= @EndDate)
+      -- General Search filter (includes Code search without hyphen)
+      AND (@SearchParam IS NULL OR 
+           war.Mobile LIKE @SearchParam OR 
+           war.BillNo LIKE @SearchParam OR 
+           war.Serialno LIKE @SearchParam OR 
+           war.Email LIKE @SearchParam OR
+           pr.Pro_Name LIKE @SearchParam OR
+           (CAST(Mc.[Code1] AS VARCHAR(20)) + CAST(Mc.[Code2] AS VARCHAR(20))) LIKE @SearchParam OR
+           war.[Code] LIKE @SearchParam);
 END
 GO
