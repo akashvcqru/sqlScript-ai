@@ -69,19 +69,41 @@ BEGIN
     DECLARE @StartDate DATETIME;
     DECLARE @EndDate   DATETIME;
 
+    DECLARE @IsNumericSearch BIT = 0;
+    DECLARE @CleanSearch NVARCHAR(50);
+    IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
+    BEGIN
+        SET @CleanSearch = LTRIM(RTRIM(@Search));
+        IF @CleanSearch LIKE '+%'
+            SET @CleanSearch = SUBSTRING(@CleanSearch, 2, LEN(@CleanSearch));
+        
+        IF @CleanSearch <> '' AND @CleanSearch NOT LIKE '%[^0-9]%'
+            SET @IsNumericSearch = 1;
+    END
+
     DECLARE @Preset NVARCHAR(20) = UPPER(ISNULL(@datePreset, ''));
     IF (@Preset = '' OR @Preset = 'NULL') 
     BEGIN
         IF (@fromDate IS NOT NULL AND @toDate IS NOT NULL)
             SET @Preset = 'CUSTOM';
+        ELSE IF @Comp_Id IS NULL AND @IsNumericSearch = 1
+            SET @Preset = 'ALL';
         ELSE
             SET @Preset = 'LAST7DAYS';
     END
 
     -- If no specific company is selected and preset is ALL, override to LAST7DAYS to prevent performance issues
+    -- UNLESS we are searching by mobile number or code (numeric search)
     IF @Comp_Id IS NULL AND (@Preset = 'ALL' OR @Preset = '') AND @fromDate IS NULL AND @toDate IS NULL
     BEGIN
-        SET @Preset = 'LAST7DAYS';
+        IF @IsNumericSearch = 1
+        BEGIN
+            SET @Preset = 'ALL';
+        END
+        ELSE
+        BEGIN
+            SET @Preset = 'LAST7DAYS';
+        END
     END
 
     IF (@Preset = 'TODAY')
@@ -170,7 +192,13 @@ BEGIN
     WHERE Is_Success = 1
       AND Enq_Date >= @StartDate
       AND Enq_Date <  @EndDate
-      AND (@Comp_Id IS NULL OR Comp_ID = @Comp_Id);
+      AND (@Comp_Id IS NULL OR Comp_ID = @Comp_Id)
+      AND (
+          @IsNumericSearch = 0
+          OR MobileNo LIKE '%' + @Search + '%'
+          OR Received_Code1 LIKE '%' + @Search + '%'
+          OR Received_Code2 LIKE '%' + @Search + '%'
+      );
 
     CREATE INDEX IX_RawEnq_Codes ON #RawEnq(Received_Code1, Received_Code2);
 
