@@ -22,10 +22,18 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    UPDATE ClaimDetails 
-    SET PointsValue = Amount * 10 
-    WHERE ISNULL(PointsValue, 0) <= ISNULL(Amount, 0) 
-      AND Comp_id IN ('Comp-1650', 'Comp-1567');
+    ---------------------------------------------------------
+    -- POINT CONVERSION RATE (dynamic per company)
+    ---------------------------------------------------------
+    DECLARE @ConvPointValue  DECIMAL(18,4) = 1;
+    DECLARE @ConvCashValue   DECIMAL(18,4) = 1;
+
+    SELECT TOP 1
+        @ConvPointValue = ISNULL(NULLIF(PointValue, 0), 1),
+        @ConvCashValue  = ISNULL(CashValue, 1)
+    FROM PointConversionRate
+    WHERE Comp_ID = @Comp_Id
+      AND IsActive = 1;
 
     ---------------------------------------------------------
     -- SAFETY DEFAULTS
@@ -176,7 +184,11 @@ BEGIN
         CD.Claim_date,
         CD.Mobileno,
         CD.Amount AS Points,
-        (ISNULL(CD.Amount, 0) - ISNULL(CD.tdsAmount, 0)) AS PointsValue,
+        -- PointsValue = (Amount / PointValue) * CashValue - tdsAmount
+        CAST(
+            (ISNULL(CD.Amount, 0) / @ConvPointValue * @ConvCashValue)
+            - ISNULL(CD.tdsAmount, 0)
+        AS DECIMAL(18, 2)) AS PointsValue,
         ISNULL(CD.tdsAmount, 0) AS tdsAmount,
         ISNULL(CD.tdsper, 0) AS tdsper,
         MC.ConsumerName,
@@ -243,14 +255,18 @@ BEGIN
                 @EndDate DATETIME,
                 @ClaimStatus NVARCHAR(20),
                 @PaymentStatus NVARCHAR(20),
-                @Search NVARCHAR(30)
+                @Search NVARCHAR(30),
+                @ConvPointValue DECIMAL(18,4),
+                @ConvCashValue  DECIMAL(18,4)
             ',
             @Comp_Id,
             @StartDate,
             @EndDate,
             @ClaimStatus,
             @PaymentStatus,
-            @Search;
+            @Search,
+            @ConvPointValue,
+            @ConvCashValue;
     END
     ELSE
     BEGIN
@@ -268,7 +284,9 @@ BEGIN
                 @Search NVARCHAR(30),
                 @Offset INT,
                 @Limit INT,
-                @Page INT
+                @Page INT,
+                @ConvPointValue DECIMAL(18,4),
+                @ConvCashValue  DECIMAL(18,4)
             ',
             @Comp_Id,
             @StartDate,
@@ -278,7 +296,9 @@ BEGIN
             @Search,
             @Offset,
             @Limit,
-            @Page;
+            @Page,
+            @ConvPointValue,
+            @ConvCashValue;
     END
 END
 GO
