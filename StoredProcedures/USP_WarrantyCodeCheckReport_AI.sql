@@ -101,13 +101,7 @@ BEGIN
             war.[PurchaseDate] AS PurchaseDate,
             pr.[Pro_Name] AS Pro_Name,
             pr.[Pro_ID] AS Pro_ID,
-            war.[Code] AS Code,
-            CASE 
-                WHEN war.[IsWarrantyClaimed] = 0 THEN 'Pending' 
-                WHEN war.[IsWarrantyClaimed] = 1 THEN 'Approved' 
-                WHEN war.[IsWarrantyClaimed] = 2 THEN 'Reject' 
-                ELSE ISNULL(war.[VendorClaimStatus], '') 
-            END AS WarrantyStatus,
+            CAST(Mc.[Code1] AS VARCHAR(20)) + CAST(Mc.[Code2] AS VARCHAR(20)) AS Code,
             war.[Serialno] AS SerialNo,
             war.[Email] AS Email,
             war.[Mobile] AS MobileNo,
@@ -129,13 +123,15 @@ BEGIN
           -- Date filtering on PurchaseDate (reference page load/filtering logic uses PurchaseDate)
           AND (@StartDate IS NULL OR war.PurchaseDate >= @StartDate)
           AND (@EndDate IS NULL OR war.PurchaseDate <= @EndDate)
-          -- General Search filter
+          -- General Search filter (includes Code search without hyphen)
           AND (@SearchParam IS NULL OR 
                war.Mobile LIKE @SearchParam OR 
                war.BillNo LIKE @SearchParam OR 
                war.Serialno LIKE @SearchParam OR 
                war.Email LIKE @SearchParam OR
-               pr.Pro_Name LIKE @SearchParam)
+               pr.Pro_Name LIKE @SearchParam OR
+               (CAST(Mc.[Code1] AS VARCHAR(20)) + CAST(Mc.[Code2] AS VARCHAR(20))) LIKE @SearchParam OR
+               war.[Code] LIKE @SearchParam)
     )
     SELECT * FROM MainResult
     ORDER BY PurchaseDate DESC
@@ -156,12 +152,14 @@ BEGIN
       -- Date filtering on PurchaseDate
       AND (@StartDate IS NULL OR war.PurchaseDate >= @StartDate)
       AND (@EndDate IS NULL OR war.PurchaseDate <= @EndDate)
-      -- General Search filter
+      -- General Search filter (includes Code search without hyphen)
       AND (@SearchParam IS NULL OR 
            war.Mobile LIKE @SearchParam OR 
            war.BillNo LIKE @SearchParam OR 
            war.Serialno LIKE @SearchParam OR 
            war.Email LIKE @SearchParam OR
-           pr.Pro_Name LIKE @SearchParam);
+           pr.Pro_Name LIKE @SearchParam OR
+           (CAST(Mc.[Code1] AS VARCHAR(20)) + CAST(Mc.[Code2] AS VARCHAR(20))) LIKE @SearchParam OR
+           war.[Code] LIKE @SearchParam);
 END
 GO
