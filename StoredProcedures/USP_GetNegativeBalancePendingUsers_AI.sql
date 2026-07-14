@@ -19,7 +19,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
     @ToDate          NVARCHAR(30) = NULL,
     @Page            INT = 1,
     @Limit           INT = 10,
-    @Search          NVARCHAR(100) = NULL
+    @Search          NVARCHAR(100) = NULL,
+    @IsExport        BIT = 0
 )
 AS
 BEGIN
@@ -416,30 +417,47 @@ BEGIN
     LEFT JOIN #Transactions TR ON TR.Comp_Id = U.Comp_Id AND TR.MobileNo = U.MobileNo
     WHERE (ISNULL(E.TotalEarnedPoints, 0) - (ISNULL(C.ClaimsAmount, 0) + ISNULL(UPI.UPIAmount, 0) + ISNULL(BP.BPointsAmount, 0) + ISNULL(TR.TransactionsAmount, 0))) < 0;
 
-    -- Return Paginated Output
+    -- Return Paginated Output OR Export Output
     DECLARE @TotalRecords INT;
     SELECT @TotalRecords = COUNT(*) FROM #Summary;
 
-    SELECT
-        CompanyName,
-        CompanyId,
-        MobileNumber,
-        ConsumerName,
-        TotalPointsEarned,
-        TotalPointsRedeemed,
-        PendingPoints,
-        LatestActivityDate
-    FROM #Summary
-    ORDER BY LatestActivityDate DESC
-    OFFSET (@Page - 1) * @Limit ROWS
-    FETCH NEXT @Limit ROWS ONLY;
+    IF @IsExport = 1
+    BEGIN
+        SELECT
+            CompanyName,
+            CompanyId,
+            MobileNumber,
+            ConsumerName,
+            TotalPointsEarned,
+            TotalPointsRedeemed,
+            PendingPoints,
+            LatestActivityDate
+        FROM #Summary
+        ORDER BY LatestActivityDate DESC;
+    END
+    ELSE
+    BEGIN
+        SELECT
+            CompanyName,
+            CompanyId,
+            MobileNumber,
+            ConsumerName,
+            TotalPointsEarned,
+            TotalPointsRedeemed,
+            PendingPoints,
+            LatestActivityDate
+        FROM #Summary
+        ORDER BY LatestActivityDate DESC
+        OFFSET (@Page - 1) * @Limit ROWS
+        FETCH NEXT @Limit ROWS ONLY;
 
-    -- Meta Pagination Results
-    SELECT
-        @TotalRecords AS TotalRecords,
-        @Page AS CurrentPage,
-        @Limit AS [Limit],
-        CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
+        -- Meta Pagination Results
+        SELECT
+            @TotalRecords AS TotalRecords,
+            @Page AS CurrentPage,
+            @Limit AS [Limit],
+            CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
+    END
 
     -- Cleanup temp tables
     DROP TABLE IF EXISTS #Candidates, #UniqueCandidates, #Users, #UniqueScans, #EarnedPoints, #ConfigPoints, #Benefit, #Referrals, #Earned1152, #TotalEarned, #Claims, #UPI, #BPoints, #Transactions, #Summary;
