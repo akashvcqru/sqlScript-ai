@@ -223,6 +223,7 @@ BEGIN
         ON C.Received_Code1 = E.Received_Code1 
        AND C.Received_Code2 = E.Received_Code2
     WHERE E.Is_Success = 1
+      AND (@Comp_Id IS NULL OR E.Comp_ID = @Comp_Id)
     GROUP BY E.Received_Code1, E.Received_Code2
     HAVING COUNT(*) > 1;
 
