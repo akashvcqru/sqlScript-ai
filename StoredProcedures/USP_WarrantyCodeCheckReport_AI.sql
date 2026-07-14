@@ -98,6 +98,7 @@ BEGIN
     ------------------------------------------------------
     ;WITH MainResult AS (
         SELECT    
+            war.[id] AS id,
             war.[PurchaseDate] AS PurchaseDate,
             pr.[Pro_Name] AS Pro_Name,
             pr.[Pro_ID] AS Pro_ID,
@@ -134,7 +135,7 @@ BEGIN
                war.[Code] LIKE @SearchParam)
     )
     SELECT * FROM MainResult
-    ORDER BY PurchaseDate DESC
+    ORDER BY id DESC
     OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
     ------------------------------------------------------
