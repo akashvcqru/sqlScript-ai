@@ -112,7 +112,7 @@ BEGIN
             war.[ExpirationDate],    
             DATEDIFF(DAY, GETDATE(), war.[ExpirationDate]) AS [NumberOfDays],    
             war.[ImagePathBill],    
-            war.[IsWarrantyClaimed],
+            ISNULL(CAST(war.[IsWarrantyClaimed] AS VARCHAR(10)), '') AS [IsWarrantyClaimed],
             war.[ImagePath],    
             war.[VendorComments],    
             war.[Comment],    
@@ -120,7 +120,7 @@ BEGIN
                 WHEN war.[IsWarrantyClaimed] = '0' THEN 'Pending' 
                 WHEN war.[IsWarrantyClaimed] ='1' THEN 'Approved' 
                 WHEN war.[IsWarrantyClaimed] ='2' THEN 'Reject' 
-                ELSE war.[VendorClaimStatus] 
+                ELSE ISNULL(war.[VendorClaimStatus], '') 
             END AS VendorClaimStatus,   
             war.claimdate as [ClaimDate],  
             CASE 
