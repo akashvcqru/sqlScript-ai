@@ -103,6 +103,7 @@ BEGIN
     ---------------------------------------------------------
     DROP TABLE IF EXISTS #Pro_enq;
     DROP TABLE IF EXISTS #FinalResult;
+    DROP TABLE IF EXISTS #GroupedResult;
 
     ---------------------------------------------------------
     -- GET SUSPICIOUS DUPLICATED CODES
@@ -150,19 +151,33 @@ BEGIN
       );
 
     ---------------------------------------------------------
+    -- GROUP AND AGGREGATE RESULTS
+    ---------------------------------------------------------
+    SELECT 
+        comp_id,
+        Pro_Name,
+        Received_Code1,
+        Received_Code2,
+        COUNT(MobileNo) AS [totak fraud check],
+        MAX(Enq_Date) AS MaxEnqDate
+    INTO #GroupedResult
+    FROM #FinalResult
+    GROUP BY comp_id, Pro_Name, Received_Code1, Received_Code2;
+
+    ---------------------------------------------------------
     -- OUTPUT AND PAGINATION
     ---------------------------------------------------------
     IF @IsExport = 1
     BEGIN
-        SELECT Received_Code1, Received_Code2, Enq_Date, MobileNo, comp_id, Pro_Name
-        FROM #FinalResult
-        ORDER BY Enq_Date DESC;
+        SELECT comp_id, Pro_Name, Received_Code1, Received_Code2, [totak fraud check]
+        FROM #GroupedResult
+        ORDER BY MaxEnqDate DESC;
     END
     ELSE
     BEGIN
-        SELECT Received_Code1, Received_Code2, Enq_Date, MobileNo, comp_id, Pro_Name
-        FROM #FinalResult
-        ORDER BY Enq_Date DESC
+        SELECT comp_id, Pro_Name, Received_Code1, Received_Code2, [totak fraud check]
+        FROM #GroupedResult
+        ORDER BY MaxEnqDate DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
         SELECT
@@ -170,7 +185,7 @@ BEGIN
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM #FinalResult;
+        FROM #GroupedResult;
     END
 END
 GO

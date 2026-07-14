@@ -14,11 +14,12 @@ GO
 -- =========================================================================================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
 (
-    @Days     INT = 7,
-    @FromDate DATE = NULL,
-    @ToDate   DATE = NULL,
-    @Page     INT = 1,
-    @Limit    INT = 10
+    @DatePreset      NVARCHAR(20) = 'TODAY',   -- TODAY, TOMORROW, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, YEAR, ALL, CUSTOM
+    @FromDate        NVARCHAR(30) = NULL,
+    @ToDate          NVARCHAR(30) = NULL,
+    @Page            INT = 1,
+    @Limit           INT = 10,
+    @Search          NVARCHAR(100) = NULL
 )
 AS
 BEGIN
@@ -26,16 +27,68 @@ BEGIN
 
     -- 1. Determine Date Range for Candidates
     DECLARE @StartDate DATETIME;
-    DECLARE @EndDate DATETIME = GETDATE();
+    DECLARE @EndDate   DATETIME;
 
-    IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
+    DECLARE @Preset NVARCHAR(20) = UPPER(ISNULL(@DatePreset, ''));
+    IF (@Preset = '' OR @Preset = 'NULL') 
+    BEGIN
+        IF (@FromDate IS NOT NULL AND @FromDate <> '' AND @ToDate IS NOT NULL AND @ToDate <> '')
+            SET @Preset = 'CUSTOM';
+        ELSE
+            SET @Preset = 'ALL';
+    END
+
+    IF (@Preset = 'TODAY')
+    BEGIN
+        SET @StartDate = CAST(GETDATE() AS DATE);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'TOMORROW')
+    BEGIN
+        SET @StartDate = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        SET @EndDate   = DATEADD(DAY, 2, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'YESTERDAY')
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
+        SET @EndDate   = CAST(GETDATE() AS DATE);
+    END
+    ELSE IF (@Preset = 'WEEK' OR @Preset = 'THIS WEEK')
+    BEGIN
+        SET DATEFIRST 1;
+        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'LASTWEEK')
+    BEGIN
+        SET DATEFIRST 1;
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+        SET @EndDate   = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+    END
+    ELSE IF (@Preset = 'MONTH' OR @Preset = 'THIS MONTH' OR @Preset = 'MONTHS')
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'LASTMONTH')
+    BEGIN
+        SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+        SET @EndDate   = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0);
+    END
+    ELSE IF (@Preset = 'YEAR' OR @Preset = 'THIS YEAR')
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'CUSTOM' AND @FromDate IS NOT NULL AND @FromDate <> '' AND @ToDate IS NOT NULL AND @ToDate <> '')
     BEGIN
         SET @StartDate = CAST(@FromDate AS DATETIME);
-        SET @EndDate = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATE));
     END
-    ELSE
+    ELSE -- ALL or default fallback
     BEGIN
-        SET @StartDate = DATEADD(DAY, -ISNULL(@Days, 7), @EndDate);
+        SET @StartDate = CAST('2015-01-01 00:00:00.000' AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
     END
 
     -- Ensure page/limit values are valid
@@ -86,7 +139,14 @@ BEGIN
     INNER JOIN M_Consumer MC WITH (NOLOCK) ON REPLACE(MC.MobileNo, '+', '') = C.MobileNo
     INNER JOIN tbl_VendorViseKYCStatus K WITH (NOLOCK) ON K.M_ConsumerId = MC.M_ConsumerId AND K.Comp_Id = C.Comp_Id
     LEFT JOIN Comp_Reg CR WITH (NOLOCK) ON C.Comp_Id = CR.Comp_ID AND CR.Status = 1
-    WHERE K.IsDelete = 0;
+    WHERE K.IsDelete = 0
+      AND (
+          @Search IS NULL OR @Search = ''
+          OR C.MobileNo LIKE '%' + @Search + '%'
+          OR MC.ConsumerName LIKE '%' + @Search + '%'
+          OR CR.Comp_Name LIKE '%' + @Search + '%'
+          OR C.Comp_Id LIKE '%' + @Search + '%'
+      );
 
     CREATE CLUSTERED INDEX IX_Users_ConsumerId ON #Users(M_ConsumerId);
     CREATE INDEX IX_Users_CompUser ON #Users(Comp_Id, MobileNo);

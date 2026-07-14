@@ -15,34 +15,48 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetUserNegativeBalanceAnalysis_AI]
 (
     @MobileNo NVARCHAR(30),
-    @Comp_Id  NVARCHAR(50)
+    @Comp_Id  NVARCHAR(50),
+    @Page     INT = 1,
+    @Limit    INT = 10
 )
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DROP TABLE IF EXISTS #UniqueScans, #EarnedPoints, #ConfigPoints, #Ledger, #ChronologicalLedger;
+    DROP TABLE IF EXISTS #UniqueScans, #EarnedPoints, #ConfigPoints, #Ledger, #ChronologicalLedger, #FinalAnalysis;
 
     -- Clean the mobile number and resolve consumer info
     DECLARE @CleanMobile NVARCHAR(30) = REPLACE(@MobileNo, '+', '');
     DECLARE @M_ConsumerId INT;
     SELECT TOP 1 @M_ConsumerId = M_ConsumerId FROM M_Consumer WITH (NOLOCK) WHERE REPLACE(MobileNo, '+', '') = @CleanMobile AND IsDelete = 0;
 
+    -- Ensure page/limit values are valid
+    IF @Page IS NULL OR @Page < 1 SET @Page = 1;
+    IF @Limit IS NULL OR @Limit < 1 SET @Limit = 10;
+
     IF @M_ConsumerId IS NULL
     BEGIN
         -- If user not found, return empty results matching output schema
         SELECT 
-            CAST(NULL AS DATETIME) AS TransactionDate,
-            CAST(NULL AS NVARCHAR(50)) AS TransactionType,
-            CAST(NULL AS NVARCHAR(100)) AS TransactionRefId,
-            CAST(NULL AS DECIMAL(18,2)) AS PointsRedeemed,
+            CAST(NULL AS NVARCHAR(150)) AS CompanyName,
+            CAST(NULL AS NVARCHAR(150)) AS ProductName,
+            CAST(NULL AS NVARCHAR(30)) AS MobileNo,
+            CAST(NULL AS NVARCHAR(100)) AS Code1Code2,
+            CAST(NULL AS NVARCHAR(100)) AS ModeOfVerification,
+            CAST(NULL AS DECIMAL(18,2)) AS Amount,
+            CAST(NULL AS DECIMAL(18,2)) AS ClaimRedeemAmount,
             CAST(NULL AS NVARCHAR(50)) AS Status,
+            CAST(NULL AS DATETIME) AS CheckedDate,
             CAST(NULL AS DECIMAL(18,2)) AS RunningBalance,
-            CAST(NULL AS INT) AS IsFraudEntry,
             CAST(NULL AS DECIMAL(18,2)) AS ExceededPointsNegative,
-            CAST(NULL AS DATETIME) AS EntryDate,
-            CAST(NULL AS NVARCHAR(150)) AS UPIId,
-            CAST(NULL AS NVARCHAR(max)) AS Remark;
+            CAST(NULL AS INT) AS IsFraudEntry
+        WHERE 1 = 0;
+
+        SELECT
+            0 AS TotalRecords,
+            @Page AS CurrentPage,
+            @Limit AS [Limit],
+            0 AS TotalPages;
         RETURN;
     END
 
@@ -277,28 +291,30 @@ BEGIN
     ---------------------------------------------------------
     -- 8. RETURN HIGHLIGHTED CLAIMS AND UPI DETAILS WITH FRAUD STATUS
     ---------------------------------------------------------
+    DROP TABLE IF EXISTS #FinalAnalysis;
     SELECT 
-        (SELECT TOP 1 Comp_Name FROM Comp_Reg WITH (NOLOCK) WHERE Comp_ID = @Comp_Id AND Status = 1) AS [Company name],
+        (SELECT TOP 1 Comp_Name FROM Comp_Reg WITH (NOLOCK) WHERE Comp_ID = @Comp_Id AND Status = 1) AS CompanyName,
         CASE 
             WHEN CL.TransactionType = 'CLAIM' THEN 'NA'
             ELSE ISNULL(PR.Pro_Name, 'NA')
-        END AS [product name],
-        @CleanMobile AS [mobile no],
+        END AS ProductName,
+        @CleanMobile AS MobileNo,
         CASE 
             WHEN CL.TransactionType = 'CLAIM' THEN 'NA'
             ELSE ISNULL(UT.Code1 + '-' + UT.Code2, 'NA')
-        END AS [Code1-Code2],
+        END AS Code1Code2,
         CASE 
             WHEN CL.TransactionType = 'CLAIM' THEN 'NA'
             ELSE ISNULL(PE.Dial_Mode, 'NA')
-        END AS [mode of verification(with app name/landing page/)],
-        COALESCE(CD.Amount, UT.Amount, 0.00) AS [amount],
-        CL.PointsRedeemed AS [claim/redeem amount],
-        CL.Status AS [ststus as issuccess],
-        CL.TransactionDate AS [Checked date],
-        CL.RunningBalance AS [RunningBalance],
-        CL.ExceededPointsNegative AS [ExceededPointsNegative],
-        CL.IsFraudEntry AS [IsFraudEntry]
+        END AS ModeOfVerification,
+        COALESCE(CD.Amount, UT.Amount, 0.00) AS Amount,
+        CL.PointsRedeemed AS ClaimRedeemAmount,
+        CL.Status AS Status,
+        CL.TransactionDate AS CheckedDate,
+        CL.RunningBalance AS RunningBalance,
+        CL.ExceededPointsNegative AS ExceededPointsNegative,
+        CL.IsFraudEntry AS IsFraudEntry
+    INTO #FinalAnalysis
     FROM (
         SELECT 
             LedgerDate AS TransactionDate,
@@ -316,10 +332,38 @@ BEGIN
     LEFT JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND CAST(UT.Id AS NVARCHAR(100)) = CL.TransactionRefId
     LEFT JOIN M_Code MC WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = CAST(MC.Code1 AS VARCHAR(50)) AND UT.Code2 = CAST(MC.Code2 AS VARCHAR(50))
     LEFT JOIN Pro_Reg PR WITH (NOLOCK) ON MC.Pro_ID = PR.Pro_ID
-    LEFT JOIN Pro_Enq PE WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = PE.Received_Code1 AND UT.Code2 = PE.Received_Code2 AND RIGHT(PE.MobileNo, 10) = RIGHT(@CleanMobile, 10)
-    ORDER BY CL.TransactionDate DESC;
+    LEFT JOIN Pro_Enq PE WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = PE.Received_Code1 AND UT.Code2 = PE.Received_Code2 AND RIGHT(PE.MobileNo, 10) = RIGHT(@CleanMobile, 10);
+
+    -- Return Paginated Output
+    DECLARE @TotalRecords INT;
+    SELECT @TotalRecords = COUNT(*) FROM #FinalAnalysis;
+
+    SELECT
+        CompanyName,
+        ProductName,
+        MobileNo,
+        Code1Code2,
+        ModeOfVerification,
+        Amount,
+        ClaimRedeemAmount,
+        Status,
+        CheckedDate,
+        RunningBalance,
+        ExceededPointsNegative,
+        IsFraudEntry
+    FROM #FinalAnalysis
+    ORDER BY CheckedDate DESC
+    OFFSET (@Page - 1) * @Limit ROWS
+    FETCH NEXT @Limit ROWS ONLY;
+
+    -- Meta Pagination Results
+    SELECT
+        @TotalRecords AS TotalRecords,
+        @Page AS CurrentPage,
+        @Limit AS [Limit],
+        CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
 
     -- Cleanup temp tables
-    DROP TABLE IF EXISTS #UniqueScans, #EarnedPoints, #ConfigPoints, #Ledger, #ChronologicalLedger;
+    DROP TABLE IF EXISTS #UniqueScans, #EarnedPoints, #ConfigPoints, #Ledger, #ChronologicalLedger, #FinalAnalysis;
 END
 GO
