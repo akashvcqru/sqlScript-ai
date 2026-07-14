@@ -278,17 +278,27 @@ BEGIN
     -- 8. RETURN HIGHLIGHTED CLAIMS AND UPI DETAILS WITH FRAUD STATUS
     ---------------------------------------------------------
     SELECT 
-        CL.TransactionDate,
-        CL.TransactionType,
-        CL.TransactionRefId,
-        CL.PointsRedeemed,
-        CL.Status,
-        CL.RunningBalance,
-        CL.IsFraudEntry,
-        CL.ExceededPointsNegative,
-        COALESCE(CD.Claim_date, UT.ReqDate) AS EntryDate,
-        COALESCE(CD.UPIID, UT.UPI_Id) AS UPIId,
-        COALESCE(CD.PaymentRemarks, UT.Remarks) AS Remark
+        (SELECT TOP 1 Comp_Name FROM Comp_Reg WITH (NOLOCK) WHERE Comp_ID = @Comp_Id AND Status = 1) AS [Company name],
+        CASE 
+            WHEN CL.TransactionType = 'CLAIM' THEN 'NA'
+            ELSE ISNULL(PR.Pro_Name, 'NA')
+        END AS [product name],
+        @CleanMobile AS [mobile no],
+        CASE 
+            WHEN CL.TransactionType = 'CLAIM' THEN 'NA'
+            ELSE ISNULL(UT.Code1 + '-' + UT.Code2, 'NA')
+        END AS [Code1-Code2],
+        CASE 
+            WHEN CL.TransactionType = 'CLAIM' THEN 'NA'
+            ELSE ISNULL(PE.Dial_Mode, 'NA')
+        END AS [mode of verification(with app name/landing page/)],
+        COALESCE(CD.Amount, UT.Amount, 0.00) AS [amount],
+        CL.PointsRedeemed AS [claim/redeem amount],
+        CL.Status AS [ststus as issuccess],
+        CL.TransactionDate AS [Checked date],
+        CL.RunningBalance AS [RunningBalance],
+        CL.ExceededPointsNegative AS [ExceededPointsNegative],
+        CL.IsFraudEntry AS [IsFraudEntry]
     FROM (
         SELECT 
             LedgerDate AS TransactionDate,
@@ -304,6 +314,9 @@ BEGIN
     ) CL
     LEFT JOIN ClaimDetails CD WITH (NOLOCK) ON CL.TransactionType = 'CLAIM' AND CAST(CD.Row_ID AS NVARCHAR(100)) = CL.TransactionRefId
     LEFT JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND CAST(UT.Id AS NVARCHAR(100)) = CL.TransactionRefId
+    LEFT JOIN M_Code MC WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = CAST(MC.Code1 AS VARCHAR(50)) AND UT.Code2 = CAST(MC.Code2 AS VARCHAR(50))
+    LEFT JOIN Pro_Reg PR WITH (NOLOCK) ON MC.Pro_ID = PR.Pro_ID
+    LEFT JOIN Pro_Enq PE WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = PE.Received_Code1 AND UT.Code2 = PE.Received_Code2 AND RIGHT(PE.MobileNo, 10) = RIGHT(@CleanMobile, 10)
     ORDER BY CL.TransactionDate DESC;
 
     -- Cleanup temp tables
