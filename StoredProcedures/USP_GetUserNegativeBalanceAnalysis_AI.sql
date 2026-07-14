@@ -16,6 +16,9 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetUserNegativeBalanceAnalysis_AI]
 (
     @MobileNo NVARCHAR(30),
     @Comp_Id  NVARCHAR(50),
+    @DatePreset NVARCHAR(20) = 'ALL',
+    @FromDate        NVARCHAR(30) = NULL,
+    @ToDate          NVARCHAR(30) = NULL,
     @Page     INT = 1,
     @Limit    INT = 10,
     @Search   NVARCHAR(100) = NULL,
@@ -24,6 +27,72 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetUserNegativeBalanceAnalysis_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -- Determine Date Range
+    DECLARE @StartDate DATETIME;
+    DECLARE @EndDate   DATETIME;
+
+    DECLARE @Preset NVARCHAR(20) = UPPER(ISNULL(@DatePreset, ''));
+    IF (@Preset = '' OR @Preset = 'NULL') 
+    BEGIN
+        IF (@FromDate IS NOT NULL AND @FromDate <> '' AND @ToDate IS NOT NULL AND @ToDate <> '')
+            SET @Preset = 'CUSTOM';
+        ELSE
+            SET @Preset = 'ALL';
+    END
+
+    IF (@Preset = 'TODAY')
+    BEGIN
+        SET @StartDate = CAST(GETDATE() AS DATE);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'TOMORROW')
+    BEGIN
+        SET @StartDate = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        SET @EndDate   = DATEADD(DAY, 2, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'YESTERDAY')
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
+        SET @EndDate   = CAST(GETDATE() AS DATE);
+    END
+    ELSE IF (@Preset = 'WEEK' OR @Preset = 'THIS WEEK')
+    BEGIN
+        SET DATEFIRST 1;
+        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'LASTWEEK')
+    BEGIN
+        SET DATEFIRST 1;
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+        SET @EndDate   = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+    END
+    ELSE IF (@Preset = 'MONTH' OR @Preset = 'THIS MONTH' OR @Preset = 'MONTHS')
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'LASTMONTH')
+    BEGIN
+        SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+        SET @EndDate   = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0);
+    END
+    ELSE IF (@Preset = 'YEAR' OR @Preset = 'THIS YEAR')
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'CUSTOM' AND @FromDate IS NOT NULL AND @FromDate <> '' AND @ToDate IS NOT NULL AND @ToDate <> '')
+    BEGIN
+        SET @StartDate = CAST(@FromDate AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATE));
+    END
+    ELSE -- ALL or default fallback
+    BEGIN
+        SET @StartDate = CAST('2015-01-01 00:00:00.000' AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
 
     DROP TABLE IF EXISTS #UniqueScans, #EarnedPoints, #ConfigPoints, #Ledger, #ChronologicalLedger, #FinalAnalysis;
 
@@ -332,6 +401,7 @@ BEGIN
             CASE WHEN RunningBalance < 0 THEN -RunningBalance ELSE 0 END AS ExceededPointsNegative
         FROM #ChronologicalLedger
         WHERE TransactionType IN ('CLAIM', 'UPI')
+          AND LedgerDate >= @StartDate AND LedgerDate < @EndDate
     ) CL
     LEFT JOIN ClaimDetails CD WITH (NOLOCK) ON CL.TransactionType = 'CLAIM' AND CAST(CD.Row_ID AS NVARCHAR(100)) = CL.TransactionRefId
     LEFT JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND CAST(UT.Id AS NVARCHAR(100)) = CL.TransactionRefId
