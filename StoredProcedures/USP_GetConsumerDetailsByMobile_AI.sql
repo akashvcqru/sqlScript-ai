@@ -6,9 +6,15 @@ BEGIN
 
     SELECT TOP 1 
         ConsumerName,
+        Email,
         City,
-        state AS State,
-        PinCode
+        state           AS State,
+        PinCode,
+        Address,
+        SellerName,
+        Vrkabel_User_Type,
+        designation,
+        shop_name
     FROM M_Consumer 
     WHERE right(MobileNo, 10) = right(@MobileNo, 10)
     AND IsDelete = 0
