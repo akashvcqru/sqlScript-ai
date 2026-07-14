@@ -472,16 +472,20 @@ BEGIN
     -- DEDUPLICATED LISTS
     ---------------------------------------------------------
     -- 1. Distinct Mobiles per Code
-    SELECT Code1, Code2, STRING_AGG(MobileNo, ', ') AS Mobiles
+    SELECT Code1, Code2, 
+           STRING_AGG(MobileNo, ', ') AS Mobiles,
+           STRING_AGG(UserType, ', ') AS UserTypes
     INTO #UniqueMobiles
     FROM (
         SELECT DISTINCT E.Received_Code1 AS Code1, E.Received_Code2 AS Code2,
                CASE 
                    WHEN LEN(ISNULL(MC.MobileNo,'')) < 10 THEN ISNULL(E.MobileNo,'')
                    ELSE MC.MobileNo
-               END AS MobileNo
+               END AS MobileNo,
+               UT.User_Type AS UserType
         FROM #Enq E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
+        LEFT JOIN User_Type UT ON UT.Row_ID = MC.Vrkabel_User_Type
     ) X
     GROUP BY Code1, Code2;
 
@@ -525,6 +529,7 @@ BEGIN
         WornPoint DECIMAL(18,2),
         Frequency INT,
         MobileNumber VARCHAR(500),
+        UserType NVARCHAR(500),
         Code1 VARCHAR(100),
         Code2 VARCHAR(100),
         GenuineCount INT,
@@ -550,6 +555,7 @@ BEGIN
         END) AS WornPoint,
         ISNULL(MAX(CP.Frequency), 1) AS Frequency,
         MAX(UM.Mobiles) AS MobileNumber,
+        MAX(UM.UserTypes) AS UserType,
         E.Received_Code1 AS Code1,
         E.Received_Code2 AS Code2,
         SUM(CASE WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 1 ELSE 0 END) AS GenuineCount,
@@ -607,7 +613,7 @@ BEGIN
     BEGIN
         SELECT 
             CompanyName, ProductName, ServiceName AS [Service name], AssignPoint, WornPoint, Frequency,
-            MobileNumber, Code1, Code2, GenuineCount, DuplicateCount, SuccessStatus, ModeOfVerification, EnquiryDate, Location
+            MobileNumber, UserType, Code1, Code2, GenuineCount, DuplicateCount, SuccessStatus, ModeOfVerification, EnquiryDate, Location
         FROM #PagedReport
         ORDER BY RN;
     END
@@ -615,7 +621,7 @@ BEGIN
     BEGIN
         SELECT 
             CompanyName, ProductName, ServiceName AS [Service name], AssignPoint, WornPoint, Frequency,
-            MobileNumber, Code1, Code2, GenuineCount, DuplicateCount, SuccessStatus, ModeOfVerification, EnquiryDate, Location
+            MobileNumber, UserType, Code1, Code2, GenuineCount, DuplicateCount, SuccessStatus, ModeOfVerification, EnquiryDate, Location
         FROM #PagedReport
         WHERE RN BETWEEN @Offset + 1 AND @Offset + @Limit
         ORDER BY RN;

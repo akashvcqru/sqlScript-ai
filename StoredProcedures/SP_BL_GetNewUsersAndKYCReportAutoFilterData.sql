@@ -210,6 +210,7 @@ BEGIN
         VKS.systemgeneratedremark,
         VKS.Updated_date AS Updated_date,
         VKS.rejectedkyc,
+        UT.User_Type AS UserType,
 
         -- IspanOperative Status
         CASE 
@@ -218,6 +219,7 @@ BEGIN
         END AS IspanOperative
     FROM tbl_Vendorvisekycstatus VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
+    LEFT JOIN User_Type UT ON UT.Row_ID = VKS.Vrkabel_User_Type
     OUTER APPLY (
         SELECT TOP 1 *
         FROM M_BankAccount MB
