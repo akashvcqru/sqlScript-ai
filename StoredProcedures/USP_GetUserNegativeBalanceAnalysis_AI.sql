@@ -16,12 +16,83 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetUserNegativeBalanceAnalysis_AI]
 (
     @MobileNo NVARCHAR(30),
     @Comp_Id  NVARCHAR(50),
+    @DatePreset NVARCHAR(20) = 'ALL',
+    @FromDate        NVARCHAR(30) = NULL,
+    @ToDate          NVARCHAR(30) = NULL,
     @Page     INT = 1,
-    @Limit    INT = 10
+    @Limit    INT = 10,
+    @Search   NVARCHAR(100) = NULL,
+    @IsExport BIT = 0
 )
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -- Determine Date Range
+    DECLARE @StartDate DATETIME;
+    DECLARE @EndDate   DATETIME;
+
+    DECLARE @Preset NVARCHAR(20) = UPPER(ISNULL(@DatePreset, ''));
+    IF (@Preset = '' OR @Preset = 'NULL') 
+    BEGIN
+        IF (@FromDate IS NOT NULL AND @FromDate <> '' AND @ToDate IS NOT NULL AND @ToDate <> '')
+            SET @Preset = 'CUSTOM';
+        ELSE
+            SET @Preset = 'ALL';
+    END
+
+    IF (@Preset = 'TODAY')
+    BEGIN
+        SET @StartDate = CAST(GETDATE() AS DATE);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'TOMORROW')
+    BEGIN
+        SET @StartDate = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        SET @EndDate   = DATEADD(DAY, 2, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'YESTERDAY')
+    BEGIN
+        SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
+        SET @EndDate   = CAST(GETDATE() AS DATE);
+    END
+    ELSE IF (@Preset = 'WEEK' OR @Preset = 'THIS WEEK')
+    BEGIN
+        SET DATEFIRST 1;
+        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'LASTWEEK')
+    BEGIN
+        SET DATEFIRST 1;
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+        SET @EndDate   = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+    END
+    ELSE IF (@Preset = 'MONTH' OR @Preset = 'THIS MONTH' OR @Preset = 'MONTHS')
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'LASTMONTH')
+    BEGIN
+        SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+        SET @EndDate   = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0);
+    END
+    ELSE IF (@Preset = 'YEAR' OR @Preset = 'THIS YEAR')
+    BEGIN
+        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
+    ELSE IF (@Preset = 'CUSTOM' AND @FromDate IS NOT NULL AND @FromDate <> '' AND @ToDate IS NOT NULL AND @ToDate <> '')
+    BEGIN
+        SET @StartDate = CAST(@FromDate AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATE));
+    END
+    ELSE -- ALL or default fallback
+    BEGIN
+        SET @StartDate = CAST('2015-01-01 00:00:00.000' AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+    END
 
     DROP TABLE IF EXISTS #UniqueScans, #EarnedPoints, #ConfigPoints, #Ledger, #ChronologicalLedger, #FinalAnalysis;
 
@@ -52,11 +123,14 @@ BEGIN
             CAST(NULL AS INT) AS IsFraudEntry
         WHERE 1 = 0;
 
-        SELECT
-            0 AS TotalRecords,
-            @Page AS CurrentPage,
-            @Limit AS [Limit],
-            0 AS TotalPages;
+        IF @IsExport = 0
+        BEGIN
+            SELECT
+                0 AS TotalRecords,
+                @Page AS CurrentPage,
+                @Limit AS [Limit],
+                0 AS TotalPages;
+        END
         RETURN;
     END
 
@@ -327,6 +401,7 @@ BEGIN
             CASE WHEN RunningBalance < 0 THEN -RunningBalance ELSE 0 END AS ExceededPointsNegative
         FROM #ChronologicalLedger
         WHERE TransactionType IN ('CLAIM', 'UPI')
+          AND LedgerDate >= @StartDate AND LedgerDate < @EndDate
     ) CL
     LEFT JOIN ClaimDetails CD WITH (NOLOCK) ON CL.TransactionType = 'CLAIM' AND CAST(CD.Row_ID AS NVARCHAR(100)) = CL.TransactionRefId
     LEFT JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND CAST(UT.Id AS NVARCHAR(100)) = CL.TransactionRefId
@@ -334,34 +409,67 @@ BEGIN
     LEFT JOIN Pro_Reg PR WITH (NOLOCK) ON MC.Pro_ID = PR.Pro_ID
     LEFT JOIN Pro_Enq PE WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = PE.Received_Code1 AND UT.Code2 = PE.Received_Code2 AND RIGHT(PE.MobileNo, 10) = RIGHT(@CleanMobile, 10);
 
-    -- Return Paginated Output
+    -- If Search is provided, filter #FinalAnalysis
+    IF @Search IS NOT NULL AND @Search <> ''
+    BEGIN
+        SET @Search = LTRIM(RTRIM(@Search));
+        DELETE FROM #FinalAnalysis
+        WHERE ProductName NOT LIKE '%' + @Search + '%'
+          AND Code1Code2 NOT LIKE '%' + @Search + '%'
+          AND ModeOfVerification NOT LIKE '%' + @Search + '%'
+          AND Status NOT LIKE '%' + @Search + '%'
+          AND MobileNo NOT LIKE '%' + @Search + '%';
+    END
+
+    -- Return Paginated Output OR Export Output
     DECLARE @TotalRecords INT;
     SELECT @TotalRecords = COUNT(*) FROM #FinalAnalysis;
 
-    SELECT
-        CompanyName,
-        ProductName,
-        MobileNo,
-        Code1Code2,
-        ModeOfVerification,
-        Amount,
-        ClaimRedeemAmount,
-        Status,
-        CheckedDate,
-        RunningBalance,
-        ExceededPointsNegative,
-        IsFraudEntry
-    FROM #FinalAnalysis
-    ORDER BY CheckedDate DESC
-    OFFSET (@Page - 1) * @Limit ROWS
-    FETCH NEXT @Limit ROWS ONLY;
+    IF @IsExport = 1
+    BEGIN
+        SELECT
+            CompanyName,
+            ProductName,
+            MobileNo,
+            Code1Code2,
+            ModeOfVerification,
+            Amount,
+            ClaimRedeemAmount,
+            Status,
+            CheckedDate,
+            RunningBalance,
+            ExceededPointsNegative,
+            IsFraudEntry
+        FROM #FinalAnalysis
+        ORDER BY CheckedDate DESC;
+    END
+    ELSE
+    BEGIN
+        SELECT
+            CompanyName,
+            ProductName,
+            MobileNo,
+            Code1Code2,
+            ModeOfVerification,
+            Amount,
+            ClaimRedeemAmount,
+            Status,
+            CheckedDate,
+            RunningBalance,
+            ExceededPointsNegative,
+            IsFraudEntry
+        FROM #FinalAnalysis
+        ORDER BY CheckedDate DESC
+        OFFSET (@Page - 1) * @Limit ROWS
+        FETCH NEXT @Limit ROWS ONLY;
 
-    -- Meta Pagination Results
-    SELECT
-        @TotalRecords AS TotalRecords,
-        @Page AS CurrentPage,
-        @Limit AS [Limit],
-        CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
+        -- Meta Pagination Results
+        SELECT
+            @TotalRecords AS TotalRecords,
+            @Page AS CurrentPage,
+            @Limit AS [Limit],
+            CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
+    END
 
     -- Cleanup temp tables
     DROP TABLE IF EXISTS #UniqueScans, #EarnedPoints, #ConfigPoints, #Ledger, #ChronologicalLedger, #FinalAnalysis;
