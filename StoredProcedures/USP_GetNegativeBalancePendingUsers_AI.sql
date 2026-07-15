@@ -128,7 +128,7 @@ BEGIN
 
     -- 3. Resolve Consumer IDs & Validate KYC Presence
     DROP TABLE IF EXISTS #Users;
-    SELECT DISTINCT
+    SELECT 
         C.Comp_Id,
         C.MobileNo,
         C.LatestActivityDate,
@@ -137,7 +137,29 @@ BEGIN
         CR.Comp_Name AS CompanyName
     INTO #Users
     FROM #UniqueCandidates C
-    INNER JOIN M_Consumer MC WITH (NOLOCK) ON REPLACE(MC.MobileNo, '+', '') = C.MobileNo
+    INNER JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = C.MobileNo
+    INNER JOIN tbl_VendorViseKYCStatus K WITH (NOLOCK) ON K.M_ConsumerId = MC.M_ConsumerId AND K.Comp_Id = C.Comp_Id
+    LEFT JOIN Comp_Reg CR WITH (NOLOCK) ON C.Comp_Id = CR.Comp_ID AND CR.Status = 1
+    WHERE K.IsDelete = 0
+      AND (
+          @Search IS NULL OR @Search = ''
+          OR C.MobileNo LIKE '%' + @Search + '%'
+          OR MC.ConsumerName LIKE '%' + @Search + '%'
+          OR CR.Comp_Name LIKE '%' + @Search + '%'
+          OR C.Comp_Id LIKE '%' + @Search + '%'
+      )
+
+    UNION
+
+    SELECT 
+        C.Comp_Id,
+        C.MobileNo,
+        C.LatestActivityDate,
+        MC.M_ConsumerId,
+        MC.ConsumerName,
+        CR.Comp_Name AS CompanyName
+    FROM #UniqueCandidates C
+    INNER JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = '+' + C.MobileNo
     INNER JOIN tbl_VendorViseKYCStatus K WITH (NOLOCK) ON K.M_ConsumerId = MC.M_ConsumerId AND K.Comp_Id = C.Comp_Id
     LEFT JOIN Comp_Reg CR WITH (NOLOCK) ON C.Comp_Id = CR.Comp_ID AND CR.Status = 1
     WHERE K.IsDelete = 0
@@ -156,7 +178,7 @@ BEGIN
     DROP TABLE IF EXISTS #UniqueScans;
     SELECT 
         Comp_Id, MobileNo, M_ConsumerId, M_Codeid, Pro_ID, Series_Order, Series_Serial,
-        ROW_NUMBER() OVER (PARTITION BY Received_Code1, Received_Code2, Is_Success ORDER BY Enq_Date) as rn
+        ROW_NUMBER() OVER (PARTITION BY M_Codeid ORDER BY Enq_Date) as rn
     INTO #UniqueScans
     FROM (
         SELECT 
@@ -167,9 +189,6 @@ BEGIN
             M.Pro_ID,
             M.Series_Order,
             M.Series_Serial,
-            PE.Received_Code1,
-            PE.Received_Code2,
-            PE.Is_Success,
             PE.Enq_Date
         FROM #Users U
         INNER JOIN Pro_Enq PE WITH (NOLOCK) ON PE.MobileNo = U.MobileNo
@@ -187,9 +206,6 @@ BEGIN
             M.Pro_ID,
             M.Series_Order,
             M.Series_Serial,
-            PE.Received_Code1,
-            PE.Received_Code2,
-            PE.Is_Success,
             PE.Enq_Date
         FROM #Users U
         INNER JOIN Pro_Enq PE WITH (NOLOCK) ON PE.MobileNo = '+' + U.MobileNo
@@ -217,11 +233,12 @@ BEGIN
                     ELSE ISNULL(BL.Points, 0)
                 END 
             AS DECIMAL(18,2)) AS Points
-        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        INNER JOIN #Users U ON BL.compid = U.Comp_Id
+        FROM #Users U
         INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON MC.M_Consumerid = U.M_ConsumerId
-        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
         LEFT JOIN loyalty_calculation LC WITH (NOLOCK) ON LC.comp_id = U.Comp_Id AND LC.isactive = 1 AND LC.isdelete = 0
+        WHERE BL.compid = U.Comp_Id
         
         UNION ALL
 
@@ -234,12 +251,12 @@ BEGIN
                     ELSE ISNULL(BL.Points, 0)
                 END 
             AS DECIMAL(18,2)) AS Points
-        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        INNER JOIN #Users U ON U.M_ConsumerId = BL.M_Consumerid
+        FROM #Users U
         INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON MC.M_Consumerid = U.M_ConsumerId
-        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
         INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
         INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID AND PR.Comp_Id = U.Comp_Id
+        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
         LEFT JOIN loyalty_calculation LC WITH (NOLOCK) ON LC.comp_id = U.Comp_Id AND LC.isactive = 1 AND LC.isdelete = 0
         WHERE BL.compid IS NULL
     ) x
@@ -351,20 +368,42 @@ BEGIN
     CREATE CLUSTERED INDEX IX_Claims ON #Claims(Comp_Id, MobileNo);
 
     -- 8. Redemptions: UPI Payouts (LIFETIME)
+    DROP TABLE IF EXISTS #UPITrans;
+    SELECT UT.Id, UT.Amount, U.Comp_Id, U.MobileNo
+    INTO #UPITrans
+    FROM #Users U
+    INNER JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON UT.M_Consumerid = U.M_ConsumerId
+    WHERE UT.Status = 'Success'
+      AND UT.Comp_Id = U.Comp_Id
+      AND UT.Code1 IS NOT NULL AND UT.Code1 <> '' AND LEN(UT.Code1) > 1
+      AND UT.Code2 IS NOT NULL AND UT.Code2 <> '' AND LEN(UT.Code2) > 6;
+
+    INSERT INTO #UPITrans (Id, Amount, Comp_Id, MobileNo)
+    SELECT UT.Id, UT.Amount, U.Comp_Id, U.MobileNo
+    FROM #Users U
+    INNER JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON UT.Comp_Id = U.Comp_Id AND UT.MobileNo = U.MobileNo
+    WHERE UT.Status = 'Success'
+      AND UT.Code1 IS NOT NULL AND UT.Code1 <> '' AND LEN(UT.Code1) > 1
+      AND UT.Code2 IS NOT NULL AND UT.Code2 <> '' AND LEN(UT.Code2) > 6
+      AND NOT EXISTS (SELECT 1 FROM #UPITrans WHERE Id = UT.Id);
+
+    INSERT INTO #UPITrans (Id, Amount, Comp_Id, MobileNo)
+    SELECT UT.Id, UT.Amount, U.Comp_Id, U.MobileNo
+    FROM #Users U
+    INNER JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON UT.Comp_Id = U.Comp_Id AND UT.MobileNo = '+' + U.MobileNo
+    WHERE UT.Status = 'Success'
+      AND UT.Code1 IS NOT NULL AND UT.Code1 <> '' AND LEN(UT.Code1) > 1
+      AND UT.Code2 IS NOT NULL AND UT.Code2 <> '' AND LEN(UT.Code2) > 6
+      AND NOT EXISTS (SELECT 1 FROM #UPITrans WHERE Id = UT.Id);
+
     DROP TABLE IF EXISTS #UPI;
     SELECT
-        U.Comp_Id,
-        U.MobileNo,
-        SUM(ISNULL(UT.Amount, 0)) AS UPIAmount
+        Comp_Id,
+        MobileNo,
+        SUM(ISNULL(Amount, 0)) AS UPIAmount
     INTO #UPI
-    FROM #Users U
-    INNER JOIN tblUPITransactionDetails UT WITH (NOLOCK) 
-        ON UT.Comp_Id = U.Comp_Id 
-        AND (UT.M_Consumerid = CAST(U.M_ConsumerId AS VARCHAR(50)) OR REPLACE(UT.Mobileno, '+', '') = U.MobileNo)
-    WHERE UT.Status = 'Success'
-      AND LEN(ISNULL(UT.Code1, '')) > 1
-      AND LEN(ISNULL(UT.Code2, '')) > 6
-    GROUP BY U.Comp_Id, U.MobileNo;
+    FROM #UPITrans
+    GROUP BY Comp_Id, MobileNo;
 
     CREATE CLUSTERED INDEX IX_UPI ON #UPI(Comp_Id, MobileNo);
 
