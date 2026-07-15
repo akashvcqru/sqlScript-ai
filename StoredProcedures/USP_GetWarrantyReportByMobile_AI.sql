@@ -175,21 +175,6 @@ BEGIN
         SELECT 
             enq.[enq_date], 
             CASE 
-                WHEN enq.[is_success] = '1' AND (enq.enq_date BETWEEN sub.DateFrom AND sub.DateTo) AND wr.vendorclaimstatus='Pending' AND serv.[service_id] = 'SRV1023' THEN 'Gray'
-                WHEN enq.[is_success] = '1' AND (enq.enq_date BETWEEN sub.DateFrom AND sub.DateTo) AND wr.vendorclaimstatus='Approved' AND serv.[service_id] = 'SRV1023' THEN 'Green' 
-                WHEN enq.[is_success] = '1' AND (enq.enq_date BETWEEN sub.DateFrom AND sub.DateTo) AND (wr.vendorclaimstatus='' OR wr.vendorclaimstatus IS NULL) THEN 'Green' 
-                ELSE 'Red' 
-            END AS clr,
-            CASE 
-                WHEN enq.[is_success] = '1' AND (enq.enq_date BETWEEN sub.DateFrom AND sub.DateTo) THEN 'company_amount green' 
-                ELSE 'company_amount' 
-            END AS cls,  
-            '' AS _sign,
-            CASE 
-                WHEN enq.[is_success] = '1' THEN 'Success' 
-                ELSE 'Unsuccess' 
-            END AS tr_status,
-            CASE 
                 WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) < 0 THEN 'Warranty has been expired'
                 WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND wr.vendorclaimstatus='Approved' AND serv.[service_id] = 'SRV1023' THEN 'Warranty claimed has been approved'
                 WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND wr.vendorclaimstatus='Reject' AND serv.[service_id] = 'SRV1023' THEN 'Warranty claimed has been rejected'
@@ -199,53 +184,26 @@ BEGIN
                     CONCAT(serv.ServiceName, ' ', @MsgExpired)
                 ELSE (SELECT TOP 1 [message] FROM [transaction_message] WITH (NOLOCK) WHERE [service_id] = sub.[service_id] AND scenario = enq.[is_success]) 
             END AS msg1,  
-            CASE 
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) < 0 THEN 'Warranty has been expired'
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND wr.vendorclaimstatus='Approved' AND serv.[service_id] = 'SRV1023' THEN 'Warranty claimed has been approved'
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND wr.vendorclaimstatus='Reject' AND serv.[service_id] = 'SRV1023' THEN 'Warranty claimed has been rejected'
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND wr.vendorclaimstatus='Pending' AND serv.[service_id] = 'SRV1023' THEN 'Warranty Claimed is Pending for approval'
-                WHEN enq.[is_success] = '0' THEN @MsgPopInvalid
-                WHEN enq.[is_success] = '1' AND (enq.enq_date NOT BETWEEN sub.DateFrom AND sub.DateTo) THEN
-                    CONCAT(serv.ServiceName, ' ', @MsgPopExpired)
-                ELSE REPLACE((SELECT TOP 1 [pop_message] FROM [transaction_message] WITH (NOLOCK) WHERE [service_id] = sub.[service_id] AND scenario = enq.[is_success]), '<warrantydate>', CONVERT(VARCHAR(11), wr.ExpirationDate, 106))
-            END AS msg2,
             cr.Comp_name,
-            FORMAT(enq.[enq_date], 'dd MMM') AS Updthalf, 
-            FORMAT(enq.[enq_date], 'dd MMM yyyy HH:mm tt') AS Updtfull,
-            CASE 
-                WHEN enq.is_success = '1' THEN
-                    ISNULL((SELECT TOP 1 '0' FROM M_ServiceSubscriptionTrans sst WITH (NOLOCK)
-                            INNER JOIN #fillseries fs ON sst.Subscribe_Id = fs.Subscribe_Id
-                            WHERE fs.Pro_ID = code.Pro_id 
-                              AND (code.Series_Order > fs.start_order OR (code.Series_Order = fs.start_order AND code.Series_Serial >= fs.start_series))
-                              AND (code.Series_Order < fs.end_order OR (code.Series_Order = fs.end_order AND code.Series_Serial <= fs.end_series))), 
-                           serv_tran.IsCash)
-                ELSE '0'
-            END AS Loyalty,         
             enq.received_code1 AS code1,
             enq.received_code2 AS code2,
-            '' AS giftname, 
             enq.MobileNo AS MobileNo, 
-            '' AS trans_num, 
             product.[pro_name], 
             CASE 
                 WHEN enq.[is_success] = '0' THEN 'invalid' 
                 ELSE product.[pro_id] 
             END AS [Pro_id], 
-            serv.[service_id], 
             serv.[servicename],
             CASE WHEN serv.[service_id]<>'SRV1023' OR wr.[PurchaseDate] IS NULL THEN '' ELSE CONVERT(VARCHAR(20), wr.[PurchaseDate], 120) END AS [PurchaseDate],
             CASE WHEN serv.[service_id]<>'SRV1023' OR wr.WarrantyPeriod IS NULL THEN '' ELSE wr.WarrantyPeriod END AS WarrantyPeriod,
             CASE WHEN serv.[service_id]<>'SRV1023' OR wr.ExpirationDate IS NULL THEN '' ELSE CONVERT(VARCHAR(20), wr.ExpirationDate, 120) END AS ExpirationDate,
             CASE WHEN serv.[service_id]<>'SRV1023' OR wr.ExpirationDate IS NULL THEN '' ELSE CAST(DATEDIFF(day, GETDATE(), wr.ExpirationDate) AS VARCHAR(10)) END AS NumberofDays,
             CASE WHEN serv.[service_id]<>'SRV1023' OR wr.iswarrantyclaimed IS NULL THEN '' ELSE wr.iswarrantyclaimed END AS iswarrantyclaimed,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.comment IS NULL THEN '' ELSE wr.comment END AS comment,
             CASE WHEN serv.[service_id]<>'SRV1023' OR wr.vendorcomments IS NULL THEN '' ELSE wr.vendorcomments END AS vendorcomments,
             CASE WHEN serv.[service_id]<>'SRV1023' OR wr.vendorclaimstatus IS NULL THEN '' ELSE wr.vendorclaimstatus END AS vendorclaimstatus,
             CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE wr.billno END AS billno,
             CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE wr.imagepathbill END AS imagepathbill,
             CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE wr.vehicleno END AS vehicleno,  
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE wr.device END AS device,
             CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE CAST(wr.id AS VARCHAR(50)) END AS warranty_id,
             '' AS Remarks 
         FROM #EnqResults enq
