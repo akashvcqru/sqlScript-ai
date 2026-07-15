@@ -1,10 +1,12 @@
 USE [Vcqru]
 GO
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetBeneficiariesReport]    Script Date: 7/15/2026 8:40:13 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
+
+ALTER   PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
 (
     @Comp_Id     NVARCHAR(50),  
     @datePreset  NVARCHAR(20) = NULL,   -- TODAY, WEEK, LASTWEEK, MONTH, QUARTER, ALL
@@ -32,10 +34,11 @@ BEGIN
     -- COMPANY FILTER PREPARATION
     ---------------------------------------------------------
     DECLARE @CompanyList TABLE (Comp_Id VARCHAR(50) PRIMARY KEY);
-    IF @Comp_Id IN ('Comp-1567','Comp-1650')
-        INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
-    ELSE
-        INSERT INTO @CompanyList VALUES (@Comp_Id);
+	INSERT INTO @CompanyList VALUES (@Comp_Id);
+    --IF @Comp_Id IN ('Comp-1567','Comp-1650')
+    --    INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
+    --ELSE
+    --    INSERT INTO @CompanyList VALUES (@Comp_Id);
 
     DECLARE @Multiplier DECIMAL(18,2) = 1.00;
     SELECT TOP 1 @Multiplier = 1.00 + (calculation_value / 100.0) 
@@ -525,7 +528,3 @@ BEGIN
         FROM #FinalData;
     END
 END
-
-
-
-GO

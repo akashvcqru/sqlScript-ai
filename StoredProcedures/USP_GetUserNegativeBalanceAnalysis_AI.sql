@@ -99,7 +99,7 @@ BEGIN
     -- Clean the mobile number and resolve consumer info
     DECLARE @CleanMobile NVARCHAR(30) = REPLACE(@MobileNo, '+', '');
     DECLARE @M_ConsumerId INT;
-    SELECT TOP 1 @M_ConsumerId = M_ConsumerId FROM M_Consumer WITH (NOLOCK) WHERE REPLACE(MobileNo, '+', '') = @CleanMobile AND IsDelete = 0;
+    SELECT TOP 1 @M_ConsumerId = M_ConsumerId FROM M_Consumer WITH (NOLOCK) WHERE MobileNo IN (@CleanMobile, '+' + @CleanMobile) AND IsDelete = 0;
 
     -- Ensure page/limit values are valid
     IF @Page IS NULL OR @Page < 1 SET @Page = 1;
@@ -139,7 +139,7 @@ BEGIN
         LedgerDate DATETIME,
         SortOrder INT, -- 1: Earning, 2: Redemption
         TransactionType NVARCHAR(50),
-        RefId NVARCHAR(100),
+        RefId BIGINT, -- Changed to BIGINT to allow index seeks on joins
         Amount DECIMAL(18,2), -- positive for earnings, negative for redemptions
         Status NVARCHAR(50)
     );
@@ -150,10 +150,10 @@ BEGIN
     ---------------------------------------------------------
     SELECT 
         Row_ID AS M_Codeid, Pro_ID, Series_Order, Series_Serial, Enq_Date,
-        ROW_NUMBER() OVER (PARTITION BY Received_Code1, Received_Code2, Is_Success ORDER BY PE.Enq_Date) as rn
+        ROW_NUMBER() OVER (PARTITION BY Row_ID ORDER BY Enq_Date) as rn
     INTO #UniqueScans
     FROM (
-        SELECT M.Row_ID, M.Pro_ID, M.Series_Order, M.Series_Serial, PE.Received_Code1, PE.Received_Code2, PE.Is_Success, PE.Enq_Date
+        SELECT M.Row_ID, M.Pro_ID, M.Series_Order, M.Series_Serial, PE.Enq_Date
         FROM Pro_Enq PE WITH (NOLOCK)
         INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
         INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID AND PR.Comp_Id = @Comp_Id
@@ -161,7 +161,7 @@ BEGIN
 
         UNION ALL
 
-        SELECT M.Row_ID, M.Pro_ID, M.Series_Order, M.Series_Serial, PE.Received_Code1, PE.Received_Code2, PE.Is_Success, PE.Enq_Date
+        SELECT M.Row_ID, M.Pro_ID, M.Series_Order, M.Series_Serial, PE.Enq_Date
         FROM Pro_Enq PE WITH (NOLOCK)
         INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
         INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID AND PR.Comp_Id = @Comp_Id
@@ -184,11 +184,12 @@ BEGIN
                     ELSE ISNULL(BL.Points, 0)
                 END 
             AS DECIMAL(18,2)) AS Points
-        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON MC.M_Consumerid = @M_ConsumerId
-        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        FROM M_Consumer_M_Code MC WITH (NOLOCK)
+        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
         LEFT JOIN loyalty_calculation LC WITH (NOLOCK) ON LC.comp_id = @Comp_Id AND LC.isactive = 1 AND LC.isdelete = 0
-        WHERE BL.compid = @Comp_Id
+        WHERE MC.M_Consumerid = @M_ConsumerId
+          AND BL.compid = @Comp_Id
         
         UNION ALL
 
@@ -200,13 +201,14 @@ BEGIN
                     ELSE ISNULL(BL.Points, 0)
                 END 
             AS DECIMAL(18,2)) AS Points
-        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON MC.M_Consumerid = @M_ConsumerId
-        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        FROM M_Consumer_M_Code MC WITH (NOLOCK)
         INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
         INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID AND PR.Comp_Id = @Comp_Id
+        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
         LEFT JOIN loyalty_calculation LC WITH (NOLOCK) ON LC.comp_id = @Comp_Id AND LC.isactive = 1 AND LC.isdelete = 0
-        WHERE BL.compid IS NULL
+        WHERE MC.M_Consumerid = @M_ConsumerId
+          AND BL.compid IS NULL
     ) x
     INNER JOIN #UniqueScans US ON US.M_Codeid = x.M_Codeid AND US.rn = 1
     GROUP BY US.M_Codeid;
@@ -243,7 +245,7 @@ BEGIN
         US.Enq_Date AS LedgerDate,
         1 AS SortOrder,
         'SCAN' AS TransactionType,
-        CAST(US.M_Codeid AS NVARCHAR(100)) AS RefId,
+        US.M_Codeid AS RefId,
         ISNULL(P.Points, ISNULL(CP.ConfigPoints, 0)) AS Amount,
         'Success' AS Status
     FROM #UniqueScans US
@@ -257,7 +259,7 @@ BEGIN
         CP.Enq_Date AS LedgerDate,
         1 AS SortOrder,
         'SCAN' AS TransactionType,
-        CAST(NULL AS NVARCHAR(100)) AS RefId,
+        NULL AS RefId,
         TRY_CAST(CP.points AS DECIMAL(18,2)) AS Amount,
         'Success' AS Status
     FROM dbo.ConsumerPointsCashDetails CP WITH (NOLOCK)
@@ -274,7 +276,7 @@ BEGIN
         BL.UpdateDate AS LedgerDate,
         1 AS SortOrder,
         UPPER(BL.ServiceName) AS TransactionType,
-        CAST(BL.BLoyalty_PointEarnedID AS NVARCHAR(100)) AS RefId,
+        BL.BLoyalty_PointEarnedID AS RefId,
         CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END AS Amount,
         'Success' AS Status
     FROM dbo.BLoyaltyPointsEarned BL WITH (NOLOCK)
@@ -289,7 +291,7 @@ BEGIN
         CD.Claim_date AS LedgerDate,
         2 AS SortOrder,
         'CLAIM' AS TransactionType,
-        CAST(CD.Row_ID AS NVARCHAR(100)) AS RefId,
+        CD.Row_ID AS RefId,
         -CD.Amount AS Amount,
         'Approved' AS Status
     FROM ClaimDetails CD WITH (NOLOCK)
@@ -298,21 +300,54 @@ BEGIN
 
     ---------------------------------------------------------
     -- 4. LOAD REDEMPTIONS: UPI PAYOUTS (SUCCESS REST)
+    -- Optimized using index seeking split logic
     ---------------------------------------------------------
+    DROP TABLE IF EXISTS #UPITrans;
+    CREATE TABLE #UPITrans (
+        Id INT,
+        ReqDate DATETIME,
+        Amount FLOAT,
+        Status VARCHAR(30)
+    );
+
+    INSERT INTO #UPITrans (Id, ReqDate, Amount, Status)
+    SELECT Id, ReqDate, Amount, Status
+    FROM tblUPITransactionDetails WITH (NOLOCK)
+    WHERE Comp_Id = @Comp_Id 
+      AND M_Consumerid = @M_ConsumerId
+      AND Status = 'Success'
+      AND Code1 IS NOT NULL AND Code1 <> '' AND LEN(Code1) > 1
+      AND Code2 IS NOT NULL AND Code2 <> '' AND LEN(Code2) > 6;
+
+    INSERT INTO #UPITrans (Id, ReqDate, Amount, Status)
+    SELECT Id, ReqDate, Amount, Status
+    FROM tblUPITransactionDetails WITH (NOLOCK)
+    WHERE Comp_Id = @Comp_Id 
+      AND MobileNo = @CleanMobile
+      AND Status = 'Success'
+      AND Code1 IS NOT NULL AND Code1 <> '' AND LEN(Code1) > 1
+      AND Code2 IS NOT NULL AND Code2 <> '' AND LEN(Code2) > 6
+      AND NOT EXISTS (SELECT 1 FROM #UPITrans WHERE Id = tblUPITransactionDetails.Id);
+
+    INSERT INTO #UPITrans (Id, ReqDate, Amount, Status)
+    SELECT Id, ReqDate, Amount, Status
+    FROM tblUPITransactionDetails WITH (NOLOCK)
+    WHERE Comp_Id = @Comp_Id 
+      AND MobileNo = '+' + @CleanMobile
+      AND Status = 'Success'
+      AND Code1 IS NOT NULL AND Code1 <> '' AND LEN(Code1) > 1
+      AND Code2 IS NOT NULL AND Code2 <> '' AND LEN(Code2) > 6
+      AND NOT EXISTS (SELECT 1 FROM #UPITrans WHERE Id = tblUPITransactionDetails.Id);
+
     INSERT INTO #Ledger (LedgerDate, SortOrder, TransactionType, RefId, Amount, Status)
     SELECT 
-        UT.ReqDate AS LedgerDate,
+        ReqDate AS LedgerDate,
         2 AS SortOrder,
         'UPI' AS TransactionType,
-        CAST(UT.Id AS NVARCHAR(100)) AS RefId,
-        -ISNULL(UT.Amount, 0) AS Amount,
-        UT.Status AS Status
-    FROM tblUPITransactionDetails UT WITH (NOLOCK)
-    WHERE UT.Comp_Id = @Comp_Id 
-      AND (UT.M_Consumerid = CAST(@M_ConsumerId AS VARCHAR(50)) OR REPLACE(UT.Mobileno, '+', '') = @CleanMobile)
-      AND UT.Status = 'Success'
-      AND LEN(ISNULL(UT.Code1, '')) > 1
-      AND LEN(ISNULL(UT.Code2, '')) > 6;
+        Id AS RefId,
+        -ISNULL(Amount, 0) AS Amount,
+        Status AS Status
+    FROM #UPITrans;
 
     ---------------------------------------------------------
     -- 5. LOAD REDEMPTIONS: BPOINTS REDEMPTION (ACCEPTED / SUCCESS REST)
@@ -322,7 +357,7 @@ BEGIN
         BP.Redeemdate AS LedgerDate,
         2 AS SortOrder,
         'BPOINTS' AS TransactionType,
-        CAST(NULL AS NVARCHAR(100)) AS RefId,
+        NULL AS RefId,
         -ISNULL(BP.RedeemPoints, 0) AS Amount,
         BP.bpstatus AS Status
     FROM BPointsTransaction BP WITH (NOLOCK)
@@ -337,7 +372,7 @@ BEGIN
         TR.TransactionDate AS LedgerDate,
         2 AS SortOrder,
         'TRANSACTION' AS TransactionType,
-        CAST(NULL AS NVARCHAR(100)) AS RefId,
+        NULL AS RefId,
         -ISNULL(CAST(TR.Amount AS DECIMAL(18,2)), 0) AS Amount,
         'Success' AS Status
     FROM Transactions TR WITH (NOLOCK)
@@ -403,11 +438,11 @@ BEGIN
         WHERE TransactionType IN ('CLAIM', 'UPI')
           AND LedgerDate >= @StartDate AND LedgerDate < @EndDate
     ) CL
-    LEFT JOIN ClaimDetails CD WITH (NOLOCK) ON CL.TransactionType = 'CLAIM' AND CAST(CD.Row_ID AS NVARCHAR(100)) = CL.TransactionRefId
-    LEFT JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND CAST(UT.Id AS NVARCHAR(100)) = CL.TransactionRefId
-    LEFT JOIN M_Code MC WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = CAST(MC.Code1 AS VARCHAR(50)) AND UT.Code2 = CAST(MC.Code2 AS VARCHAR(50))
+    LEFT JOIN ClaimDetails CD WITH (NOLOCK) ON CL.TransactionType = 'CLAIM' AND CD.Row_ID = CL.TransactionRefId
+    LEFT JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Id = CL.TransactionRefId
+    LEFT JOIN M_Code MC WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = MC.Code1 AND UT.Code2 = MC.Code2
     LEFT JOIN Pro_Reg PR WITH (NOLOCK) ON MC.Pro_ID = PR.Pro_ID
-    LEFT JOIN Pro_Enq PE WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = PE.Received_Code1 AND UT.Code2 = PE.Received_Code2 AND RIGHT(PE.MobileNo, 10) = RIGHT(@CleanMobile, 10);
+    LEFT JOIN Pro_Enq PE WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = PE.Received_Code1 AND UT.Code2 = PE.Received_Code2 AND PE.MobileNo IN (@CleanMobile, '+' + @CleanMobile, RIGHT(@CleanMobile, 10));
 
     -- If Search is provided, filter #FinalAnalysis
     IF @Search IS NOT NULL AND @Search <> ''
