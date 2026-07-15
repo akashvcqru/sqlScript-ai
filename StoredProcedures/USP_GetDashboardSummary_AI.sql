@@ -1,7 +1,10 @@
-
-
-
-
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 7/15/2026 10:39:07 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
@@ -9,7 +12,7 @@ ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 )
 AS
 BEGIN
-    SET NOCOUNT ON;
+    SET NOCOUNT ON; 
 
     DECLARE @MobileNo VARCHAR(20)
     SELECT @MobileNo = MobileNo FROM M_Consumer WHERE M_Consumerid = @M_Consumerid AND IsDelete = 0;
@@ -27,10 +30,12 @@ BEGIN
     -- COMPANY FILTER PREPARATION
     ---------------------------------------------------------
     DECLARE @CompanyList TABLE (Comp_Id VARCHAR(50) PRIMARY KEY);
-    IF @CompID IN ('Comp-1567','Comp-1650')
-        INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
-    ELSE
         INSERT INTO @CompanyList VALUES (@CompID);
+
+    --IF @CompID IN ('Comp-1567','Comp-1650')
+    --    INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
+    --ELSE
+    --    INSERT INTO @CompanyList VALUES (@CompID);
 
     DECLARE @Multiplier DECIMAL(18,2) = 1.00;
     SELECT TOP 1 @Multiplier = 1.00 + (calculation_value / 100.0) 

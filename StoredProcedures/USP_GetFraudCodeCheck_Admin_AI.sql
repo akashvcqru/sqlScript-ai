@@ -129,7 +129,9 @@ BEGIN
         aa.Enq_Date,
         aa.MobileNo,
         c.comp_id,
-        c.Pro_Name
+        c.Pro_Name,
+        c.Pro_ID,
+        cr.Comp_Name AS CompanyName
     INTO #FinalResult
     FROM #Pro_enq a
     INNER JOIN M_Code b WITH (NOLOCK)
@@ -140,6 +142,8 @@ BEGIN
        AND a.Received_Code2 = aa.Received_Code2
     INNER JOIN Pro_reg c WITH (NOLOCK)
         ON b.Pro_id = c.Pro_id
+    LEFT JOIN Comp_Reg cr WITH (NOLOCK)
+        ON c.comp_id = cr.Comp_ID AND cr.Status = 1
     WHERE c.comp_id <> 'Comp-1669'
       AND (
           @Search IS NULL OR @Search = ''
@@ -148,6 +152,7 @@ BEGIN
           OR aa.MobileNo LIKE '%' + @Search + '%'
           OR c.comp_id LIKE '%' + @Search + '%'
           OR c.Pro_Name LIKE '%' + @Search + '%'
+          OR cr.Comp_Name LIKE '%' + @Search + '%'
       );
 
     ---------------------------------------------------------
@@ -155,6 +160,8 @@ BEGIN
     ---------------------------------------------------------
     SELECT 
         comp_id,
+        CompanyName,
+        Pro_ID,
         Pro_Name,
         Received_Code1,
         Received_Code2,
@@ -162,20 +169,36 @@ BEGIN
         MAX(Enq_Date) AS MaxEnqDate
     INTO #GroupedResult
     FROM #FinalResult
-    GROUP BY comp_id, Pro_Name, Received_Code1, Received_Code2;
+    GROUP BY comp_id, CompanyName, Pro_ID, Pro_Name, Received_Code1, Received_Code2;
 
     ---------------------------------------------------------
     -- OUTPUT AND PAGINATION
     ---------------------------------------------------------
     IF @IsExport = 1
     BEGIN
-        SELECT comp_id, Pro_Name, Received_Code1, Received_Code2, [totak fraud check]
+        SELECT 
+            comp_id, 
+            CompanyName,
+            Pro_ID,
+            Pro_Name, 
+            Received_Code1, 
+            Received_Code2, 
+            [totak fraud check],
+            MaxEnqDate AS LastCodeCheckDate
         FROM #GroupedResult
         ORDER BY MaxEnqDate DESC;
     END
     ELSE
     BEGIN
-        SELECT comp_id, Pro_Name, Received_Code1, Received_Code2, [totak fraud check]
+        SELECT 
+            comp_id, 
+            CompanyName,
+            Pro_ID,
+            Pro_Name, 
+            Received_Code1, 
+            Received_Code2, 
+            [totak fraud check],
+            MaxEnqDate AS LastCodeCheckDate
         FROM #GroupedResult
         ORDER BY MaxEnqDate DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
