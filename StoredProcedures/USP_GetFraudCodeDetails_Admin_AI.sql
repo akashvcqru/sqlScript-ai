@@ -27,7 +27,12 @@ BEGIN
         pe.Enq_Date AS EnqDate,
         ISNULL(pe.Latitude, ISNULL(g.Latitude, '')) AS Lat,
         ISNULL(pe.Longitude, ISNULL(g.Longitude, '')) AS [Long],
-        ISNULL(ms.ServiceName, '') AS ServiceName
+        ISNULL(ms.ServiceName, '') AS ServiceName,
+        CASE 
+            WHEN pe.is_success = 1 THEN 'Authenticate'
+            WHEN pe.is_success = 2 THEN 'Reauthenticate'
+            ELSE 'Invalid'
+        END AS CodeCheckStatus
     FROM Pro_Enq pe WITH (NOLOCK)
     INNER JOIN M_Code b WITH (NOLOCK)
         ON pe.Received_Code1 = CAST(b.code1 AS VARCHAR(50))
