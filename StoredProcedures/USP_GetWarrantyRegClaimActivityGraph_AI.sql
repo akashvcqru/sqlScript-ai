@@ -76,7 +76,7 @@ BEGIN
     ELSE IF (@Win = 'LASTYEAR')
     BEGIN
         SET @StartDate = DATEFROMPARTS(YEAR(@Today) - 1, 1, 1);
-        SET @EndDate   = DATEFROMPARTS(YEAR(@Today) - 1, 12, 31, 23, 59, 59);
+        SET @EndDate   = DATEFROMPARTS(YEAR(@Today) - 1, 12, 31);
         SET @Interval  = 'MONTH';
     END
     ELSE
