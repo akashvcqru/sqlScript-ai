@@ -223,7 +223,8 @@ BEGIN
                 WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
                 ELSE ISNULL(SST.IsCash, 0) * (1.00 + ISNULL(LC.calculation_value, 0.0) / 100.0)
             END 
-        AS DECIMAL(18,2))) AS ConfigPoints
+        AS DECIMAL(18,2))) AS ConfigPoints,
+        MAX(CAST(ISNULL(SST.Points, 0.00) AS DECIMAL(18,2))) AS SSTPoints
     INTO #ConfigPoints
     FROM #UniqueScans US
     INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = US.Pro_ID AND SS.Comp_ID = @Comp_Id
@@ -418,6 +419,11 @@ BEGIN
         END AS ModeOfVerification,
         COALESCE(CD.Amount, UT.Amount, 0.00) AS Amount,
         CL.PointsRedeemed AS ClaimRedeemAmount,
+        COALESCE(CD.Points_Redeemed, UT.Points_Val, CL.PointsRedeemed, 0.00) AS ActualPointsTransferred,
+        CASE 
+            WHEN CL.TransactionType = 'UPI' THEN ISNULL(CP_Code.SSTPoints, 0.00) 
+            ELSE NULL 
+        END AS CodeServicePoints,
         CL.Status AS Status,
         CL.TransactionDate AS CheckedDate,
         CL.RunningBalance AS RunningBalance,
@@ -442,7 +448,9 @@ BEGIN
     LEFT JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Id = CL.TransactionRefId
     LEFT JOIN M_Code MC WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = MC.Code1 AND UT.Code2 = MC.Code2
     LEFT JOIN Pro_Reg PR WITH (NOLOCK) ON MC.Pro_ID = PR.Pro_ID
-    LEFT JOIN Pro_Enq PE WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = PE.Received_Code1 AND UT.Code2 = PE.Received_Code2 AND PE.MobileNo IN (@CleanMobile, '+' + @CleanMobile, RIGHT(@CleanMobile, 10));
+    LEFT JOIN Pro_Enq PE WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = PE.Received_Code1 AND UT.Code2 = PE.Received_Code2 AND PE.MobileNo IN (@CleanMobile, '+' + @CleanMobile, RIGHT(@CleanMobile, 10))
+    LEFT JOIN #EarnedPoints P_Code ON P_Code.M_Codeid = MC.Row_ID
+    LEFT JOIN #ConfigPoints CP_Code ON CP_Code.M_Codeid = MC.Row_ID;
 
     -- If Search is provided, filter #FinalAnalysis
     IF @Search IS NOT NULL AND @Search <> ''
@@ -470,6 +478,8 @@ BEGIN
             ModeOfVerification,
             Amount,
             ClaimRedeemAmount,
+            ActualPointsTransferred,
+            CodeServicePoints,
             Status,
             CheckedDate,
             RunningBalance,
@@ -488,6 +498,8 @@ BEGIN
             ModeOfVerification,
             Amount,
             ClaimRedeemAmount,
+            ActualPointsTransferred,
+            CodeServicePoints,
             Status,
             CheckedDate,
             RunningBalance,
