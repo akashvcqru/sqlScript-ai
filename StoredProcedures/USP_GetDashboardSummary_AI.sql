@@ -1,10 +1,11 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 7/15/2026 10:39:07 AM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 7/16/2026 11:17:48 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
 ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
@@ -233,7 +234,7 @@ BEGIN
     SELECT @ClaimsAmount = ISNULL(SUM(CASE WHEN ISNULL(Amount, 0) > 0 THEN Amount ELSE ISNULL(TRY_CONVERT(NUMERIC(18,2), PointsValue), 0) END), 0)
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
-    WHERE Isapproved = 1
+    WHERE Isapproved IN (0, 1)
       AND CD.Mobileno = @MobileNo;
 
     DECLARE @RedeemAmount DECIMAL(18,2) = 0;

@@ -114,7 +114,7 @@ BEGIN
         WHERE ReqDate >= @StartDate AND ReqDate < @EndDate
         GROUP BY Mobileno, Comp_Id
     ) x
-    WHERE ISNULL(Mobileno, '') <> '';
+    WHERE ISNULL(Mobileno, '') <> '' AND Comp_id <> 'Comp-1669';
 
     -- Distinct Candidates
     DROP TABLE IF EXISTS #UniqueCandidates;
@@ -216,55 +216,6 @@ BEGIN
 
     CREATE CLUSTERED INDEX IX_UniqueScans_MCodeid ON #UniqueScans(M_Codeid);
 
-    -- Get Earned Points per scan
-    DROP TABLE IF EXISTS #EarnedPoints;
-    SELECT
-        US.Comp_Id,
-        US.M_Codeid,
-        SUM(Points) AS Points
-    INTO #EarnedPoints
-    FROM (
-        SELECT
-            U.Comp_Id,
-            MC.M_Codeid,
-            CAST(
-                CASE 
-                    WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * (1.00 + ISNULL(LC.calculation_value, 0.0) / 100.0)
-                    ELSE ISNULL(BL.Points, 0)
-                END 
-            AS DECIMAL(18,2)) AS Points
-        FROM #Users U
-        INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON MC.M_Consumerid = U.M_ConsumerId
-        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-        INNER JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
-        LEFT JOIN loyalty_calculation LC WITH (NOLOCK) ON LC.comp_id = U.Comp_Id AND LC.isactive = 1 AND LC.isdelete = 0
-        WHERE BL.compid = U.Comp_Id
-        
-        UNION ALL
-
-        SELECT
-            U.Comp_Id,
-            MC.M_Codeid,
-            CAST(
-                CASE 
-                    WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * (1.00 + ISNULL(LC.calculation_value, 0.0) / 100.0)
-                    ELSE ISNULL(BL.Points, 0)
-                END 
-            AS DECIMAL(18,2)) AS Points
-        FROM #Users U
-        INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON MC.M_Consumerid = U.M_ConsumerId
-        INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
-        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID AND PR.Comp_Id = U.Comp_Id
-        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-        INNER JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
-        LEFT JOIN loyalty_calculation LC WITH (NOLOCK) ON LC.comp_id = U.Comp_Id AND LC.isactive = 1 AND LC.isdelete = 0
-        WHERE BL.compid IS NULL
-    ) x
-    INNER JOIN #UniqueScans US ON US.Comp_Id = x.Comp_Id AND US.M_Codeid = x.M_Codeid AND US.rn = 1
-    GROUP BY US.Comp_Id, US.M_Codeid;
-
-    CREATE CLUSTERED INDEX IX_EarnedPoints ON #EarnedPoints(M_Codeid);
-
     -- Get Configured Points per scan
     DROP TABLE IF EXISTS #ConfigPoints;
     SELECT 
@@ -295,10 +246,9 @@ BEGIN
     SELECT
         US.Comp_Id,
         US.MobileNo,
-        SUM(ISNULL(P.Points, ISNULL(CP.ConfigPoints, 0))) AS BenefitPoints
+        SUM(ISNULL(CP.ConfigPoints, 0)) AS BenefitPoints
     INTO #Benefit
     FROM #UniqueScans US
-    LEFT JOIN #EarnedPoints P ON P.Comp_Id = US.Comp_Id AND P.M_Codeid = US.M_Codeid
     LEFT JOIN #ConfigPoints CP ON CP.Comp_Id = US.Comp_Id AND CP.M_Codeid = US.M_Codeid
     WHERE US.rn = 1
     GROUP BY US.Comp_Id, US.MobileNo;
@@ -499,6 +449,6 @@ BEGIN
     END
 
     -- Cleanup temp tables
-    DROP TABLE IF EXISTS #Candidates, #UniqueCandidates, #Users, #UniqueScans, #EarnedPoints, #ConfigPoints, #Benefit, #Referrals, #Earned1152, #TotalEarned, #Claims, #UPI, #BPoints, #Transactions, #Summary;
+    DROP TABLE IF EXISTS #Candidates, #UniqueCandidates, #Users, #UniqueScans, #ConfigPoints, #Benefit, #Referrals, #Earned1152, #TotalEarned, #Claims, #UPI, #BPoints, #Transactions, #Summary;
 END
 GO

@@ -28,6 +28,26 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    IF @Comp_Id = 'Comp-1669'
+    BEGIN
+        SELECT TOP 0
+            CAST(NULL AS NVARCHAR(150)) AS CompanyName,
+            CAST(NULL AS NVARCHAR(150)) AS ProductName,
+            CAST(NULL AS NVARCHAR(50)) AS MobileNo,
+            CAST(NULL AS NVARCHAR(150)) AS Code1Code2,
+            CAST(NULL AS NVARCHAR(50)) AS ModeOfVerification,
+            CAST(0.00 AS DECIMAL(18,2)) AS Amount,
+            CAST(0.00 AS DECIMAL(18,2)) AS ClaimRedeemAmount,
+            CAST(NULL AS NVARCHAR(50)) AS Status,
+            CAST(NULL AS DATETIME) AS CheckedDate,
+            CAST(0.00 AS DECIMAL(18,2)) AS RunningBalance,
+            CAST(0.00 AS DECIMAL(18,2)) AS ExceededPointsNegative,
+            CAST(0 AS INT) AS IsFraudEntry;
+        
+        SELECT 0 AS TotalRecords, @Page AS CurrentPage, @Limit AS [Limit], 0 AS TotalPages;
+        RETURN;
+    END
+
     -- Determine Date Range
     DECLARE @StartDate DATETIME;
     DECLARE @EndDate   DATETIME;
@@ -94,7 +114,7 @@ BEGIN
         SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
     END
 
-    DROP TABLE IF EXISTS #UniqueScans, #EarnedPoints, #ConfigPoints, #Ledger, #ChronologicalLedger, #FinalAnalysis;
+    DROP TABLE IF EXISTS #UniqueScans, #ConfigPoints, #Ledger, #ChronologicalLedger, #FinalAnalysis;
 
     -- Clean the mobile number and resolve consumer info
     DECLARE @CleanMobile NVARCHAR(30) = REPLACE(@MobileNo, '+', '');
@@ -145,6 +165,49 @@ BEGIN
     );
 
     ---------------------------------------------------------
+    -- LOAD REDEMPTIONS: UPI PAYOUTS (SUCCESS REST) FIRST
+    -- (Needed early to match and align timestamps of scans)
+    ---------------------------------------------------------
+    DROP TABLE IF EXISTS #UPITrans;
+    CREATE TABLE #UPITrans (
+        Id INT,
+        ReqDate DATETIME,
+        Amount FLOAT,
+        Status VARCHAR(30),
+        Code1 VARCHAR(100),
+        Code2 VARCHAR(100)
+    );
+
+    INSERT INTO #UPITrans (Id, ReqDate, Amount, Status, Code1, Code2)
+    SELECT Id, ReqDate, Amount, Status, Code1, Code2
+    FROM tblUPITransactionDetails WITH (NOLOCK)
+    WHERE Comp_Id = @Comp_Id 
+      AND M_Consumerid = @M_ConsumerId
+      AND Status = 'Success'
+      AND Code1 IS NOT NULL AND Code1 <> '' AND LEN(Code1) > 1
+      AND Code2 IS NOT NULL AND Code2 <> '' AND LEN(Code2) > 6;
+
+    INSERT INTO #UPITrans (Id, ReqDate, Amount, Status, Code1, Code2)
+    SELECT Id, ReqDate, Amount, Status, Code1, Code2
+    FROM tblUPITransactionDetails WITH (NOLOCK)
+    WHERE Comp_Id = @Comp_Id 
+      AND MobileNo = @CleanMobile
+      AND Status = 'Success'
+      AND Code1 IS NOT NULL AND Code1 <> '' AND LEN(Code1) > 1
+      AND Code2 IS NOT NULL AND Code2 <> '' AND LEN(Code2) > 6
+      AND NOT EXISTS (SELECT 1 FROM #UPITrans WHERE Id = tblUPITransactionDetails.Id);
+
+    INSERT INTO #UPITrans (Id, ReqDate, Amount, Status, Code1, Code2)
+    SELECT Id, ReqDate, Amount, Status, Code1, Code2
+    FROM tblUPITransactionDetails WITH (NOLOCK)
+    WHERE Comp_Id = @Comp_Id 
+      AND MobileNo = '+' + @CleanMobile
+      AND Status = 'Success'
+      AND Code1 IS NOT NULL AND Code1 <> '' AND LEN(Code1) > 1
+      AND Code2 IS NOT NULL AND Code2 <> '' AND LEN(Code2) > 6
+      AND NOT EXISTS (SELECT 1 FROM #UPITrans WHERE Id = tblUPITransactionDetails.Id);
+
+    ---------------------------------------------------------
     -- 1. LOAD EARNINGS: SCAN POINTS (LIFETIME)
     -- Optimized SARGable joins on Pro_Enq MobileNo (UNION ALL ensures index seek)
     ---------------------------------------------------------
@@ -170,50 +233,7 @@ BEGIN
 
     CREATE CLUSTERED INDEX IX_UniqueScans_MCodeid ON #UniqueScans(M_Codeid);
 
-    -- Get Earned points for each scan
-    SELECT
-        US.M_Codeid,
-        SUM(Points) AS Points
-    INTO #EarnedPoints
-    FROM (
-        SELECT
-            MC.M_Codeid,
-            CAST(
-                CASE 
-                    WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * (1.00 + ISNULL(LC.calculation_value, 0.0) / 100.0)
-                    ELSE ISNULL(BL.Points, 0)
-                END 
-            AS DECIMAL(18,2)) AS Points
-        FROM M_Consumer_M_Code MC WITH (NOLOCK)
-        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-        INNER JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
-        LEFT JOIN loyalty_calculation LC WITH (NOLOCK) ON LC.comp_id = @Comp_Id AND LC.isactive = 1 AND LC.isdelete = 0
-        WHERE MC.M_Consumerid = @M_ConsumerId
-          AND BL.compid = @Comp_Id
-        
-        UNION ALL
 
-        SELECT
-            MC.M_Codeid,
-            CAST(
-                CASE 
-                    WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * (1.00 + ISNULL(LC.calculation_value, 0.0) / 100.0)
-                    ELSE ISNULL(BL.Points, 0)
-                END 
-            AS DECIMAL(18,2)) AS Points
-        FROM M_Consumer_M_Code MC WITH (NOLOCK)
-        INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
-        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID AND PR.Comp_Id = @Comp_Id
-        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-        INNER JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
-        LEFT JOIN loyalty_calculation LC WITH (NOLOCK) ON LC.comp_id = @Comp_Id AND LC.isactive = 1 AND LC.isdelete = 0
-        WHERE MC.M_Consumerid = @M_ConsumerId
-          AND BL.compid IS NULL
-    ) x
-    INNER JOIN #UniqueScans US ON US.M_Codeid = x.M_Codeid AND US.rn = 1
-    GROUP BY US.M_Codeid;
-
-    CREATE CLUSTERED INDEX IX_EarnedPoints ON #EarnedPoints(M_Codeid);
 
     -- Get Configured points for each scan
     SELECT 
@@ -223,7 +243,8 @@ BEGIN
                 WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
                 ELSE ISNULL(SST.IsCash, 0) * (1.00 + ISNULL(LC.calculation_value, 0.0) / 100.0)
             END 
-        AS DECIMAL(18,2))) AS ConfigPoints
+        AS DECIMAL(18,2))) AS ConfigPoints,
+        MAX(CAST(ISNULL(SST.Points, 0.00) AS DECIMAL(18,2))) AS SSTPoints
     INTO #ConfigPoints
     FROM #UniqueScans US
     INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = US.Pro_ID AND SS.Comp_ID = @Comp_Id
@@ -240,17 +261,19 @@ BEGIN
     CREATE CLUSTERED INDEX IX_ConfigPoints ON #ConfigPoints(M_Codeid);
 
     -- Record Scan earnings in #Ledger (Exclude Comp-1152 which has its own ledger table below)
+    -- Join with #UPITrans on Code1/Code2 to align scan LedgerDate with UPI ReqDate
     INSERT INTO #Ledger (LedgerDate, SortOrder, TransactionType, RefId, Amount, Status)
     SELECT 
-        US.Enq_Date AS LedgerDate,
+        ISNULL(ut.ReqDate, US.Enq_Date) AS LedgerDate,
         1 AS SortOrder,
         'SCAN' AS TransactionType,
         US.M_Codeid AS RefId,
-        ISNULL(P.Points, ISNULL(CP.ConfigPoints, 0)) AS Amount,
+        ISNULL(CP.ConfigPoints, 0) AS Amount,
         'Success' AS Status
     FROM #UniqueScans US
-    LEFT JOIN #EarnedPoints P ON P.M_Codeid = US.M_Codeid
+    INNER JOIN M_Code M WITH (NOLOCK) ON US.M_Codeid = M.Row_ID
     LEFT JOIN #ConfigPoints CP ON CP.M_Codeid = US.M_Codeid
+    LEFT JOIN #UPITrans ut ON ut.Code1 = M.Code1 AND ut.Code2 = M.Code2
     WHERE US.rn = 1 AND @Comp_Id <> 'Comp-1152';
 
     -- Override: Load Comp-1152 scans from ConsumerPointsCashDetails (LIFETIME)
@@ -298,47 +321,9 @@ BEGIN
     WHERE CD.Comp_id = @Comp_Id AND CD.Mobileno = @CleanMobile
       AND CD.Isapproved = 1;
 
-    ---------------------------------------------------------
     -- 4. LOAD REDEMPTIONS: UPI PAYOUTS (SUCCESS REST)
-    -- Optimized using index seeking split logic
+    -- (UPI records are already pre-loaded into #UPITrans)
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #UPITrans;
-    CREATE TABLE #UPITrans (
-        Id INT,
-        ReqDate DATETIME,
-        Amount FLOAT,
-        Status VARCHAR(30)
-    );
-
-    INSERT INTO #UPITrans (Id, ReqDate, Amount, Status)
-    SELECT Id, ReqDate, Amount, Status
-    FROM tblUPITransactionDetails WITH (NOLOCK)
-    WHERE Comp_Id = @Comp_Id 
-      AND M_Consumerid = @M_ConsumerId
-      AND Status = 'Success'
-      AND Code1 IS NOT NULL AND Code1 <> '' AND LEN(Code1) > 1
-      AND Code2 IS NOT NULL AND Code2 <> '' AND LEN(Code2) > 6;
-
-    INSERT INTO #UPITrans (Id, ReqDate, Amount, Status)
-    SELECT Id, ReqDate, Amount, Status
-    FROM tblUPITransactionDetails WITH (NOLOCK)
-    WHERE Comp_Id = @Comp_Id 
-      AND MobileNo = @CleanMobile
-      AND Status = 'Success'
-      AND Code1 IS NOT NULL AND Code1 <> '' AND LEN(Code1) > 1
-      AND Code2 IS NOT NULL AND Code2 <> '' AND LEN(Code2) > 6
-      AND NOT EXISTS (SELECT 1 FROM #UPITrans WHERE Id = tblUPITransactionDetails.Id);
-
-    INSERT INTO #UPITrans (Id, ReqDate, Amount, Status)
-    SELECT Id, ReqDate, Amount, Status
-    FROM tblUPITransactionDetails WITH (NOLOCK)
-    WHERE Comp_Id = @Comp_Id 
-      AND MobileNo = '+' + @CleanMobile
-      AND Status = 'Success'
-      AND Code1 IS NOT NULL AND Code1 <> '' AND LEN(Code1) > 1
-      AND Code2 IS NOT NULL AND Code2 <> '' AND LEN(Code2) > 6
-      AND NOT EXISTS (SELECT 1 FROM #UPITrans WHERE Id = tblUPITransactionDetails.Id);
-
     INSERT INTO #Ledger (LedgerDate, SortOrder, TransactionType, RefId, Amount, Status)
     SELECT 
         ReqDate AS LedgerDate,
@@ -418,6 +403,11 @@ BEGIN
         END AS ModeOfVerification,
         COALESCE(CD.Amount, UT.Amount, 0.00) AS Amount,
         CL.PointsRedeemed AS ClaimRedeemAmount,
+        COALESCE(CD.Points_Redeemed, UT.Points_Val, CL.PointsRedeemed, 0.00) AS ActualPointsTransferred,
+        CASE 
+            WHEN CL.TransactionType = 'UPI' THEN ISNULL(CP_Code.SSTPoints, 0.00) 
+            ELSE NULL 
+        END AS CodeServicePoints,
         CL.Status AS Status,
         CL.TransactionDate AS CheckedDate,
         CL.RunningBalance AS RunningBalance,
@@ -442,7 +432,8 @@ BEGIN
     LEFT JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Id = CL.TransactionRefId
     LEFT JOIN M_Code MC WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = MC.Code1 AND UT.Code2 = MC.Code2
     LEFT JOIN Pro_Reg PR WITH (NOLOCK) ON MC.Pro_ID = PR.Pro_ID
-    LEFT JOIN Pro_Enq PE WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = PE.Received_Code1 AND UT.Code2 = PE.Received_Code2 AND PE.MobileNo IN (@CleanMobile, '+' + @CleanMobile, RIGHT(@CleanMobile, 10));
+    LEFT JOIN Pro_Enq PE WITH (NOLOCK) ON CL.TransactionType = 'UPI' AND UT.Code1 = PE.Received_Code1 AND UT.Code2 = PE.Received_Code2 AND PE.MobileNo IN (@CleanMobile, '+' + @CleanMobile, RIGHT(@CleanMobile, 10))
+    LEFT JOIN #ConfigPoints CP_Code ON CP_Code.M_Codeid = MC.Row_ID;
 
     -- If Search is provided, filter #FinalAnalysis
     IF @Search IS NOT NULL AND @Search <> ''
@@ -468,8 +459,8 @@ BEGIN
             MobileNo,
             Code1Code2,
             ModeOfVerification,
-            Amount,
-            ClaimRedeemAmount,
+             CodeServicePoints as Amount,
+            ActualPointsTransferred as ClaimRedeemAmount, 
             Status,
             CheckedDate,
             RunningBalance,
@@ -486,8 +477,8 @@ BEGIN
             MobileNo,
             Code1Code2,
             ModeOfVerification,
-            Amount,
-            ClaimRedeemAmount,
+            CodeServicePoints as Amount,
+            ActualPointsTransferred as ClaimRedeemAmount,
             Status,
             CheckedDate,
             RunningBalance,
@@ -507,6 +498,6 @@ BEGIN
     END
 
     -- Cleanup temp tables
-    DROP TABLE IF EXISTS #UniqueScans, #EarnedPoints, #ConfigPoints, #Ledger, #ChronologicalLedger, #FinalAnalysis;
+    DROP TABLE IF EXISTS #UniqueScans, #ConfigPoints, #Ledger, #ChronologicalLedger, #FinalAnalysis;
 END
 GO
