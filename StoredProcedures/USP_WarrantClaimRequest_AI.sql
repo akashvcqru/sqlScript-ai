@@ -58,7 +58,11 @@ BEGIN
         SET [IsWarrantyClaimed] = 0,
             [Comment] = @Comment,
             [VendorClaimStatus] = 'Pending',
-            [ImagePath] = @PrimaryImagePath,
+            [ImagePath] = CASE 
+                            WHEN @AdditionalImages IS NOT NULL AND LEN(LTRIM(RTRIM(@AdditionalImages))) > 0 
+                            THEN @PrimaryImagePath + ',' + @AdditionalImages 
+                            ELSE @PrimaryImagePath 
+                          END,
             [claimdate] = GETDATE()
         WHERE id = @WarrantyId;
 

@@ -141,10 +141,12 @@ BEGIN
                 WHEN @Comp_Id = 'Comp-1993' THEN war.SerialNo
                 ELSE war.[State]
             END AS [State],
-            war.Comp_id
+            war.Comp_id,
+            ISNULL(c.ConsumerName, '') AS [UserName]
         FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
         INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
         INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
+        LEFT JOIN [dbo].[M_Consumer] c WITH (NOLOCK) ON RIGHT(c.MobileNo, 10) = RIGHT(war.Mobile, 10) AND c.IsDelete = 0
         WHERE pr.[Comp_ID] = @Comp_Id
           AND war.Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91)
           AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
