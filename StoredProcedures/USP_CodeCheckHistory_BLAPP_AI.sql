@@ -154,30 +154,29 @@ BEGIN
   
     SELECT   
         t2.*,  
-        --CONCAT('+', bl.Points) AS Points,  
-		CASE
-    WHEN bl.Points IS NOT NULL AND bl.Points <> '' AND bl.Points <> '0'
-        THEN CONCAT('+', bl.Points)
-    WHEN bl.cash IS NOT NULL AND bl.cash <> '' AND bl.cash <> '0'
-        THEN CONCAT('+', bl.cash)
-    ELSE '0'
-END AS Points,
-        bl.ServiceName,  
+        CASE 
+            WHEN sst.Points IS NOT NULL AND sst.Points <> 0 THEN CONCAT('+', CAST(sst.Points AS VARCHAR(50)))
+            ELSE '0'
+        END AS Points,
+        c.ServiceName,  
         c.ServiceName AS ServiceNameNew,
-        CASE  
-            WHEN t2.Status = 'Success' THEN 'Green'  
-            WHEN t2.Status = 'Pending' THEN 'Yellow'  
-            ELSE 'Red'  
-        END AS ColourCode,
+        'Green' AS ColourCode,
         CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
     FROM #ConsumerData t2  
-    INNER JOIN BLoyaltyPointsEarned bl ON t2.M_Consumerid = bl.M_Consumerid
-    INNER JOIN M_ServiceSubscriptionTrans a ON bl.SST_id = a.SST_Id 
-    INNER JOIN M_ServiceSubscription b ON a.Subscribe_Id = b.Subscribe_Id 
-    INNER JOIN M_Service c ON b.Service_ID = c.Service_ID
+    INNER JOIN M_Code m 
+        ON t2.Code1 = m.Code1
+        AND t2.Code2 = m.Code2
+    INNER JOIN M_ServiceSubscription ss 
+        ON m.Pro_id = ss.Pro_id 
+        AND ss.IsActive = 1 AND ss.IsDelete = 0
+        AND (m.Series_Order > ss.start_order OR (m.Series_Order = ss.start_order AND m.Series_Serial >= ss.start_series))
+        AND (m.Series_Order < ss.end_order OR (m.Series_Order = ss.end_order AND m.Series_Serial <= ss.end_series))
+    INNER JOIN M_ServiceSubscriptionTrans sst 
+        ON sst.Subscribe_Id = ss.Subscribe_Id
+        AND sst.IsActive = 1 AND sst.IsDelete = 0
+    INNER JOIN M_Service c 
+        ON ss.Service_ID = c.Service_ID
     WHERE t2.Status = 'Success'  
-      AND t2.Code1 = bl.Code1   
-      AND t2.Code2 = bl.Code2  
   
     UNION
 
@@ -210,7 +209,7 @@ INNER JOIN M_ServiceSubscription ss
     --)
 INNER JOIN M_Service s 
     ON ss.Service_ID = s.Service_ID
-WHERE t2.Status IN ('Invalid', 'Unsuccess','success')  and s.Service_ID = 'SRV1018'
+WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
 	 
 
     UNION  

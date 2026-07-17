@@ -17,7 +17,10 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_ScanWarrantyCode_BLApp_AI]
     @PurchaseDate DATETIME = NULL,
     @ImagePathBill NVARCHAR(200) = NULL,
     @ImagePath NVARCHAR(400) = NULL,
-    @Comp_id VARCHAR(50) = NULL
+    @Comp_id VARCHAR(50) = NULL,
+    @Mode VARCHAR(50) = NULL,
+    @Latitude VARCHAR(50) = NULL,
+    @Longitude VARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -26,6 +29,13 @@ BEGIN
     DECLARE @Code1 VARCHAR(10);
     DECLARE @Code2 VARCHAR(10);
     DECLARE @CleanCode VARCHAR(20);
+
+    -- Format Mobile Number to always include 91 prefix
+    DECLARE @FormattedMobile VARCHAR(20) = @MobileNo;
+    IF LEN(@FormattedMobile) = 10
+        SET @FormattedMobile = '91' + @FormattedMobile;
+    ELSE
+        SET @FormattedMobile = '91' + RIGHT(@FormattedMobile, 10);
 
     -- 1. Normalize code (remove hyphens, or split by hyphen/length)
     SET @CleanCode = REPLACE(@CouponCode, '-', '');
@@ -70,6 +80,9 @@ BEGIN
 
     IF @Pro_ID IS NULL
     BEGIN
+        INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, callerdate, callertime)
+        VALUES (@Code1, @Code2, @FormattedMobile, ISNULL(@Mode, 'BLApp'), 'Warranty Registration: Invalid Coupon', '0', GETDATE(), @Comp_id, @Latitude, @Longitude, CAST(GETDATE() AS DATE), CONVERT(VARCHAR(30), GETDATE(), 108));
+
         SELECT 0 AS Success, 'Invalid coupon code or code not registered.' AS Message;
         RETURN;
     END
@@ -82,6 +95,9 @@ BEGIN
 
     IF @Subscribe_Id IS NULL
     BEGIN
+        INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, callerdate, callertime)
+        VALUES (@Code1, @Code2, @FormattedMobile, ISNULL(@Mode, 'BLApp'), 'Warranty Registration: Service Not Subscribed', '0', GETDATE(), @ResolvedCompID, @Latitude, @Longitude, CAST(GETDATE() AS DATE), CONVERT(VARCHAR(30), GETDATE(), 108));
+
         SELECT 0 AS Success, 'This product is not subscribed for warranty service.' AS Message;
         RETURN;
     END
@@ -116,6 +132,9 @@ BEGIN
 
     IF @ExistingId IS NOT NULL
     BEGIN
+        INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, callerdate, callertime)
+        VALUES (@Code1, @Code2, @FormattedMobile, ISNULL(@Mode, 'BLApp'), 'Warranty Registration: Already Registered', '0', GETDATE(), @ResolvedCompID, @Latitude, @Longitude, CAST(GETDATE() AS DATE), CONVERT(VARCHAR(30), GETDATE(), 108));
+
         SELECT 0 AS Success, 'Warranty is already registered for this coupon. Valid till ' + @ExistingExpiration AS Message;
         RETURN;
     END
@@ -140,8 +159,8 @@ BEGIN
         );
 
         -- Also record inquiry to track code checks
-        INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID)
-        VALUES (@Code1, @Code2, RIGHT(@MobileNo, 10), 'BLApp', 'Warranty Registration', '1', GETDATE(), @ResolvedCompID);
+        INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, callerdate, callertime)
+        VALUES (@Code1, @Code2, @FormattedMobile, ISNULL(@Mode, 'BLApp'), 'Warranty Registration', '1', GETDATE(), @ResolvedCompID, @Latitude, @Longitude, CAST(GETDATE() AS DATE), CONVERT(VARCHAR(30), GETDATE(), 108));
 
         -- Increment code check count
         IF @TableName = 'M_Code'
