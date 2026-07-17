@@ -20,7 +20,8 @@ ALTER   PROCEDURE [dbo].[USP_WarrantyReport_AI]
     @ToDate DATETIME = NULL,
     @Page INT = 1,
     @Limit INT = 10,
-    @Search NVARCHAR(100) = NULL
+    @Search NVARCHAR(100) = NULL,
+    @ClaimStatus NVARCHAR(50) = NULL
 )
 AS
 BEGIN
@@ -94,6 +95,13 @@ BEGIN
         SET @SearchParam = '%' + @Search + '%';
 
     ------------------------------------------------------
+    -- Claim Status Param
+    ------------------------------------------------------
+    DECLARE @ClaimStatusFilter NVARCHAR(50) = NULL;
+    IF @ClaimStatus IS NOT NULL AND @ClaimStatus <> '' AND LOWER(@ClaimStatus) <> 'all'
+        SET @ClaimStatusFilter = @ClaimStatus;
+
+    ------------------------------------------------------
     -- Main Query
     ------------------------------------------------------
     ;WITH MainResult AS (
@@ -138,6 +146,7 @@ BEGIN
           AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
           AND (@EndDate IS NULL OR war.claimdate <= @EndDate)
           AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam)
+          AND (@ClaimStatusFilter IS NULL OR CAST(war.[IsWarrantyClaimed] AS VARCHAR(10)) = @ClaimStatusFilter)
     )
     SELECT * FROM MainResult
     ORDER BY [ClaimDate] DESC
@@ -157,5 +166,6 @@ BEGIN
     WHERE pr.[Comp_ID] = @Comp_Id  and  IsWarrantyClaimed is not null
       AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
       AND (@EndDate IS NULL OR war.claimdate <= @EndDate)
-      AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam);
+      AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam)
+      AND (@ClaimStatusFilter IS NULL OR CAST(war.[IsWarrantyClaimed] AS VARCHAR(10)) = @ClaimStatusFilter);
 END
