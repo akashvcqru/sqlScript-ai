@@ -1,6 +1,6 @@
 USE [Vcqru]
 GO
-
+/****** Object:  StoredProcedure [dbo].[USP_WarrantyReport_AI]    Script Date: 7/17/2026 3:54:02 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -12,7 +12,7 @@ GO
 -- Description: Get Warranty Report for Company Dashboard with Pagination and TimeWindow
 -- Reference:   GetWarrantyDetails
 -- =============================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_WarrantyReport_AI]
+ALTER   PROCEDURE [dbo].[USP_WarrantyReport_AI]
 (
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,
@@ -132,7 +132,7 @@ BEGIN
         FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
         INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
         INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
-        WHERE pr.[Comp_ID] = @Comp_Id
+        WHERE pr.[Comp_ID] = @Comp_Id and  IsWarrantyClaimed is not null
           AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
           AND (@EndDate IS NULL OR war.claimdate <= @EndDate)
           AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam)
@@ -152,9 +152,8 @@ BEGIN
     FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
     INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
     INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
-    WHERE pr.[Comp_ID] = @Comp_Id
+    WHERE pr.[Comp_ID] = @Comp_Id  and  IsWarrantyClaimed is not null
       AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
       AND (@EndDate IS NULL OR war.claimdate <= @EndDate)
       AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam);
 END
-GO
