@@ -191,7 +191,7 @@ BEGIN
             M.Series_Serial,
             PE.Enq_Date
         FROM #Users U
-        INNER JOIN Pro_Enq PE WITH (NOLOCK) ON PE.MobileNo = U.MobileNo
+        INNER JOIN Pro_Enq PE WITH (NOLOCK) ON PE.MobileNo = RIGHT(U.MobileNo, 10)
         INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
         INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID AND PR.Comp_Id = U.Comp_Id
         WHERE PE.Is_Success = '1'
@@ -208,7 +208,41 @@ BEGIN
             M.Series_Serial,
             PE.Enq_Date
         FROM #Users U
-        INNER JOIN Pro_Enq PE WITH (NOLOCK) ON PE.MobileNo = '+' + U.MobileNo
+        INNER JOIN Pro_Enq PE WITH (NOLOCK) ON PE.MobileNo = '+' + RIGHT(U.MobileNo, 10)
+        INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
+        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID AND PR.Comp_Id = U.Comp_Id
+        WHERE PE.Is_Success = '1'
+
+        UNION ALL
+
+        SELECT 
+            U.Comp_Id,
+            U.MobileNo,
+            U.M_ConsumerId,
+            M.Row_ID AS M_Codeid,
+            M.Pro_ID,
+            M.Series_Order,
+            M.Series_Serial,
+            PE.Enq_Date
+        FROM #Users U
+        INNER JOIN Pro_Enq PE WITH (NOLOCK) ON PE.MobileNo = '91' + RIGHT(U.MobileNo, 10)
+        INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
+        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID AND PR.Comp_Id = U.Comp_Id
+        WHERE PE.Is_Success = '1'
+
+        UNION ALL
+
+        SELECT 
+            U.Comp_Id,
+            U.MobileNo,
+            U.M_ConsumerId,
+            M.Row_ID AS M_Codeid,
+            M.Pro_ID,
+            M.Series_Order,
+            M.Series_Serial,
+            PE.Enq_Date
+        FROM #Users U
+        INNER JOIN Pro_Enq PE WITH (NOLOCK) ON PE.MobileNo = '+91' + RIGHT(U.MobileNo, 10)
         INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
         INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID AND PR.Comp_Id = U.Comp_Id
         WHERE PE.Is_Success = '1'
@@ -242,13 +276,70 @@ BEGIN
 
     CREATE CLUSTERED INDEX IX_ConfigPoints ON #ConfigPoints(M_Codeid);
 
+    -- Get actual earned points from BLoyaltyPointsEarned
+    DROP TABLE IF EXISTS #EarnedPoints;
+    SELECT
+        M_Codeid,
+        SUM(Points) AS Points
+    INTO #EarnedPoints
+    FROM (
+        SELECT
+            MC.M_Codeid,
+            CAST(
+                CASE 
+                    WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * (1.00 + (ISNULL(LC.calculation_value, 0.0) / 100.0))
+                    ELSE ISNULL(BL.Points, 0)
+                END 
+            AS DECIMAL(18,2)) AS Points
+        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        INNER JOIN (
+            SELECT BMC2.Pkid, BMC2.M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY BMC2.M_Consumer_MCOdeid ORDER BY BMC2.Createdate ASC) as rn
+            FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK)
+            INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid
+            WHERE MC2.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
+        ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
+        INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        LEFT JOIN loyalty_calculation LC WITH (NOLOCK) ON LC.comp_id = BL.compid AND LC.isactive = 1 AND LC.isdelete = 0
+        WHERE BL.compid IN (SELECT DISTINCT Comp_Id FROM #Users)
+          AND MC.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
+
+        UNION ALL
+
+        SELECT
+            MC.M_Codeid,
+            CAST(
+                CASE 
+                    WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * (1.00 + (ISNULL(LC.calculation_value, 0.0) / 100.0))
+                    ELSE ISNULL(BL.Points, 0)
+                END 
+            AS DECIMAL(18,2)) AS Points
+        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        INNER JOIN (
+            SELECT BMC2.Pkid, BMC2.M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY BMC2.M_Consumer_MCOdeid ORDER BY BMC2.Createdate ASC) as rn
+            FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK)
+            INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid
+            WHERE MC2.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
+        ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
+        INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
+        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID
+        LEFT JOIN loyalty_calculation LC WITH (NOLOCK) ON LC.comp_id = PR.Comp_ID AND LC.isactive = 1 AND LC.isdelete = 0
+        WHERE BL.compid IS NULL
+          AND MC.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
+          AND PR.Comp_ID IN (SELECT DISTINCT Comp_Id FROM #Users)
+    ) x
+    GROUP BY M_Codeid;
+
+    CREATE CLUSTERED INDEX IX_EarnedPoints ON #EarnedPoints(M_Codeid);
+
     DROP TABLE IF EXISTS #Benefit;
     SELECT
         US.Comp_Id,
         US.MobileNo,
-        SUM(ISNULL(CP.ConfigPoints, 0)) AS BenefitPoints
+        SUM(ISNULL(P.Points, ISNULL(CP.ConfigPoints, 0))) AS BenefitPoints
     INTO #Benefit
     FROM #UniqueScans US
+    LEFT JOIN #EarnedPoints P ON P.M_Codeid = US.M_Codeid
     LEFT JOIN #ConfigPoints CP ON CP.Comp_Id = US.Comp_Id AND CP.M_Codeid = US.M_Codeid
     WHERE US.rn = 1
     GROUP BY US.Comp_Id, US.MobileNo;
@@ -308,7 +399,7 @@ BEGIN
     SELECT
         U.Comp_Id,
         U.MobileNo,
-        SUM(CD.Amount) AS ClaimsAmount
+        SUM(ISNULL(NULLIF(CD.Points_Redeemed, 0), CD.Amount)) AS ClaimsAmount
     INTO #Claims
     FROM #Users U
     INNER JOIN ClaimDetails CD WITH (NOLOCK) ON CD.Comp_id = U.Comp_Id AND CD.Mobileno = U.MobileNo
@@ -319,7 +410,7 @@ BEGIN
 
     -- 8. Redemptions: UPI Payouts (LIFETIME)
     DROP TABLE IF EXISTS #UPITrans;
-    SELECT UT.Id, UT.Amount, U.Comp_Id, U.MobileNo
+    SELECT UT.Id, ISNULL(NULLIF(UT.Points_Val, 0), UT.Amount) AS Amount, U.Comp_Id, U.MobileNo
     INTO #UPITrans
     FROM #Users U
     INNER JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON UT.M_Consumerid = U.M_ConsumerId
@@ -329,7 +420,7 @@ BEGIN
       AND UT.Code2 IS NOT NULL AND UT.Code2 <> '' AND LEN(UT.Code2) > 6;
 
     INSERT INTO #UPITrans (Id, Amount, Comp_Id, MobileNo)
-    SELECT UT.Id, UT.Amount, U.Comp_Id, U.MobileNo
+    SELECT UT.Id, ISNULL(NULLIF(UT.Points_Val, 0), UT.Amount) AS Amount, U.Comp_Id, U.MobileNo
     FROM #Users U
     INNER JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON UT.Comp_Id = U.Comp_Id AND UT.MobileNo = U.MobileNo
     WHERE UT.Status = 'Success'
@@ -338,7 +429,7 @@ BEGIN
       AND NOT EXISTS (SELECT 1 FROM #UPITrans WHERE Id = UT.Id);
 
     INSERT INTO #UPITrans (Id, Amount, Comp_Id, MobileNo)
-    SELECT UT.Id, UT.Amount, U.Comp_Id, U.MobileNo
+    SELECT UT.Id, ISNULL(NULLIF(UT.Points_Val, 0), UT.Amount) AS Amount, U.Comp_Id, U.MobileNo
     FROM #Users U
     INNER JOIN tblUPITransactionDetails UT WITH (NOLOCK) ON UT.Comp_Id = U.Comp_Id AND UT.MobileNo = '+' + U.MobileNo
     WHERE UT.Status = 'Success'
