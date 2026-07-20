@@ -106,7 +106,11 @@ BEGIN
         PET.MobileNo,
         PET.CheckedDate,
         CAST(PET.Points AS DECIMAL(18,2)) AS Amount,
-        'Earned' AS Source
+        'Earned' AS Source,
+        CASE WHEN PET.Code1Code2 IS NOT NULL AND PET.Code1Code2 <> '' THEN PET.Code1Code2 ELSE 'NA' END AS Code1Code2,
+        CASE WHEN PET.Code1Code2 IS NOT NULL AND PET.Code1Code2 <> '' THEN ISNULL(NULLIF(PET.ProductName, ''), 'NA') ELSE 'NA' END AS ProductName,
+        CASE WHEN PET.Code1Code2 IS NOT NULL AND PET.Code1Code2 <> '' THEN ISNULL(NULLIF(PET.ModeOfVerification, ''), 'NA') ELSE 'NA' END AS ModeOfVerification,
+        CASE WHEN PET.Code1Code2 IS NOT NULL AND PET.Code1Code2 <> '' THEN ISNULL(NULLIF(PET.IsSuccess, ''), 'NA') ELSE 'NA' END AS IsSuccess
     INTO #Temp
     FROM ProEnq_Transactions PET WITH(NOLOCK)
     WHERE PET.TransferedAmount = 0
@@ -123,7 +127,11 @@ BEGIN
         CT.MobileNo,
         CT.Claim_date AS CheckedDate,
         CAST(CT.Amount AS DECIMAL(18,2)) AS Amount,
-        'Claim' AS Source
+        'Claim' AS Source,
+        'NA' AS Code1Code2,
+        'NA' AS ProductName,
+        'NA' AS ModeOfVerification,
+        'NA' AS IsSuccess
     FROM Claim_Transaction CT WITH(NOLOCK)
     WHERE CT.Claim_date >= @StartDate
       AND CT.Claim_date < @EndDate
@@ -137,13 +145,16 @@ BEGIN
         DROP TABLE #Summary;
 
     SELECT
-        T.Comp_ID AS CompanyId,
-        T.CompanyName,
         T.MobileNo AS MobileNumber,
         ISNULL(MC.ConsumerName, '') AS ConsumerName,
+        T.Code1Code2,
+        T.ProductName,
+        T.ModeOfVerification,
+        T.IsSuccess,
         T.Amount,
         T.Source,
-        T.CheckedDate AS [Date]
+        T.CheckedDate AS [Date],
+        T.CheckedDate
     INTO #Summary
     FROM #Temp T
     LEFT JOIN M_Consumer MC WITH(NOLOCK) ON RIGHT(MC.MobileNo, 10) = RIGHT(T.MobileNo, 10) AND MC.IsDelete = 0
@@ -154,7 +165,11 @@ BEGIN
         OR T.Comp_ID LIKE '%' + @Search + '%'
         OR T.MobileNo LIKE '%' + @Search + '%'
         OR MC.ConsumerName LIKE '%' + @Search + '%'
-        OR T.Source LIKE '%' + @Search + '%';
+        OR T.Source LIKE '%' + @Search + '%'
+        OR T.Code1Code2 LIKE '%' + @Search + '%'
+        OR T.ProductName LIKE '%' + @Search + '%'
+        OR T.ModeOfVerification LIKE '%' + @Search + '%'
+        OR T.IsSuccess LIKE '%' + @Search + '%';
 
     DECLARE @TotalRecords INT;
     SELECT @TotalRecords = COUNT(*) FROM #Summary;
