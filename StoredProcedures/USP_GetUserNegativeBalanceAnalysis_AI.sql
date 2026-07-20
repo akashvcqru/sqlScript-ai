@@ -125,8 +125,8 @@ BEGIN
         PET.CompanyName,
         PET.MobileNo,
         PET.CheckedDate,
-        PET.TransferedAmount AS Amount,
-        PET.Points,
+        
+        PET.Points as Amount,
         'Earned' AS Source
     INTO #Temp
     FROM ProEnq_Transactions PET WITH(NOLOCK)
@@ -142,7 +142,7 @@ BEGIN
         CT.MobileNo,
         CT.Claim_date AS CheckedDate,
         CT.Amount,
-        NULL AS Points,
+         
         'Claim' AS Source
     FROM Claim_Transaction CT WITH(NOLOCK)
     WHERE CT.Claim_date >= @StartDate
