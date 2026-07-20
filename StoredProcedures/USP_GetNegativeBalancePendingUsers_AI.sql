@@ -13,6 +13,7 @@ GO
 -- =========================================================================================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
 (
+    @Comp_ID         NVARCHAR(50),
     @DatePreset      NVARCHAR(20) = 'TODAY',   -- TODAY, TOMORROW, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, YEAR, ALL, CUSTOM
     @FromDate        NVARCHAR(30) = NULL,
     @ToDate          NVARCHAR(30) = NULL,
@@ -109,6 +110,7 @@ BEGIN
     WHERE PET.TransferedAmount = 0
       AND PET.CheckedDate >= @StartDate
       AND PET.CheckedDate < @EndDate
+      AND PET.Comp_ID = @Comp_ID
 
     UNION ALL
 
@@ -122,7 +124,8 @@ BEGIN
         'C' AS Source
     FROM Claim_Transaction CT WITH(NOLOCK)
     WHERE CT.Claim_date >= @StartDate
-      AND CT.Claim_date < @EndDate;
+      AND CT.Claim_date < @EndDate
+      AND CT.Comp_id = @Comp_ID;
 
     -----------------------------------------
     -- Summary (Negative Balance Only)

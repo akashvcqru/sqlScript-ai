@@ -1,6 +1,5 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetUserNegativeBalanceAnalysis_AI]    Script Date: 7/20/2026 4:55:45 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -8,59 +7,33 @@ GO
 
 -- =========================================================================================================
 -- Author:      Antigravity
--- Create Date: 2026-07-13
--- Description: Analyzes a user's lifetime ledger (earnings and redemptions) chronologically and links
---              claims and UPI payouts to identify which redemptions are "fraudulent" (post-transaction
---              running balance < 0) and by how many points. Restored PointsRedeemed column.
+-- Create Date: 2026-07-20
+-- Description: Detailed negative balance analysis transactions (Earned vs Claim) for a specific user and company.
 -- =========================================================================================================
-ALTER   PROCEDURE [dbo].[USP_GetUserNegativeBalanceAnalysis_AI]
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetUserNegativeBalanceAnalysis_AI]
 (
-    @MobileNo NVARCHAR(30),
-    @Comp_Id  NVARCHAR(50),
+    @MobileNo   NVARCHAR(30),
+    @Comp_Id    NVARCHAR(50),
     @DatePreset NVARCHAR(20) = 'ALL',
-    @FromDate        NVARCHAR(30) = NULL,
-    @ToDate          NVARCHAR(30) = NULL,
-    @Page     INT = 1,
-    @Limit    INT = 10,
-    @Search   NVARCHAR(100) = NULL,
-    @IsExport BIT = 0
+    @FromDate   NVARCHAR(30) = NULL,
+    @ToDate     NVARCHAR(30) = NULL,
+    @Page       INT = 1,
+    @Limit      INT = 10,
+    @Search     NVARCHAR(100) = NULL,
+    @IsExport   BIT = 0
 )
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF @Comp_Id = 'Comp-1669'
-    BEGIN
-        SELECT TOP 0
-            CAST(NULL AS NVARCHAR(150)) AS CompanyName,
-            CAST(NULL AS NVARCHAR(150)) AS ProductName,
-            CAST(NULL AS NVARCHAR(50)) AS MobileNo,
-            CAST(NULL AS NVARCHAR(150)) AS Code1Code2,
-            CAST(NULL AS NVARCHAR(50)) AS ModeOfVerification,
-            CAST(0.00 AS DECIMAL(18,2)) AS Amount,
-            CAST(0.00 AS DECIMAL(18,2)) AS ClaimRedeemAmount,
-            CAST(NULL AS NVARCHAR(50)) AS Status,
-            CAST(NULL AS DATETIME) AS CheckedDate,
-            CAST(0.00 AS DECIMAL(18,2)) AS RunningBalance,
-            CAST(0.00 AS DECIMAL(18,2)) AS ExceededPointsNegative,
-            CAST(0 AS INT) AS IsFraudEntry;
-        
-        SELECT 0 AS TotalRecords, @Page AS CurrentPage, @Limit AS [Limit], 0 AS TotalPages;
-        RETURN;
-    END
+    -----------------------------------------
+    -- Date Range
+    -----------------------------------------
+    DECLARE @StartDate DATETIME,
+            @EndDate   DATETIME,
+            @Preset    NVARCHAR(20);
 
-    -- Determine Date Range
-    DECLARE @StartDate DATETIME;
-    DECLARE @EndDate   DATETIME;
-
-    DECLARE @Preset NVARCHAR(20) = UPPER(ISNULL(@DatePreset, ''));
-    IF (@Preset = '' OR @Preset = 'NULL') 
-    BEGIN
-        IF (@FromDate IS NOT NULL AND @FromDate <> '' AND @ToDate IS NOT NULL AND @ToDate <> '')
-            SET @Preset = 'CUSTOM';
-        ELSE
-            SET @Preset = 'ALL';
-    END
+    SET @Preset = UPPER(ISNULL(@DatePreset, 'ALL'));
 
     IF (@Preset = 'TODAY')
     BEGIN
@@ -109,13 +82,20 @@ BEGIN
         SET @StartDate = CAST(@FromDate AS DATETIME);
         SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATE));
     END
-    ELSE -- ALL or default fallback
+    ELSE
     BEGIN
         SET @StartDate = CAST('2015-01-01 00:00:00.000' AS DATETIME);
         SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
     END
 
-	-- Temp Data
+    IF @Page IS NULL OR @Page < 1 SET @Page = 1;
+    IF @Limit IS NULL OR @Limit < 1 SET @Limit = 10;
+
+    DECLARE @CleanMobile NVARCHAR(30) = REPLACE(@MobileNo, '+', '');
+    DECLARE @Last10Mobile NVARCHAR(10) = RIGHT(@CleanMobile, 10);
+
+    -----------------------------------------
+    -- Temp Data
     -----------------------------------------
     IF OBJECT_ID('tempdb..#Temp') IS NOT NULL
         DROP TABLE #Temp;
@@ -125,14 +105,15 @@ BEGIN
         PET.CompanyName,
         PET.MobileNo,
         PET.CheckedDate,
-        
-        PET.Points as Amount,
+        CAST(PET.Points AS DECIMAL(18,2)) AS Amount,
         'Earned' AS Source
     INTO #Temp
     FROM ProEnq_Transactions PET WITH(NOLOCK)
     WHERE PET.TransferedAmount = 0
       AND PET.CheckedDate >= @StartDate
       AND PET.CheckedDate < @EndDate
+      AND (@Comp_Id IS NULL OR @Comp_Id = '' OR PET.Comp_ID = @Comp_Id)
+      AND (PET.MobileNo IN (@CleanMobile, '+' + @CleanMobile, '91' + @CleanMobile, '+91' + @CleanMobile) OR RIGHT(PET.MobileNo, 10) = @Last10Mobile)
 
     UNION ALL
 
@@ -141,15 +122,16 @@ BEGIN
         CT.Comp_Name AS CompanyName,
         CT.MobileNo,
         CT.Claim_date AS CheckedDate,
-        CT.Amount,
-         
+        CAST(CT.Amount AS DECIMAL(18,2)) AS Amount,
         'Claim' AS Source
     FROM Claim_Transaction CT WITH(NOLOCK)
     WHERE CT.Claim_date >= @StartDate
-      AND CT.Claim_date < @EndDate;
+      AND CT.Claim_date < @EndDate
+      AND (@Comp_Id IS NULL OR @Comp_Id = '' OR CT.Comp_id = @Comp_Id)
+      AND (CT.MobileNo IN (@CleanMobile, '+' + @CleanMobile, '91' + @CleanMobile, '+91' + @CleanMobile) OR RIGHT(CT.MobileNo, 10) = @Last10Mobile);
 
     -----------------------------------------
-    -- Summary (Negative Balance Only)
+    -- Summary
     -----------------------------------------
     IF OBJECT_ID('tempdb..#Summary') IS NOT NULL
         DROP TABLE #Summary;
@@ -158,7 +140,10 @@ BEGIN
         T.Comp_ID AS CompanyId,
         T.CompanyName,
         T.MobileNo AS MobileNumber,
-         Points,Source,CheckedDate as date
+        ISNULL(MC.ConsumerName, '') AS ConsumerName,
+        T.Amount,
+        T.Source,
+        T.CheckedDate AS [Date]
     INTO #Summary
     FROM #Temp T
     LEFT JOIN M_Consumer MC WITH(NOLOCK) ON RIGHT(MC.MobileNo, 10) = RIGHT(T.MobileNo, 10) AND MC.IsDelete = 0
@@ -169,14 +154,7 @@ BEGIN
         OR T.Comp_ID LIKE '%' + @Search + '%'
         OR T.MobileNo LIKE '%' + @Search + '%'
         OR MC.ConsumerName LIKE '%' + @Search + '%'
-    GROUP BY
-        T.Comp_ID,
-        T.CompanyName,
-        T.MobileNo,
-        MC.ConsumerName
-    HAVING
-        (SUM(CASE WHEN T.Source='P' THEN ISNULL(T.Points,0) ELSE 0 END)
-        - SUM(CASE WHEN T.Source='C' THEN ISNULL(T.Amount,0) ELSE 0 END)) < 0;
+        OR T.Source LIKE '%' + @Search + '%';
 
     DECLARE @TotalRecords INT;
     SELECT @TotalRecords = COUNT(*) FROM #Summary;
@@ -185,13 +163,13 @@ BEGIN
     BEGIN
         SELECT *
         FROM #Summary
-        ORDER BY CompanyName, MobileNumber;
+        ORDER BY [Date] DESC;
     END
     ELSE
     BEGIN
         SELECT *
         FROM #Summary
-        ORDER BY CompanyName, MobileNumber
+        ORDER BY [Date] DESC
         OFFSET (@Page - 1) * @Limit ROWS
         FETCH NEXT @Limit ROWS ONLY;
 
@@ -204,5 +182,6 @@ BEGIN
 
     DROP TABLE IF EXISTS #Temp;
     DROP TABLE IF EXISTS #Summary;
-  
+
 END
+GO
