@@ -407,15 +407,7 @@ BEGIN
                             SET @TransactionID = SCOPE_IDENTITY();
                             SET @ReturnTransactionID = @TransactionID;
 
-                            -- 2. Update tblCashWalletBalance (Ledger Transaction)
-                            DECLARE @OldWalletBal DECIMAL(18,2) = 0;
-                            SELECT TOP 1 @OldWalletBal = ISNULL(NewBal, 0) 
-                            FROM tblCashWalletBalance 
-                            WHERE M_Consumerid = @M_Consumerid AND Comp_Id = @ActualComp_ID 
-                            ORDER BY ReqDate DESC;
-                            
-                            INSERT INTO tblCashWalletBalance (Comp_Id, Service_ID, M_Consumerid, OldBal, NewBal, Amount, Cr_Dr_Type, PayrefId, ReqDate)
-                            VALUES (@ActualComp_ID, @CurrServiceID, @M_Consumerid, @OldWalletBal, @OldWalletBal + @EarningAmount, @EarningAmount, 'Credit', @TransactionID, GETDATE());
+                            -- Removed Credit entry to tblCashWalletBalance as per user request (only Debit entry is needed)
                         END
                     END
                     ELSE IF @CurrServiceID IN ('SRV1001', 'SRV1005')
