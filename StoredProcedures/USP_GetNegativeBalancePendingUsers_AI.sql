@@ -14,6 +14,7 @@ GO
 -- =========================================================================================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
 (
+    @Comp_ID         NVARCHAR(50),
     @DatePreset      NVARCHAR(20) = 'TODAY',   -- TODAY, TOMORROW, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, YEAR, ALL, CUSTOM
     @FromDate        NVARCHAR(30) = NULL,
     @ToDate          NVARCHAR(30) = NULL,
@@ -97,156 +98,92 @@ BEGIN
     IF @Limit IS NULL OR @Limit < 1 SET @Limit = 10;
 
     -- 2. Find Candidates from Negative Balance Transactions
-    DROP TABLE IF EXISTS #Candidates;
-    SELECT 
-        Mobileno AS MobileNo, 
-        Comp_id,
-        LatestActivityDate
-    INTO #Candidates
-    FROM (
-        SELECT MobileNo AS Mobileno, Comp_ID, MAX(CheckedDate) AS LatestActivityDate
-        FROM ProEnq_Transactions WITH (NOLOCK) 
-        WHERE TransferedAmount > Points
-          AND CheckedDate >= @StartDate AND CheckedDate < @EndDate
-        GROUP BY MobileNo, Comp_ID
-        UNION ALL
-        SELECT Mobileno, Comp_Id, MAX(Claim_date) AS LatestActivityDate
-        FROM Claim_Transaction WITH (NOLOCK) 
-        WHERE Amount > EarnedPoints
-          AND Claim_date >= @StartDate AND Claim_date < @EndDate
-        GROUP BY Mobileno, Comp_Id
-    ) x
-    WHERE ISNULL(Mobileno, '') <> '' AND Comp_id <> 'Comp-1669';
+      IF OBJECT_ID('tempdb..#Temp') IS NOT NULL
+        DROP TABLE #Temp;
 
-    -- Distinct Candidates
-    DROP TABLE IF EXISTS #UniqueCandidates;
-    SELECT 
-        REPLACE(MobileNo, '+', '') AS MobileNo, 
-        Comp_id,
-        MAX(LatestActivityDate) AS LatestActivityDate
-    INTO #UniqueCandidates
-    FROM #Candidates
-    GROUP BY REPLACE(MobileNo, '+', ''), Comp_id;
-
-    -- 3. Resolve Consumer IDs & Validate KYC Presence
-    DROP TABLE IF EXISTS #Users;
-    SELECT 
-        C.Comp_Id,
-        C.MobileNo,
-        C.LatestActivityDate,
-        MC.M_ConsumerId,
-        MC.ConsumerName,
-        CR.Comp_Name AS CompanyName
-    INTO #Users
-    FROM #UniqueCandidates C
-    INNER JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = C.MobileNo
-    INNER JOIN tbl_VendorViseKYCStatus K WITH (NOLOCK) ON K.M_ConsumerId = MC.M_ConsumerId AND K.Comp_Id = C.Comp_Id
-    LEFT JOIN Comp_Reg CR WITH (NOLOCK) ON C.Comp_Id = CR.Comp_ID AND CR.Status = 1
-    WHERE K.IsDelete = 0
-      AND (
-          @Search IS NULL OR @Search = ''
-          OR C.MobileNo LIKE '%' + @Search + '%'
-          OR MC.ConsumerName LIKE '%' + @Search + '%'
-          OR CR.Comp_Name LIKE '%' + @Search + '%'
-          OR C.Comp_Id LIKE '%' + @Search + '%'
-      )
-
-    UNION
-
-    SELECT 
-        C.Comp_Id,
-        C.MobileNo,
-        C.LatestActivityDate,
-        MC.M_ConsumerId,
-        MC.ConsumerName,
-        CR.Comp_Name AS CompanyName
-    FROM #UniqueCandidates C
-    INNER JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = '+' + C.MobileNo
-    INNER JOIN tbl_VendorViseKYCStatus K WITH (NOLOCK) ON K.M_ConsumerId = MC.M_ConsumerId AND K.Comp_Id = C.Comp_Id
-    LEFT JOIN Comp_Reg CR WITH (NOLOCK) ON C.Comp_Id = CR.Comp_ID AND CR.Status = 1
-    WHERE K.IsDelete = 0
-      AND (
-          @Search IS NULL OR @Search = ''
-          OR C.MobileNo LIKE '%' + @Search + '%'
-          OR MC.ConsumerName LIKE '%' + @Search + '%'
-          OR CR.Comp_Name LIKE '%' + @Search + '%'
-          OR C.Comp_Id LIKE '%' + @Search + '%'
-      );
-
-    CREATE CLUSTERED INDEX IX_Users_ConsumerId ON #Users(M_ConsumerId);
-    CREATE INDEX IX_Users_CompUser ON #Users(Comp_Id, MobileNo);
-
-    -- 4. Final output: Combine and filter to those with negative balances
-    DROP TABLE IF EXISTS #Summary;
     SELECT
-        U.CompanyName,
-        U.Comp_Id AS CompanyId,
-        U.MobileNo AS MobileNumber,
-        U.ConsumerName AS ConsumerName,
-        ISNULL(T.Earned, 0) AS TotalPointsEarned,
-        ISNULL(T.Redeemed, 0) AS TotalPointsRedeemed,
-        (ISNULL(T.Earned, 0) - ISNULL(T.Redeemed, 0)) AS PendingPoints,
-        U.LatestActivityDate
+        PET.Comp_ID,
+        PET.CompanyName,
+        PET.MobileNo,
+        PET.CheckedDate,
+        PET.TransferedAmount AS Amount,
+        PET.Points,
+        'P' AS Source
+    INTO #Temp
+    FROM ProEnq_Transactions PET WITH(NOLOCK)
+    WHERE PET.TransferedAmount = 0
+      AND PET.CheckedDate>=@StartDate
+      AND PET.CheckedDate<@EndDate
+
+    UNION ALL
+
+    SELECT
+        CT.Comp_id,
+        CT.Comp_Name,
+        CT.MobileNo,
+        CT.Claim_date,
+        CT.Amount,
+        NULL,
+        'C'
+    FROM Claim_Transaction CT WITH(NOLOCK)
+    WHERE CT.Claim_date>=@StartDate
+      AND CT.Claim_date<@EndDate;
+
+
+    -----------------------------------------
+    -- Summary
+    -----------------------------------------
+
+    SELECT
+        Comp_ID,
+        CompanyName,
+        COUNT(CheckedDate) AS TotalUsers,
+        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END) TotalPoints,
+        SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) TotalClaimAmount,
+        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END)
+        -
+        SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) Balance
     INTO #Summary
-    FROM #Users U
-    INNER JOIN (
-        SELECT Comp_Id, RIGHT(MobileNo, 10) AS CleanMobile, SUM(Earned) AS Earned, SUM(Redeemed) AS Redeemed
-        FROM (
-            SELECT Comp_ID, MobileNo, CAST(Points AS DECIMAL(18,2)) AS Earned, CAST(TransferedAmount AS DECIMAL(18,2)) AS Redeemed
-            FROM ProEnq_Transactions WITH (NOLOCK)
-            WHERE TransferedAmount > Points
-              AND CheckedDate >= @StartDate AND CheckedDate < @EndDate
-            UNION ALL
-            SELECT Comp_ID, Mobileno AS MobileNo, CAST(EarnedPoints AS DECIMAL(18,2)) AS Earned, CAST(Amount AS DECIMAL(18,2)) AS Redeemed
-            FROM Claim_Transaction WITH (NOLOCK)
-            WHERE Amount > EarnedPoints
-              AND Claim_date >= @StartDate AND Claim_date < @EndDate
-        ) x GROUP BY Comp_Id, RIGHT(MobileNo, 10)
-    ) T ON T.Comp_Id = U.Comp_Id AND T.CleanMobile = RIGHT(U.MobileNo, 10);
+    FROM #Temp
+    WHERE
+        @Search IS NULL
+        OR @Search=''
+        OR CompanyName LIKE '%'+@Search+'%'
+        OR Comp_ID LIKE '%'+@Search+'%'
+    GROUP BY
+        Comp_ID,
+        CompanyName, MobileNo
+	HAVING
+        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END)
+        - SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) < 0;;
 
-    -- Return Paginated Output OR Export Output
     DECLARE @TotalRecords INT;
-    SELECT @TotalRecords = COUNT(*) FROM #Summary;
 
-    IF @IsExport = 1
+    SELECT @TotalRecords=COUNT(*) FROM #Summary;
+
+    IF @IsExport=1
     BEGIN
-        SELECT
-            CompanyName,
-            CompanyId,
-            MobileNumber,
-            ConsumerName,
-            TotalPointsEarned,
-            TotalPointsRedeemed,
-            PendingPoints,
-            LatestActivityDate
+        SELECT *
         FROM #Summary
-        ORDER BY LatestActivityDate DESC;
+        ORDER BY CompanyName;
     END
     ELSE
     BEGIN
-        SELECT
-            CompanyName,
-            CompanyId,
-            MobileNumber,
-            ConsumerName,
-            TotalPointsEarned,
-            TotalPointsRedeemed,
-            PendingPoints,
-            LatestActivityDate
+        SELECT *
         FROM #Summary
-        ORDER BY LatestActivityDate DESC
-        OFFSET (@Page - 1) * @Limit ROWS
+        ORDER BY CompanyName
+        OFFSET (@Page-1)*@Limit ROWS
         FETCH NEXT @Limit ROWS ONLY;
 
-        -- Meta Pagination Results
         SELECT
-            @TotalRecords AS TotalRecords,
-            @Page AS CurrentPage,
-            @Limit AS [Limit],
-            CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
+            @TotalRecords TotalRecords,
+            @Page CurrentPage,
+            @Limit [Limit],
+            CEILING(@TotalRecords*1.0/@Limit) TotalPages;
     END
 
-    -- Cleanup temp tables
-    DROP TABLE IF EXISTS #Candidates, #UniqueCandidates, #Users, #Summary;
+    DROP TABLE IF EXISTS #Temp;
+    DROP TABLE IF EXISTS #Summary;
+
 END
 GO
