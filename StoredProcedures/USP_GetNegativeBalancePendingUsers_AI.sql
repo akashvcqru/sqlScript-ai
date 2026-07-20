@@ -8,13 +8,11 @@ GO
 -- =========================================================================================================
 -- Author:      Antigravity
 -- Create Date: 2026-07-13
--- Description: Identifies negative balance users that had transactions (Claim / UPI) in the past @Days window
---              with optimized Pro_Enq scanning, ordering by Claim_date and ReqDate, pagination,
---              and validation that the user is present in tbl_VendorViseKYCStatus.
+-- Description: Identifies negative balance users (-ve balance only) in date range, returning ConsumerName,
+--              MobileNumber, Company details, negative Balance, and LatestActivityDate.
 -- =========================================================================================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
 (
-    @Comp_ID         NVARCHAR(50),
     @DatePreset      NVARCHAR(20) = 'TODAY',   -- TODAY, TOMORROW, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, YEAR, ALL, CUSTOM
     @FromDate        NVARCHAR(30) = NULL,
     @ToDate          NVARCHAR(30) = NULL,
@@ -27,18 +25,14 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- 1. Determine Date Range for Candidates
-    DECLARE @StartDate DATETIME;
-    DECLARE @EndDate   DATETIME;
+    -----------------------------------------
+    -- Date Range
+    -----------------------------------------
+    DECLARE @StartDate DATETIME,
+            @EndDate   DATETIME,
+            @Preset    NVARCHAR(20);
 
-    DECLARE @Preset NVARCHAR(20) = UPPER(ISNULL(@DatePreset, ''));
-    IF (@Preset = '' OR @Preset = 'NULL') 
-    BEGIN
-        IF (@FromDate IS NOT NULL AND @FromDate <> '' AND @ToDate IS NOT NULL AND @ToDate <> '')
-            SET @Preset = 'CUSTOM';
-        ELSE
-            SET @Preset = 'ALL';
-    END
+    SET @Preset = UPPER(ISNULL(@DatePreset, 'ALL'));
 
     IF (@Preset = 'TODAY')
     BEGIN
@@ -87,18 +81,19 @@ BEGIN
         SET @StartDate = CAST(@FromDate AS DATETIME);
         SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATE));
     END
-    ELSE -- ALL or default fallback
+    ELSE
     BEGIN
         SET @StartDate = CAST('2015-01-01 00:00:00.000' AS DATETIME);
         SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
     END
 
-    -- Ensure page/limit values are valid
     IF @Page IS NULL OR @Page < 1 SET @Page = 1;
     IF @Limit IS NULL OR @Limit < 1 SET @Limit = 10;
 
-    -- 2. Find Candidates from Negative Balance Transactions
-      IF OBJECT_ID('tempdb..#Temp') IS NOT NULL
+    -----------------------------------------
+    -- Temp Data
+    -----------------------------------------
+    IF OBJECT_ID('tempdb..#Temp') IS NOT NULL
         DROP TABLE #Temp;
 
     SELECT
@@ -112,74 +107,82 @@ BEGIN
     INTO #Temp
     FROM ProEnq_Transactions PET WITH(NOLOCK)
     WHERE PET.TransferedAmount = 0
-      AND PET.CheckedDate>=@StartDate
-      AND PET.CheckedDate<@EndDate
+      AND PET.CheckedDate >= @StartDate
+      AND PET.CheckedDate < @EndDate
 
     UNION ALL
 
     SELECT
         CT.Comp_id,
-        CT.Comp_Name,
+        CT.Comp_Name AS CompanyName,
         CT.MobileNo,
-        CT.Claim_date,
+        CT.Claim_date AS CheckedDate,
         CT.Amount,
-        NULL,
-        'C'
+        NULL AS Points,
+        'C' AS Source
     FROM Claim_Transaction CT WITH(NOLOCK)
-    WHERE CT.Claim_date>=@StartDate
-      AND CT.Claim_date<@EndDate;
-
+    WHERE CT.Claim_date >= @StartDate
+      AND CT.Claim_date < @EndDate;
 
     -----------------------------------------
-    -- Summary
+    -- Summary (Negative Balance Only)
     -----------------------------------------
+    IF OBJECT_ID('tempdb..#Summary') IS NOT NULL
+        DROP TABLE #Summary;
 
     SELECT
-        Comp_ID,
-        CompanyName,
-        COUNT(CheckedDate) AS TotalUsers,
-        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END) TotalPoints,
-        SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) TotalClaimAmount,
-        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END)
+        T.Comp_ID AS CompanyId,
+        T.CompanyName,
+        T.MobileNo AS MobileNumber,
+        ISNULL(MC.ConsumerName, '') AS ConsumerName,
+        SUM(CASE WHEN T.Source='P' THEN ISNULL(T.Points,0) ELSE 0 END)
         -
-        SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) Balance
+        SUM(CASE WHEN T.Source='C' THEN ISNULL(T.Amount,0) ELSE 0 END) AS Balance,
+        SUM(CASE WHEN T.Source='P' THEN ISNULL(T.Points,0) ELSE 0 END)
+        -
+        SUM(CASE WHEN T.Source='C' THEN ISNULL(T.Amount,0) ELSE 0 END) AS PendingPoints,
+        MAX(T.CheckedDate) AS LatestActivityDate
     INTO #Summary
-    FROM #Temp
+    FROM #Temp T
+    LEFT JOIN M_Consumer MC WITH(NOLOCK) ON RIGHT(MC.MobileNo, 10) = RIGHT(T.MobileNo, 10) AND MC.IsDelete = 0
     WHERE
         @Search IS NULL
-        OR @Search=''
-        OR CompanyName LIKE '%'+@Search+'%'
-        OR Comp_ID LIKE '%'+@Search+'%'
+        OR @Search = ''
+        OR T.CompanyName LIKE '%' + @Search + '%'
+        OR T.Comp_ID LIKE '%' + @Search + '%'
+        OR T.MobileNo LIKE '%' + @Search + '%'
+        OR MC.ConsumerName LIKE '%' + @Search + '%'
     GROUP BY
-        Comp_ID,
-        CompanyName, MobileNo
-	HAVING
-        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END)
-        - SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) < 0;;
+        T.Comp_ID,
+        T.CompanyName,
+        T.MobileNo,
+        MC.ConsumerName
+    HAVING
+        (SUM(CASE WHEN T.Source='P' THEN ISNULL(T.Points,0) ELSE 0 END)
+        - SUM(CASE WHEN T.Source='C' THEN ISNULL(T.Amount,0) ELSE 0 END)) < 0;
 
     DECLARE @TotalRecords INT;
+    SELECT @TotalRecords = COUNT(*) FROM #Summary;
 
-    SELECT @TotalRecords=COUNT(*) FROM #Summary;
-
-    IF @IsExport=1
+    IF @IsExport = 1
     BEGIN
         SELECT *
         FROM #Summary
-        ORDER BY CompanyName;
+        ORDER BY CompanyName, MobileNumber;
     END
     ELSE
     BEGIN
         SELECT *
         FROM #Summary
-        ORDER BY CompanyName
-        OFFSET (@Page-1)*@Limit ROWS
+        ORDER BY CompanyName, MobileNumber
+        OFFSET (@Page - 1) * @Limit ROWS
         FETCH NEXT @Limit ROWS ONLY;
 
         SELECT
             @TotalRecords TotalRecords,
             @Page CurrentPage,
             @Limit [Limit],
-            CEILING(@TotalRecords*1.0/@Limit) TotalPages;
+            CEILING(@TotalRecords * 1.0 / @Limit) TotalPages;
     END
 
     DROP TABLE IF EXISTS #Temp;
