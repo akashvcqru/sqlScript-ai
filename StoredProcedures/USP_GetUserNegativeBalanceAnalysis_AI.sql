@@ -353,14 +353,7 @@ BEGIN
     LEFT JOIN #UPITrans ut ON ut.Code1 = M.Code1 AND ut.Code2 = M.Code2
     WHERE US.rn = 1 AND @Comp_Id <> 'Comp-1152';
 
-    -- Override: Load Comp-1152 scans from ConsumerPointsCashDetails (LIFETIME)
-    INSERT INTO #Ledger (LedgerDate, SortOrder, TransactionType, RefId, Amount, Status)
     SELECT 
-        CP.Enq_Date AS LedgerDate,
-        1 AS SortOrder,
-        'SCAN' AS TransactionType,
-        NULL AS RefId,
-        TRY_CAST(CP.points AS DECIMAL(18,2)) AS Amount,
         CompanyName,
         '' AS ConsumerName,
         ProductName,
