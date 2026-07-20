@@ -134,16 +134,14 @@ BEGIN
         DROP TABLE #Summary;
 
     SELECT
-        T.Comp_ID AS CompanyId,
         T.CompanyName,
         T.MobileNo AS MobileNumber,
         ISNULL(MC.ConsumerName, '') AS ConsumerName,
+        SUM(CASE WHEN T.Source='P' THEN ISNULL(T.Points,0) ELSE 0 END) AS EarnedPoints,
+        SUM(CASE WHEN T.Source='C' THEN ISNULL(T.Amount,0) ELSE 0 END) AS RedeemPoints,
         SUM(CASE WHEN T.Source='P' THEN ISNULL(T.Points,0) ELSE 0 END)
         -
         SUM(CASE WHEN T.Source='C' THEN ISNULL(T.Amount,0) ELSE 0 END) AS Balance,
-        SUM(CASE WHEN T.Source='P' THEN ISNULL(T.Points,0) ELSE 0 END)
-        -
-        SUM(CASE WHEN T.Source='C' THEN ISNULL(T.Amount,0) ELSE 0 END) AS PendingPoints,
         MAX(T.CheckedDate) AS LatestActivityDate
     INTO #Summary
     FROM #Temp T
