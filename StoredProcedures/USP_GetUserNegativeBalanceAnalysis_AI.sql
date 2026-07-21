@@ -1,16 +1,3 @@
-USE [Vcqru]
-GO
-/****** Object:  StoredProcedure [dbo].[USP_GetUserNegativeBalanceAnalysis_AI]    Script Date: 7/21/2026 11:32:06 PM ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-
--- =========================================================================================================
--- Author:      Antigravity
--- Create Date: 2026-07-20
--- Description: Detailed negative balance analysis transactions (Earned vs Claim) for a specific user and company.
--- =========================================================================================================
 ALTER   PROCEDURE [dbo].[USP_GetUserNegativeBalanceAnalysis_AI]
 (
     @MobileNo   NVARCHAR(30),
@@ -99,7 +86,8 @@ DECLARE @CRate DECIMAL(18,2);
  --add earnedpoints,Assinged points in 2nd table
  --job , for 7 comp sumary date()1 drill down , 2nd droll down , 3 drill down report , points 0 on some codes
 select @CRate = CashValue/PointValue from [dbo].[PointConversionRate] where Comp_ID = @Comp_ID and IsActive = 1
-
+--select  @CRate
+ --earned points ()
  
 --DECLARE @Comp_ID  VARCHAR(20) = 'Comp-1727';
 --DECLARE @MobileNo VARCHAR(20) = '919785716405';
@@ -316,25 +304,28 @@ select * into #temp from TransactionData
 SELECT
     Comp_Name,
     Comp_ID,
-     
-    count(MobileNo),
-     
-    sum(AssignPoint) as TotalAssignPoint,
-    sum(TransactionValue) AS TotakWonPoints,
+    Pro_Name,
+    MobileNo,
+    UniqueCode,
+    Dial_Mode,
+    TransactionDate,
+    IsSuccess,
+    TransactionType,
+    ApprovalStatus,
+    AffectsBalance, AssignPoint,
+    TransactionValue AS WonPoints,
 
-    --CASE
-    --    WHEN TransactionType = 'Points Earned'
-    --        THEN '+' + CONVERT(VARCHAR(30), TransactionValue)
-    --    WHEN TransactionType IN ('Claim Raised','Amount Paid')
-    --        THEN CONVERT(VARCHAR(30), TransactionValue)
-    --    ELSE NULL
-    --END AS DisplayValue,
+    CASE
+        WHEN TransactionType = 'Points Earned'
+            THEN '+' + CONVERT(VARCHAR(30), TransactionValue)
+        WHEN TransactionType IN ('Claim Raised','Amount Paid')
+            THEN CONVERT(VARCHAR(30), TransactionValue)
+        ELSE NULL
+    END AS DisplayValue,
 
-    sum(AmountTransaction) as totalAmountTransaction,
-    sum(tdsTransaction)  as TotaltdsTransaction
-FROM FinalData group by Comp_Name,
-    Comp_ID
---ORDER BY TransactionDate DESC, SortOrder;
-   
+    AmountTransaction,
+    tdsTransaction
+FROM FinalData
+ORDER BY TransactionDate DESC, SortOrder;
 
 END
