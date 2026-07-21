@@ -13,43 +13,22 @@ BEGIN
     
     SELECT * INTO #tblUPITransactionDetailse FROM tblUPITransactionDetails WHERE status = 'Success';
 
-    -- CTE to find the matching subscription and trans details using standard JOINs and ROW_NUMBER
+    -- CTE to find active subscriptions and trans details without scanning M_Code
     ;WITH RankedSubscriptions AS (
         SELECT 
-            M.Row_ID AS CodeRowID,
+            SS.Pro_ID,
             SS.Comp_ID,
             SST.IsCash,
             SST.Points,
-            ROW_NUMBER() OVER (
-                PARTITION BY M.Row_ID 
-                ORDER BY 
-                    CASE 
-                        WHEN (SS.start_order IS NOT NULL OR M.Pro_ID IN ('AJ45', 'AJ46', 'AJ47', 'AJ48', 'AJ49', 'AJ50'))
-                             AND Concat(Format(M.series_order, '000#'), Format(M.Series_Serial, '000#')) 
-                                 Between Concat(Format(SS.start_order, '000#'), Format(SS.start_series, '000#')) 
-                                     And Concat(Format(SS.end_order, '000#'), Format(SS.end_series, '000#'))
-                        THEN 1 
-                        ELSE 2 
-                    END ASC,
-                    SST.SST_Id DESC
-            ) AS RowNum
-        FROM M_Code M WITH (NOLOCK)
-        INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = M.Pro_ID
+            SS.start_order,
+            SS.start_series,
+            SS.end_order,
+            SS.end_series,
+            SST.SST_Id
+        FROM M_ServiceSubscription SS WITH (NOLOCK)
         INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
-        WHERE SS.IsActive = 1 AND SS.IsDelete = 0
-          AND SST.IsActive = 1 AND SST.IsDelete = 0
-          AND (
-              (
-                  (SS.start_order IS NOT NULL OR M.Pro_ID IN ('AJ45', 'AJ46', 'AJ47', 'AJ48', 'AJ49', 'AJ50'))
-                  AND Concat(Format(M.series_order, '000#'), Format(M.Series_Serial, '000#')) 
-                      Between Concat(Format(SS.start_order, '000#'), Format(SS.start_series, '000#')) 
-                          And Concat(Format(SS.end_order, '000#'), Format(SS.end_series, '000#'))
-              )
-              OR 
-              (
-                  SS.start_order IS NULL
-              )
-          )
+        --WHERE SS.IsActive = 1 AND SS.IsDelete = 0
+          --AND SST.IsActive = 1 AND SST.IsDelete = 0
     )
     INSERT INTO dbo.ProEnq_Transactions
     (
@@ -92,9 +71,36 @@ BEGIN
     INNER JOIN Comp_Reg CR WITH (NOLOCK)
         ON CR.Comp_ID = PR.Comp_Id
        AND CR.Status = 1
-    INNER JOIN RankedSubscriptions RS
-        ON RS.CodeRowID = M.Row_ID
-       AND RS.RowNum = 1
+    OUTER APPLY (
+        SELECT TOP 1
+            RS.IsCash,
+            RS.Points,
+            RS.Comp_ID
+        FROM RankedSubscriptions RS
+        WHERE RS.Pro_ID = M.Pro_ID
+          AND (
+              (
+                  (RS.start_order IS NOT NULL OR M.Pro_ID IN ('AJ45', 'AJ46', 'AJ47', 'AJ48', 'AJ49', 'AJ50'))
+                  AND Concat(Format(M.series_order, '000#'), Format(M.Series_Serial, '000#')) 
+                      Between Concat(Format(RS.start_order, '000#'), Format(RS.start_series, '000#')) 
+                          And Concat(Format(RS.end_order, '000#'), Format(RS.end_series, '000#'))
+              )
+              OR 
+              (
+                  RS.start_order IS NULL
+              )
+          )
+        ORDER BY 
+            CASE 
+                WHEN (RS.start_order IS NOT NULL OR M.Pro_ID IN ('AJ45', 'AJ46', 'AJ47', 'AJ48', 'AJ49', 'AJ50'))
+                     AND Concat(Format(M.series_order, '000#'), Format(M.Series_Serial, '000#')) 
+                         Between Concat(Format(RS.start_order, '000#'), Format(RS.start_series, '000#')) 
+                             And Concat(Format(RS.end_order, '000#'), Format(RS.end_series, '000#'))
+                THEN 1 
+                ELSE 2 
+            END ASC,
+            RS.SST_Id DESC
+    ) RS
     LEFT JOIN #tblUPITransactionDetailse UU WITH (NOLOCK)
         ON PE.Received_Code1 = UU.Code1
        AND PE.Received_Code2 = UU.Code2
