@@ -1,10 +1,4 @@
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetPaymentClaimReport]    Script Date: 3/2/2026 12:27:18 PM ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-
-ALTER PROCEDURE [dbo].[SP_BL_GetPaymentClaimReport]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetPaymentClaimReport]
 (
     @Comp_Id        VARCHAR(20),
     @datePreset     NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
@@ -15,8 +9,8 @@ ALTER PROCEDURE [dbo].[SP_BL_GetPaymentClaimReport]
 
     @Page           INT = NULL,
     @Limit          INT = NULL,
-    @IsExport BIT =NULL,
-    @search nvarchar(30) = NULL
+    @IsExport       BIT = NULL,
+    @search         NVARCHAR(30) = NULL
 )
 AS
 BEGIN
@@ -89,7 +83,7 @@ BEGIN
         BEGIN
             SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
-                               DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
+                                DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
         END
 
         ELSE IF (@datePreset = 'MONTH')
@@ -102,14 +96,14 @@ BEGIN
         BEGIN
             SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
-                               DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0));
+                                DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0));
         END
 
         ELSE IF (@datePreset = 'QUARTER')
         BEGIN
             SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
-                               DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @EndDate), 0));
+                                DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @EndDate), 0));
         END
 
         ELSE IF (@datePreset = 'YEAR')
@@ -130,20 +124,6 @@ BEGIN
             SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
     END
-
-    DECLARE @ClaimType VARCHAR(30) = 'GIFT';
-
-    IF EXISTS (
-        SELECT 1
-        FROM tbl_UPILimitDetails
-        WHERE Comp_ID = @Comp_Id
-          AND Service_ID = 'SRV1029'
-    )
-    BEGIN
-        SET @ClaimType = 'UPI';
-    END
-
-
 
     ---------------------------------------------------------
     -- BASE WHERE (REUSED)
@@ -180,11 +160,12 @@ BEGIN
     ---------------------------------------------------------
     DECLARE @SQLData NVARCHAR(MAX) = N'
     SELECT
+        CD.Comp_id AS Comp_ID,
+        CR.Comp_Name,
         CD.Row_id AS Claim_id,
         CD.Claim_date,
         CD.Mobileno,
         CD.Amount AS Points,
-        -- PointsValue = (Amount / PointValue) * CashValue - tdsAmount
         CAST(
             (ISNULL(CD.Amount, 0) / @ConvPointValue * @ConvCashValue)
             - ISNULL(CD.tdsAmount, 0)
@@ -209,10 +190,10 @@ BEGIN
         CD.vendor_comment,
         CD.action_date
     FROM ClaimDetails CD
+    LEFT JOIN Comp_Reg CR
+        ON CR.Comp_ID = CD.Comp_id
     LEFT JOIN M_Consumer MC 
         ON MC.MobileNo = CD.Mobileno
-
-    -- ONLY LATEST BANK ACCOUNT
     OUTER APPLY
     (
         SELECT TOP 1 *
@@ -246,7 +227,6 @@ BEGIN
     ---------------------------------------------------------
     IF @IsExport = 1
     BEGIN
-        -- EXPORT: DATA ONLY
         EXEC sp_executesql
             @SQLData,
             N'
@@ -270,7 +250,6 @@ BEGIN
     END
     ELSE
     BEGIN
-        -- PAGINATION: DATA + COUNT
         DECLARE @FinalSQL NVARCHAR(MAX) = @SQLData + N'; ' + @SQLCount;
 
         EXEC sp_executesql
