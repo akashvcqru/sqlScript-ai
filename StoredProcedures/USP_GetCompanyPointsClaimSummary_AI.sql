@@ -192,6 +192,9 @@ PayoutSummary AS
 	  code1 > 0 and BankStatus = 'Success' group by Comp_ID
 )
 
+ IF OBJECT_ID('tempdb..#Summary') IS NOT NULL
+        DROP TABLE #Summary;
+
  SELECT
  p.Comp_ID,d.comp_name,
     ISNULL(P.TotalPoints, 0) AS TotalPoints, AssingedPoints,
@@ -208,4 +211,35 @@ FROM PointsSummary P
 inner JOIN ClaimSummary C on p.Comp_ID = c.Comp_ID
 inner JOIN PayoutSummary U on c.Comp_ID = u.Comp_ID
 inner join comp_reg d on  p.Comp_ID =  d.Comp_ID
- END
+    WHERE
+        @Search IS NULL
+        OR @Search = ''
+        OR p.Comp_ID LIKE '%' + @Search + '%'
+        OR d.comp_name LIKE '%' + @Search + '%';
+
+    DECLARE @TotalRecords INT;
+    SELECT @TotalRecords = COUNT(*) FROM #Summary;
+
+    IF @IsExport = 1
+    BEGIN
+        SELECT *
+        FROM #Summary
+        ORDER BY Comp_ID;
+    END
+    ELSE
+    BEGIN
+        SELECT *
+        FROM #Summary
+        ORDER BY Comp_ID
+        OFFSET (@Page - 1) * @Limit ROWS
+        FETCH NEXT @Limit ROWS ONLY;
+
+        SELECT
+            @TotalRecords AS TotalRecords,
+            @Page AS CurrentPage,
+            @Limit AS [Limit],
+            CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
+    END
+
+    DROP TABLE IF EXISTS #Summary;
+END
