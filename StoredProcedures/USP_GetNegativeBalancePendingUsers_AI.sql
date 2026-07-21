@@ -176,28 +176,54 @@ PayoutSummary AS
 
   
 
- SELECT
- p.MobileNo,d.ConsumerName,
-    ISNULL(P.TotalPoints, 0) AS TotalPoints, AssingedPoints,
- 
-    ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0) AS TotalClaimAmount,
- 
-   -- ISNULL(U.TotalPaidPoints, 0) AS TotalPaidPoints,
- 
-    ISNULL(P.TotalPoints, 0)
-        - (ISNULL(C.TotalClaimAmount, 0)+ISNULL(U.TotalPaidPoints, 0)) AS AvailableBalance,
-	(ISNULL(TotalClaimAmountPointsValue,0) + ISNULL(TotalPaidAmount,0)) as PaidAmount, (ISNULL(TotalClaimAmountPointsValuetds,0) + ISNULL(TotalPaidtds,0) ) as TDS
- 
-FROM PointsSummary P
-inner JOIN ClaimSummary C on p.MobileNo = c.MobileNo
-inner JOIN PayoutSummary U on c.MobileNo = u.MobileNo
-inner join M_Consumer d on  p.MobileNo =  d.MobileNo
-    --WHERE
-    --    @Search IS NULL
-    --    OR @Search = ''
-    --    OR p.MobileNo LIKE '%' + @Search + '%'
-    --    OR d.ConsumerName LIKE '%' + @Search + '%';
+    IF OBJECT_ID('tempdb..#Summary') IS NOT NULL
+        DROP TABLE #Summary;
 
-   
+    SELECT
+        p.MobileNo,
+        d.ConsumerName,
+        ISNULL(P.TotalPoints, 0) AS TotalPoints,
+        ISNULL(P.AssingedPoints, 0) AS AssingedPoints,
+        ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0) AS TotalClaimAmount,
+        ISNULL(P.TotalPoints, 0) - (ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0)) AS AvailableBalance,
+        (ISNULL(TotalClaimAmountPointsValue, 0) + ISNULL(TotalPaidAmount, 0)) AS PaidAmount,
+        (ISNULL(TotalClaimAmountPointsValuetds, 0) + ISNULL(TotalPaidtds, 0)) AS TDS
+    INTO #Summary
+    FROM PointsSummary P
+    INNER JOIN ClaimSummary C ON p.MobileNo = c.MobileNo
+    INNER JOIN PayoutSummary U ON c.MobileNo = u.MobileNo
+    INNER JOIN M_Consumer d ON p.MobileNo = d.MobileNo
+    WHERE
+        @Search IS NULL
+        OR @Search = ''
+        OR p.MobileNo LIKE '%' + @Search + '%'
+        OR d.ConsumerName LIKE '%' + @Search + '%';
+
+    DECLARE @TotalRecords INT;
+    SELECT @TotalRecords = COUNT(*) FROM #Summary;
+
+    IF @IsExport = 1
+    BEGIN
+        SELECT *
+        FROM #Summary
+        ORDER BY MobileNo;
+    END
+    ELSE
+    BEGIN
+        SELECT *
+        FROM #Summary
+        ORDER BY MobileNo
+        OFFSET (@Page - 1) * @Limit ROWS
+        FETCH NEXT @Limit ROWS ONLY;
+
+        SELECT
+            @TotalRecords AS TotalRecords,
+            @Page AS CurrentPage,
+            @Limit AS [Limit],
+            CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
+    END
+
+    DROP TABLE IF EXISTS #Summary;
 
 END
+
