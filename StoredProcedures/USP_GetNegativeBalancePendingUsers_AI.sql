@@ -91,6 +91,9 @@ BEGIN
 --select  @CRate
  --earned points ()
  
+    IF OBJECT_ID('tempdb..#Summary') IS NOT NULL
+        DROP TABLE #Summary;
+
 /*============================================================
   Remove duplicate claim records first
 ============================================================*/
@@ -110,7 +113,7 @@ BEGIN
             ORDER BY
                 c.Claim_Date DESC
         ) AS DuplicateRank
- 
+
     FROM dbo.ClaimDetails c
     WHERE --c.MobileNo = @MobileNo
        c.Comp_ID = @Comp_ID and
@@ -174,11 +177,6 @@ PayoutSummary AS
 	  code1 > 0 and BankStatus = 'Success' group by MobileNo
 )
 
-  
-
-    IF OBJECT_ID('tempdb..#Summary') IS NOT NULL
-        DROP TABLE #Summary;
-
     SELECT
         p.MobileNo,
         d.ConsumerName,
@@ -194,10 +192,13 @@ PayoutSummary AS
     INNER JOIN PayoutSummary U ON c.MobileNo = u.MobileNo
     INNER JOIN M_Consumer d ON p.MobileNo = d.MobileNo
     WHERE
-        @Search IS NULL
-        OR @Search = ''
-        OR p.MobileNo LIKE '%' + @Search + '%'
-        OR d.ConsumerName LIKE '%' + @Search + '%';
+        (ISNULL(P.TotalPoints, 0) - (ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0))) < 0
+        AND (
+            @Search IS NULL
+            OR @Search = ''
+            OR p.MobileNo LIKE '%' + @Search + '%'
+            OR d.ConsumerName LIKE '%' + @Search + '%'
+        );
 
     DECLARE @TotalRecords INT;
     SELECT @TotalRecords = COUNT(*) FROM #Summary;
