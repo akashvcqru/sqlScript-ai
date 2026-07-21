@@ -45,7 +45,7 @@ BEGIN
         SET @StartDate = CAST(@FromDate AS DATETIME);
         SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
     END
-    ELSE
+    ELSE    
     BEGIN
         SET @datePreset = UPPER(@datePreset);
 
