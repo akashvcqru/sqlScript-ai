@@ -1,17 +1,4 @@
-USE [Vcqru]
-GO
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-
--- =========================================================================================================
--- Author:      Antigravity
--- Create Date: 2026-07-20
--- Description: Retrieves summary of company points and claim amounts, filtering by date preset, custom date range,
---              search term, and handling pagination or full export data.
--- =========================================================================================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetCompanyPointsClaimSummary_AI]
+ALTER   PROCEDURE [dbo].[USP_GetCompanyPointsClaimSummary_AI]
 (
     @DatePreset NVARCHAR(50) = 'ALL',
     @FromDate NVARCHAR(30) = NULL,
@@ -109,100 +96,116 @@ BEGIN
     IF @Page IS NULL OR @Page < 1 SET @Page = 1;
     IF @Limit IS NULL OR @Limit < 1 SET @Limit = 10;
 
-    -----------------------------------------
-    -- Temp Data
-    -----------------------------------------
 
-    IF OBJECT_ID('tempdb..#Temp') IS NOT NULL
-        DROP TABLE #Temp;
 
+
+
+
+	DECLARE @CRate DECIMAL(18,2) = 1.00;
+ --add earnedpoints,Assinged points in 2nd table
+ --job , for 7 comp sumary date()1 drill down , 2nd droll down , 3 drill down report , points 0 on some codes
+--select @CRate = CashValue/PointValue from [dbo].[PointConversionRate] where Comp_ID = @Comp_ID and IsActive = 1
+--select  @CRate
+ --earned points ()
+ 
+/*============================================================
+  Remove duplicate claim records first
+============================================================*/
+;WITH UniqueClaims AS
+(
     SELECT
-        PET.Comp_ID,
-        PET.CompanyName,
-        PET.MobileNo,
-        PET.CheckedDate,
-        PET.TransferedAmount AS Amount,
-        PET.Points,
-        'P' AS Source
-    INTO #Temp
-    FROM ProEnq_Transactions PET WITH(NOLOCK)
-    WHERE PET.TransferedAmount = 0
-      AND (@StartDate IS NULL OR PET.CheckedDate >= @StartDate)
-      AND (@EndDate IS NULL OR PET.CheckedDate < @EndDate)
+        c.*,
+        
+        ROW_NUMBER() OVER
+        (
+            PARTITION BY
+                c.Comp_ID,
+                c.MobileNo,
+                c.Claim_Date,
+                c.Amount,
+                ISNULL(c.IsApproved, 0)
+            ORDER BY
+                c.Claim_Date DESC
+        ) AS DuplicateRank
+ 
+    FROM dbo.ClaimDetails c
+    WHERE --c.MobileNo = @MobileNo
+      --AND c.Comp_ID = @Comp_ID
+	  c.Comp_ID in (select distinct comp_id from TempCodesActivityReport)  and 
+       ISNULL(c.IsApproved, 0) <> 2
+      AND ISNULL(c.Amount, 0) <> 0
+),
+PointsSummary AS
+(
+    SELECT Comp_ID,
+        SUM
+        (
+            CAST(ISNULL(Points, 0) AS DECIMAL(18, 2))
+        ) AS TotalPoints,
+		 SUM
+        (
+            CAST(ISNULL(AssignPoint, 0) AS DECIMAL(18, 2))
+        ) AS AssingedPoints
+    FROM dbo.TempCodesActivityReport group by Comp_ID
+    --WHERE MobileNo = @MobileNo
+     -- AND Comp_ID = @Comp_ID
+),
+ClaimSummary AS
+(
+    SELECT Comp_ID,
+        SUM
+        (
+            CAST(ISNULL(Amount, 0) AS DECIMAL(18, 2))
+        ) AS TotalClaimAmount,
+		  
+        SUM
+        (
+            CAST(ISNULL(pointsvalue, 0) AS DECIMAL(18, 2))
+        ) AS TotalClaimAmountPointsValue,
 
-    UNION ALL
+		SUM
+        (
+            CAST(ISNULL(tdsAmount, 0) AS DECIMAL(18, 2))
+        ) AS TotalClaimAmountPointsValuetds
 
-    SELECT
-        CT.Comp_id,
-        CT.Comp_Name,
-        CT.MobileNo,
-        CT.Claim_date,
-        CT.Amount,
-        NULL,
-        'C'
-    FROM Claim_Transaction CT WITH(NOLOCK)
-    WHERE (@StartDate IS NULL OR CT.Claim_date >= @StartDate)
-      AND (@EndDate IS NULL OR CT.Claim_date < @EndDate);
+    FROM UniqueClaims
+    WHERE DuplicateRank = 1 group by Comp_ID
+),
+PayoutSummary AS
+(
+    SELECT Comp_ID,
+        SUM
+        (
+            CAST(ISNULL(Amount, 0) AS DECIMAL(18, 2))
+        ) AS TotalPaidPoints ,
+		SUM
+        (
+            CAST(ISNULL(FinalPayment, 0) AS DECIMAL(18, 2))
+        ) AS TotalPaidAmount ,
+		SUM
+        (
+            CAST(ISNULL(tdsAmount, 0) AS DECIMAL(18, 2))
+        ) AS TotalPaidtds
+    FROM dbo.TempUPIPayoutReport
+    WHERE --MobileNo = @MobileNo
+     -- AND Comp_ID = @Comp_ID and  
+	  code1 > 0 and BankStatus = 'Success' group by Comp_ID
+)
 
-
-    -----------------------------------------
-    -- Summary
-    -----------------------------------------
-
-    IF OBJECT_ID('tempdb..#Summary') IS NOT NULL
-        DROP TABLE #Summary;
-
-    SELECT
-        Comp_ID,
-        CompanyName,
-        COUNT(DISTINCT MobileNo) AS TotalUsers,
-        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END) TotalPoints,
-        SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) TotalClaimAmount,
-        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END)
-        -
-        SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) Balance
-    INTO #Summary
-    FROM #Temp
-    WHERE
-        @Search IS NULL
-        OR @Search=''
-        OR CompanyName LIKE '%'+@Search+'%'
-        OR Comp_ID LIKE '%'+@Search+'%'
-    GROUP BY
-        Comp_ID,
-        CompanyName
-	HAVING
-        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END)
-        - SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) < 0;
-
-    DECLARE @TotalRecords INT;
-
-    SELECT @TotalRecords=COUNT(*) FROM #Summary;
-
-    IF @IsExport=1
-    BEGIN
-        SELECT *
-        FROM #Summary
-        ORDER BY CompanyName;
-    END
-    ELSE
-    BEGIN
-        SELECT *
-        FROM #Summary
-        ORDER BY CompanyName
-        OFFSET (@Page-1)*@Limit ROWS
-        FETCH NEXT @Limit ROWS ONLY;
-
-        SELECT
-            @TotalRecords TotalRecords,
-            @Page CurrentPage,
-            @Limit [Limit],
-            CEILING(@TotalRecords*1.0/@Limit) TotalPages;
-    END
-
-    DROP TABLE IF EXISTS #Temp;
-    DROP TABLE IF EXISTS #Summary;
-
-END
-GO
-
+ SELECT
+ p.Comp_ID,d.comp_name,
+    ISNULL(P.TotalPoints, 0) AS TotalPoints, AssingedPoints,
+ 
+    ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0) AS TotalClaimAmount,
+ 
+   -- ISNULL(U.TotalPaidPoints, 0) AS TotalPaidPoints,
+ 
+    ISNULL(P.TotalPoints, 0)
+        - (ISNULL(C.TotalClaimAmount, 0)+ISNULL(U.TotalPaidPoints, 0)) AS AvailableBalance,
+	(ISNULL(TotalClaimAmountPointsValue,0) + ISNULL(TotalPaidAmount,0)) as PaidAmount, (ISNULL(TotalClaimAmountPointsValuetds,0) + ISNULL(TotalPaidtds,0) ) as TDS
+ 
+FROM PointsSummary P
+inner JOIN ClaimSummary C on p.Comp_ID = c.Comp_ID
+inner JOIN PayoutSummary U on c.Comp_ID = u.Comp_ID
+inner join comp_reg d on  p.Comp_ID =  d.Comp_ID
+ END
