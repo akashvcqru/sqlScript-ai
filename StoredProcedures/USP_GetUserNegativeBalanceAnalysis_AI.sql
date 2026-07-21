@@ -254,6 +254,9 @@ TransactionData AS
       AND ISNULL(p.Amount, 0) <> 0
 )
 select * into #temp from TransactionData
+    IF OBJECT_ID('tempdb..#Summary') IS NOT NULL
+        DROP TABLE #Summary;
+
 ;WITH FinalData AS
 (
     -- Original rows
@@ -301,31 +304,61 @@ select * into #temp from TransactionData
       AND TransactionType IN ('Claim Raised','Amount Paid')
       AND ISNULL(tdsAmount,0) > 0
 )
-SELECT
-    Comp_Name,
-    Comp_ID,
-    Pro_Name,
-    MobileNo,
-    UniqueCode,
-    Dial_Mode,
-    TransactionDate,
-    IsSuccess,
-    TransactionType,
-    ApprovalStatus,
-    AffectsBalance, AssignPoint,
-    TransactionValue AS WonPoints,
 
-    CASE
-        WHEN TransactionType = 'Points Earned'
-            THEN '+' + CONVERT(VARCHAR(30), TransactionValue)
-        WHEN TransactionType IN ('Claim Raised','Amount Paid')
-            THEN CONVERT(VARCHAR(30), TransactionValue)
-        ELSE NULL
-    END AS DisplayValue,
+    SELECT
+        Comp_Name,
+        Comp_ID,
+        Pro_Name,
+        MobileNo,
+        UniqueCode,
+        Dial_Mode,
+        TransactionDate,
+        IsSuccess,
+        TransactionType,
+        ApprovalStatus,
+        AffectsBalance, AssignPoint,
+        TransactionValue AS WonPoints,
 
-    AmountTransaction,
-    tdsTransaction
-FROM FinalData
-ORDER BY TransactionDate DESC, SortOrder;
+        CASE
+            WHEN TransactionType = 'Points Earned'
+                THEN '+' + CONVERT(VARCHAR(30), TransactionValue)
+            WHEN TransactionType IN ('Claim Raised','Amount Paid')
+                THEN CONVERT(VARCHAR(30), TransactionValue)
+            ELSE NULL
+        END AS DisplayValue,
+
+        AmountTransaction,
+        tdsTransaction,
+        SortOrder
+    INTO #Summary
+    FROM FinalData;
+
+    DECLARE @TotalRecords INT;
+    SELECT @TotalRecords = COUNT(*) FROM #Summary;
+
+    IF @IsExport = 1
+    BEGIN
+        SELECT *
+        FROM #Summary
+        ORDER BY TransactionDate DESC, SortOrder;
+    END
+    ELSE
+    BEGIN
+        SELECT *
+        FROM #Summary
+        ORDER BY TransactionDate DESC, SortOrder
+        OFFSET (@Page - 1) * @Limit ROWS
+        FETCH NEXT @Limit ROWS ONLY;
+
+        SELECT
+            @TotalRecords AS TotalRecords,
+            @Page AS CurrentPage,
+            @Limit AS [Limit],
+            CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
+    END
+
+    DROP TABLE IF EXISTS #temp;
+    DROP TABLE IF EXISTS #Summary;
 
 END
+
