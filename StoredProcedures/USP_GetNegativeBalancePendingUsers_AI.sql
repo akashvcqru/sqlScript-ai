@@ -188,9 +188,9 @@ PayoutSummary AS
         (ISNULL(TotalClaimAmountPointsValuetds, 0) + ISNULL(TotalPaidtds, 0)) AS TDS
     INTO #Summary
     FROM PointsSummary P
-    INNER JOIN ClaimSummary C ON p.MobileNo = c.MobileNo
-    INNER JOIN PayoutSummary U ON c.MobileNo = u.MobileNo
-    INNER JOIN M_Consumer d ON p.MobileNo = d.MobileNo
+    LEFT JOIN ClaimSummary C ON p.MobileNo = c.MobileNo
+    LEFT JOIN PayoutSummary U ON p.MobileNo = u.MobileNo
+    LEFT JOIN M_Consumer d ON p.MobileNo = d.MobileNo
     WHERE
         (ISNULL(P.TotalPoints, 0) - (ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0))) < 0
         AND (
