@@ -8,6 +8,8 @@ CREATE PROCEDURE [dbo].[USP_Insert_MobileToAccount_Result_AI]
     @IFSC_Code VARCHAR(20) = NULL,  
     @VPA VARCHAR(100) = NULL,  
     @Bank_Reference VARCHAR(50) = NULL,  
+    @Reference_Id VARCHAR(100) = NULL,  
+    @Status VARCHAR(20) = NULL,  
   
     @Requested_At DATETIME = NULL,  
     @Completed_At DATETIME = NULL,  
@@ -27,6 +29,8 @@ BEGIN
         IFSC_Code,  
         VPA,  
         Bank_Reference,  
+        Reference_Id,  
+        Status,  
         Requested_At,  
         Completed_At,  
         Source  
@@ -40,6 +44,8 @@ BEGIN
         @IFSC_Code,  
         @VPA,  
         @Bank_Reference,  
+        @Reference_Id,  
+        @Status,  
         @Requested_At,  
         @Completed_At,  
         @Source  
