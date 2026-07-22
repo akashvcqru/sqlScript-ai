@@ -1,19 +1,6 @@
-USE [Vcqru]
-GO
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-
--- =========================================================================================================
--- Author:      Antigravity
--- Create Date: 2026-07-20
--- Description: Retrieves summary of company points and claim amounts, filtering by date preset, custom date range,
---              search term, and handling pagination or full export data.
--- =========================================================================================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetCompanyPointsClaimSummary_AI]
+ALTER   PROCEDURE [dbo].[USP_GetCompanyPointsClaimSummary_AI]
 (
-    @DatePreset NVARCHAR(20) = 'ALL',
+    @DatePreset NVARCHAR(50) = 'ALL',
     @FromDate NVARCHAR(30) = NULL,
     @ToDate NVARCHAR(30) = NULL,
     @Page INT = 1,
@@ -28,153 +15,213 @@ BEGIN
     -----------------------------------------
     -- Date Range
     -----------------------------------------
-    DECLARE @StartDate DATETIME,
-            @EndDate DATETIME,
-            @Preset NVARCHAR(20);
+    DECLARE @StartDate DATETIME = NULL,
+            @EndDate   DATETIME = NULL,
+            @Preset    NVARCHAR(50);
 
-    SET @Preset = UPPER(ISNULL(@DatePreset,'ALL'));
-
-    IF @Preset='TODAY'
+    IF @FromDate IS NOT NULL AND LTRIM(RTRIM(@FromDate)) <> '' 
+       AND @ToDate IS NOT NULL AND LTRIM(RTRIM(@ToDate)) <> ''
     BEGIN
-        SET @StartDate=CAST(GETDATE() AS DATE);
-        SET @EndDate=DATEADD(DAY,1,@StartDate);
+        SET @StartDate = CAST(@FromDate AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATE));
     END
-    ELSE IF @Preset='YESTERDAY'
+    ELSE IF @DatePreset IS NOT NULL AND LTRIM(RTRIM(@DatePreset)) <> ''
     BEGIN
-        SET @StartDate=DATEADD(DAY,-1,CAST(GETDATE() AS DATE));
-        SET @EndDate=CAST(GETDATE() AS DATE);
+        SET @Preset = UPPER(LTRIM(RTRIM(@DatePreset)));
+
+        IF @Preset = 'TODAY'
+        BEGIN
+            SET @StartDate = CAST(GETDATE() AS DATE);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF @Preset IN ('YESTERDAY', 'LASTDAY')
+        BEGIN
+            SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
+            SET @EndDate   = CAST(GETDATE() AS DATE);
+        END
+        ELSE IF @Preset IN ('WEEK', 'THIS WEEK', 'THISWEEK')
+        BEGIN
+            SET DATEFIRST 1;
+            SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE));
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF @Preset IN ('LASTWEEK', 'LAST WEEK')
+        BEGIN
+            SET DATEFIRST 1;
+            SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
+        END
+        ELSE IF @Preset IN ('MONTH', 'THIS MONTH', 'THISMONTH', 'MONTHS')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF @Preset IN ('LASTMONTH', 'LAST MONTH')
+        BEGIN
+            SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0);
+        END
+        ELSE IF @Preset IN ('QUARTER', 'THIS QUARTER', 'THISQUARTER')
+        BEGIN
+            SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF @Preset IN ('LASTQUARTER', 'LAST QUARTER')
+        BEGIN
+            SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
+            SET @EndDate   = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
+        END
+        ELSE IF @Preset IN ('YEAR', 'THIS YEAR', 'THISYEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+        END
+        ELSE IF @Preset IN ('LASTYEAR', 'LAST YEAR')
+        BEGIN
+            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
+            SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+        END
+        ELSE IF @Preset = 'CUSTOM' AND @FromDate IS NOT NULL AND @FromDate <> '' AND @ToDate IS NOT NULL AND @ToDate <> ''
+        BEGIN
+            SET @StartDate = CAST(@FromDate AS DATETIME);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATE));
+        END
+        ELSE IF @Preset IN ('ALL', 'NULL')
+        BEGIN
+            SET @StartDate = NULL;
+            SET @EndDate   = NULL;
+        END
     END
-    ELSE IF @Preset IN('WEEK','THIS WEEK')
+
+    IF @Page IS NULL OR @Page < 1 SET @Page = 1;
+    IF @Limit IS NULL OR @Limit < 1 SET @Limit = 10;
+
+    -- Temporary table to capture output of USP_GetNegativeBalancePendingUsers_AI
+    CREATE TABLE #UserSummary (
+        MobileNo NVARCHAR(50),
+        ConsumerName NVARCHAR(150),
+        TotalPoints DECIMAL(18,2),
+        AssingedPoints DECIMAL(18,2),
+        TotalClaimAmount DECIMAL(18,2),
+        AvailableBalance DECIMAL(18,2),
+        PaidAmount DECIMAL(18,2),
+        TDS DECIMAL(18,2)
+    );
+
+    -- Temporary table to hold aggregated company summaries
+    CREATE TABLE #CompanySummary (
+        Comp_ID NVARCHAR(50),
+        Comp_Name NVARCHAR(150),
+        TotalPoints DECIMAL(18,2),
+        AssingedPoints DECIMAL(18,2),
+        TotalClaimAmount DECIMAL(18,2),
+        AvailableBalance DECIMAL(18,2),
+        PaidAmount DECIMAL(18,2),
+        TDS DECIMAL(18,2),
+        TotalUsers INT
+    );
+
+    -- Cursor to iterate through each distinct Comp_ID in TempCodesActivityReport
+    DECLARE @CurrentComp_ID NVARCHAR(50);
+    DECLARE comp_cursor CURSOR LOCAL FAST_FORWARD FOR 
+    SELECT DISTINCT t.Comp_ID 
+    FROM dbo.TempCodesActivityReport t
+    LEFT JOIN dbo.comp_reg c ON t.Comp_ID = c.Comp_ID
+    WHERE t.Comp_ID IS NOT NULL AND t.Comp_ID <> ''
+      AND (
+          @Search IS NULL
+          OR @Search = ''
+          OR t.Comp_ID LIKE '%' + @Search + '%'
+          OR c.comp_name LIKE '%' + @Search + '%'
+      );
+
+    OPEN comp_cursor;
+    FETCH NEXT FROM comp_cursor INTO @CurrentComp_ID;
+
+    WHILE @@FETCH_STATUS = 0
     BEGIN
-        SET DATEFIRST 1;
-        SET @StartDate=DATEADD(DAY,1-DATEPART(WEEKDAY,GETDATE()),CAST(GETDATE() AS DATE));
-        SET @EndDate=DATEADD(DAY,1,CAST(GETDATE() AS DATE));
-    END
-    ELSE IF @Preset='LASTWEEK'
-    BEGIN
-        SET DATEFIRST 1;
-        SET @StartDate=DATEADD(WEEK,DATEDIFF(WEEK,0,GETDATE())-1,0);
-        SET @EndDate=DATEADD(WEEK,DATEDIFF(WEEK,0,GETDATE()),0);
-    END
-    ELSE IF @Preset IN('MONTH','THIS MONTH')
-    BEGIN
-        SET @StartDate=DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1);
-        SET @EndDate=DATEADD(DAY,1,CAST(GETDATE() AS DATE));
-    END
-    ELSE IF @Preset='LASTMONTH'
-    BEGIN
-        SET @StartDate=DATEADD(MONTH,DATEDIFF(MONTH,0,GETDATE())-1,0);
-        SET @EndDate=DATEADD(MONTH,DATEDIFF(MONTH,0,GETDATE()),0);
-    END
-    ELSE IF @Preset IN('YEAR','THIS YEAR')
-    BEGIN
-        SET @StartDate=DATEFROMPARTS(YEAR(GETDATE()),1,1);
-        SET @EndDate=DATEADD(DAY,1,CAST(GETDATE() AS DATE));
-    END
-    ELSE IF @Preset='CUSTOM'
-    BEGIN
-        SET @StartDate=CAST(@FromDate AS DATETIME);
-        SET @EndDate=DATEADD(DAY,1,CAST(@ToDate AS DATE));
-    END
-    ELSE
-    BEGIN
-        SET @StartDate='2015-01-01';
-        SET @EndDate=DATEADD(DAY,1,CAST(GETDATE() AS DATE));
-    END
+        TRUNCATE TABLE #UserSummary;
 
-    IF @Page<1 SET @Page=1;
-    IF @Limit<1 SET @Limit=10;
+        -- Execute USP_GetNegativeBalancePendingUsers_AI for this company
+        -- We pass IsExport = 1 to skip pagination inside the SP and fetch all user records
+        INSERT INTO #UserSummary (MobileNo, ConsumerName, TotalPoints, AssingedPoints, TotalClaimAmount, AvailableBalance, PaidAmount, TDS)
+        EXEC [dbo].[USP_GetNegativeBalancePendingUsers_AI] 
+            @Comp_ID = @CurrentComp_ID, 
+            @DatePreset = @DatePreset, 
+            @FromDate = @FromDate, 
+            @ToDate = @ToDate, 
+            @Page = 1, 
+            @Limit = 10000000, 
+            @Search = NULL, 
+            @IsExport = 1;
 
-    -----------------------------------------
-    -- Temp Data
-    -----------------------------------------
+        -- Check if any negative balance users exist for this company
+        IF EXISTS (SELECT 1 FROM #UserSummary)
+        BEGIN
+            DECLARE @CompName NVARCHAR(150) = NULL;
+            SELECT TOP 1 @CompName = comp_name FROM dbo.comp_reg WHERE Comp_ID = @CurrentComp_ID;
 
-    IF OBJECT_ID('tempdb..#Temp') IS NOT NULL
-        DROP TABLE #Temp;
+            -- Aggregate the user statistics to company level
+            INSERT INTO #CompanySummary (Comp_ID, Comp_Name, TotalPoints, AssingedPoints, TotalClaimAmount, AvailableBalance, PaidAmount, TDS, TotalUsers)
+            SELECT 
+                @CurrentComp_ID,
+                ISNULL(@CompName, @CurrentComp_ID),
+                SUM(TotalPoints),
+                SUM(AssingedPoints),
+                SUM(TotalClaimAmount),
+                SUM(AvailableBalance),
+                SUM(PaidAmount),
+                SUM(TDS),
+                COUNT(1)
+            FROM #UserSummary;
+        END
 
-    SELECT
-        PET.Comp_ID,
-        PET.CompanyName,
-        PET.MobileNo,
-        PET.CheckedDate,
-        PET.TransferedAmount AS Amount,
-        PET.Points,
-        'P' AS Source
-    INTO #Temp
-    FROM ProEnq_Transactions PET WITH(NOLOCK)
-    WHERE PET.TransferedAmount = 0
-      AND PET.CheckedDate>=@StartDate
-      AND PET.CheckedDate<@EndDate
+        FETCH NEXT FROM comp_cursor INTO @CurrentComp_ID;
+    END;
 
-    UNION ALL
+    CLOSE comp_cursor;
+    DEALLOCATE comp_cursor;
 
-    SELECT
-        CT.Comp_id,
-        CT.Comp_Name,
-        CT.MobileNo,
-        CT.Claim_date,
-        CT.Amount,
-        NULL,
-        'C'
-    FROM Claim_Transaction CT WITH(NOLOCK)
-    WHERE CT.Claim_date>=@StartDate
-      AND CT.Claim_date<@EndDate;
+    -- Apply search filter
+    IF OBJECT_ID('tempdb..#FinalSummary') IS NOT NULL
+        DROP TABLE #FinalSummary;
 
-
-    -----------------------------------------
-    -- Summary
-    -----------------------------------------
-
-    SELECT
-        Comp_ID,
-        CompanyName,
-        COUNT(DISTINCT MobileNo) AS TotalUsers,
-        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END) TotalPoints,
-        SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) TotalClaimAmount,
-        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END)
-        -
-        SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) Balance
-    INTO #Summary
-    FROM #Temp
+    SELECT *
+    INTO #FinalSummary
+    FROM #CompanySummary
     WHERE
         @Search IS NULL
-        OR @Search=''
-        OR CompanyName LIKE '%'+@Search+'%'
-        OR Comp_ID LIKE '%'+@Search+'%'
-    GROUP BY
-        Comp_ID,
-        CompanyName
-	HAVING
-        SUM(CASE WHEN Source='P' THEN ISNULL(Points,0) ELSE 0 END)
-        - SUM(CASE WHEN Source='C' THEN ISNULL(Amount,0) ELSE 0 END) < 0;
+        OR @Search = ''
+        OR Comp_ID LIKE '%' + @Search + '%'
+        OR Comp_Name LIKE '%' + @Search + '%';
 
     DECLARE @TotalRecords INT;
+    SELECT @TotalRecords = COUNT(*) FROM #FinalSummary;
 
-    SELECT @TotalRecords=COUNT(*) FROM #Summary;
-
-    IF @IsExport=1
+    -- Return the output with pagination support
+    IF @IsExport = 1
     BEGIN
         SELECT *
-        FROM #Summary
-        ORDER BY CompanyName;
+        FROM #FinalSummary
+        ORDER BY Comp_ID;
     END
     ELSE
     BEGIN
         SELECT *
-        FROM #Summary
-        ORDER BY CompanyName
-        OFFSET (@Page-1)*@Limit ROWS
+        FROM #FinalSummary
+        ORDER BY Comp_ID
+        OFFSET (@Page - 1) * @Limit ROWS
         FETCH NEXT @Limit ROWS ONLY;
 
         SELECT
-            @TotalRecords TotalRecords,
-            @Page CurrentPage,
-            @Limit [Limit],
-            CEILING(@TotalRecords*1.0/@Limit) TotalPages;
+            @TotalRecords AS TotalRecords,
+            @Page AS CurrentPage,
+            @Limit AS [Limit],
+            CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
     END
 
-    DROP TABLE IF EXISTS #Temp;
-    DROP TABLE IF EXISTS #Summary;
-
+    -- Clean up temp tables
+    DROP TABLE IF EXISTS #UserSummary;
+    DROP TABLE IF EXISTS #CompanySummary;
+    DROP TABLE IF EXISTS #FinalSummary;
 END
-GO

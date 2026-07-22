@@ -1,27 +1,32 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 7/7/2026 5:33:35 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
+
+-- =========================================================================================================
+-- Author:      Antigravity
+-- Create Date: 2026-07-21
+-- Description: Codes Activity Report with Comp_ID and Comp_Name returned in result sets.
+-- =========================================================================================================
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI_FillData]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
-     @FromDate DATE  = NULL,                -- NEW
-    @ToDate DATE  = NULL,                  -- NEW
-    @CodeStatusFilter NVARCHAR(20) = NULL,     -- NEW (Verified, Already Scanned, Invalid)
-     @StateFilter NVARCHAR(100) = NULL,       -- ✅ NEW
-    @DialModeFilter NVARCHAR(50) = NULL,     -- ✅ NEW
-    @Page INT = NULL,                        -- ✅ NEW
-    @Limit INT = NULL,                      -- ✅ NEW
-     @IsExport BIT =NULL,
-       @Search nvarchar(30) = null
+    @FromDate DATE = NULL,             -- Explicit Start Date
+    @ToDate DATE = NULL,               -- Explicit End Date
+    @CodeStatusFilter NVARCHAR(20) = NULL, -- (Verified, Already Scanned, Invalid)
+    @StateFilter NVARCHAR(100) = NULL,
+    @DialModeFilter NVARCHAR(50) = NULL,
+    @Page INT = NULL,
+    @Limit INT = NULL,
+    @IsExport BIT = NULL,
+    @Search NVARCHAR(30) = NULL
 AS
 BEGIN
-  SET NOCOUNT ON;
+    SET NOCOUNT ON;
 
-     ----------------------------------------------------
+    ----------------------------------------------------
     -- Pagination Defaults
     ----------------------------------------------------
     IF @Page IS NULL OR @Page < 1 SET @Page = 1;
@@ -45,7 +50,7 @@ BEGIN
         SET @StartDate = CAST(@FromDate AS DATETIME);
         SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
     END
-    ELSE    
+    ELSE
     BEGIN
         SET @datePreset = UPPER(@datePreset);
 
@@ -128,11 +133,11 @@ BEGIN
         M.Series_Serial
     INTO #Enq
     FROM Pro_Enq
-	INNER JOIN M_code M 
-	    ON Received_Code1 = CAST(code1 AS VARCHAR(50))
-	 AND Received_Code2 = CAST(Code2 AS VARCHAR(50))
-   INNER JOIN Pro_Reg PR
-   ON PR.Pro_ID=M.Pro_ID
+    INNER JOIN M_code M 
+        ON Received_Code1 = CAST(code1 AS VARCHAR(50))
+       AND Received_Code2 = CAST(Code2 AS VARCHAR(50))
+    INNER JOIN Pro_Reg PR
+        ON PR.Pro_ID = M.Pro_ID
     WHERE PR.Comp_ID = @Comp_Id
       AND Enq_Date >= @StartDate
       AND Enq_Date <  @EndDate
@@ -175,16 +180,19 @@ BEGIN
     CREATE INDEX IX_MCode ON #MCode(Code1, Code2);
 
     ----------------------------------------------------
-    -- PRODUCTS
+    -- PRODUCTS & COMPANY
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#Pro') IS NOT NULL DROP TABLE #Pro;
 
     SELECT 
-        Pro_ID,
-        Pro_Name
+        PR.Pro_ID,
+        PR.Pro_Name,
+        PR.Comp_ID,
+        CR.Comp_Name
     INTO #Pro
-    FROM Pro_Reg
-    WHERE Comp_ID = @Comp_Id;
+    FROM Pro_Reg PR
+    LEFT JOIN Comp_Reg CR ON CR.Comp_ID = PR.Comp_ID
+    WHERE PR.Comp_ID = @Comp_Id;
 
     CREATE INDEX IX_Pro ON #Pro(Pro_ID);
 
@@ -356,6 +364,8 @@ BEGIN
     IF OBJECT_ID('tempdb..#FinalReport') IS NOT NULL DROP TABLE #FinalReport;
 
     CREATE TABLE #FinalReport (
+        Comp_ID VARCHAR(50),
+        Comp_Name NVARCHAR(150),
         UniqueCode VARCHAR(100),
         Enq_Date DATETIME,
         Dial_Mode VARCHAR(50),
@@ -376,15 +386,17 @@ BEGIN
     -- 1. Insert scan enquiries
     INSERT INTO #FinalReport
     SELECT 
+        PR.Comp_ID,
+        PR.Comp_Name,
         (E.Received_Code1 + E.Received_Code2) AS UniqueCode,
         E.Enq_Date,
         E.Dial_Mode,
         MC.ConsumerName,
-			CASE 
-				WHEN LEN(ISNULL(MC.MobileNo,'')) < 10 
-					 THEN ISNULL(E.MobileNo,'')
-				ELSE MC.MobileNo
-			END AS MobileNo,
+        CASE 
+            WHEN LEN(ISNULL(MC.MobileNo,'')) < 10 
+                 THEN ISNULL(E.MobileNo,'')
+            ELSE MC.MobileNo
+        END AS MobileNo,
         G.State,
         G.City,
         PR.Pro_Name,
@@ -397,8 +409,8 @@ BEGIN
             WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Already Scanned'
             ELSE 'Invalid'
         END AS Result,
-			E.Latitude,
-			E.Longitude,
+        E.Latitude,
+        E.Longitude,
         CASE 
             WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.AssignPoint, 0)
             ELSE 0 
@@ -408,30 +420,32 @@ BEGIN
             ELSE 0 
         END AS WornPoint,
         ISNULL(R.ReferralPoints, 0) AS ReferralPoints
-		FROM
-		(
-			SELECT *,
-				   CASE 
-					   WHEN Is_Success = 1 
-					   THEN ROW_NUMBER() OVER (PARTITION BY Received_Code1, Received_Code2, Is_Success ORDER BY Enq_Date)
-					   ELSE 1
-				   END AS rn
-			FROM #Enq
-		) E
-        LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
-        LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
-        LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid
-        LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
-        LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
-        LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
-        LEFT JOIN #ScanReferrals R ON R.Code1 = E.Received_Code1 AND R.Code2 = E.Received_Code2
-        WHERE
-		  (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
-          AND (@StateFilter IS NULL OR G.State = @StateFilter);
+    FROM
+    (
+        SELECT *,
+               CASE 
+                   WHEN Is_Success = 1 
+                   THEN ROW_NUMBER() OVER (PARTITION BY Received_Code1, Received_Code2, Is_Success ORDER BY Enq_Date)
+                   ELSE 1
+               END AS rn
+        FROM #Enq
+    ) E
+    LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
+    LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
+    LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid
+    LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
+    LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
+    LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
+    LEFT JOIN #ScanReferrals R ON R.Code1 = E.Received_Code1 AND R.Code2 = E.Received_Code2
+    WHERE
+      (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
+      AND (@StateFilter IS NULL OR G.State = @StateFilter);
 
     -- 2. Insert registration referrals (virtual rows)
     INSERT INTO #FinalReport
     SELECT 
+        BL.compid AS Comp_ID,
+        CR.Comp_Name,
         '' AS UniqueCode,
         BL.UpdateDate AS Enq_Date,
         'Referral' AS Dial_Mode,
@@ -449,6 +463,7 @@ BEGIN
         SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
+    LEFT JOIN Comp_Reg CR ON CR.Comp_ID = BL.compid
     WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
       AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
       AND BL.Code1 IS NULL
@@ -460,7 +475,7 @@ BEGIN
       AND BL.UpdateDate >= @StartDate
       AND BL.UpdateDate < @EndDate
       AND (@StateFilter IS NULL OR MC.State = @StateFilter)
-    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, BL.UpdateDate;
+    GROUP BY BL.compid, CR.Comp_Name, BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, BL.UpdateDate;
 
     ----------------------------------------------------
     -- RESULT SET 1
@@ -468,6 +483,8 @@ BEGIN
     IF (@IsExport = 1)
     BEGIN
         SELECT 
+            Comp_ID,
+            Comp_Name,
             UniqueCode,
             Enq_Date,
             Dial_Mode,
@@ -478,40 +495,8 @@ BEGIN
             Pro_Name,
             Points,
             Result,
-			Latitude,
-			Longitude,
-            AssignPoint,
-            WornPoint,
-            ReferralPoints
-		FROM #FinalReport
-        WHERE (
-            @CodeStatusFilter IS NULL OR
-            Result = @CodeStatusFilter OR
-            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
-        )
-        AND (
-			 @Search IS NULL
-			 OR LTRIM(RTRIM(@Search)) = ''
-			 OR MobileNo LIKE '%' + @Search + '%'
-			 OR UniqueCode LIKE '%' + @Search + '%'
-        )
-        ORDER BY Enq_Date DESC;
-    END
-    ELSE
-    BEGIN
-        SELECT 
-            UniqueCode,
-            Enq_Date,
-            Dial_Mode,
-            ConsumerName,
-            MobileNo,
-            State,
-            City,
-            Pro_Name,
-            Points,
-            Result,
-			Latitude,
-			Longitude,
+            Latitude,
+            Longitude,
             AssignPoint,
             WornPoint,
             ReferralPoints
@@ -522,10 +507,48 @@ BEGIN
             (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
         )
         AND (
-			 @Search IS NULL
-			 OR LTRIM(RTRIM(@Search)) = ''
-			 OR MobileNo LIKE '%' + @Search + '%'
-			 OR UniqueCode LIKE '%' + @Search + '%'
+             @Search IS NULL
+             OR LTRIM(RTRIM(@Search)) = ''
+             OR MobileNo LIKE '%' + @Search + '%'
+             OR UniqueCode LIKE '%' + @Search + '%'
+             OR Comp_ID LIKE '%' + @Search + '%'
+             OR Comp_Name LIKE '%' + @Search + '%'
+        )
+        ORDER BY Enq_Date DESC;
+    END
+    ELSE
+    BEGIN
+        SELECT 
+            Comp_ID,
+            Comp_Name,
+            UniqueCode,
+            Enq_Date,
+            Dial_Mode,
+            ConsumerName,
+            MobileNo,
+            State,
+            City,
+            Pro_Name,
+            Points,
+            Result,
+            Latitude,
+            Longitude,
+            AssignPoint,
+            WornPoint,
+            ReferralPoints
+        FROM #FinalReport
+        WHERE (
+            @CodeStatusFilter IS NULL OR
+            Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+        )
+        AND (
+             @Search IS NULL
+             OR LTRIM(RTRIM(@Search)) = ''
+             OR MobileNo LIKE '%' + @Search + '%'
+             OR UniqueCode LIKE '%' + @Search + '%'
+             OR Comp_ID LIKE '%' + @Search + '%'
+             OR Comp_Name LIKE '%' + @Search + '%'
         )
         ORDER BY Enq_Date DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
@@ -533,22 +556,25 @@ BEGIN
         ----------------------------------------------------
         -- META
         ----------------------------------------------------
-        SELECT
-            COUNT(1) AS TotalRecords,
-            @Page AS CurrentPage,
-            @Limit AS [Limit],
-            CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM #FinalReport
-        WHERE (
-            @CodeStatusFilter IS NULL OR
-            Result = @CodeStatusFilter OR
-            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
-        )
-        AND (
-			 @Search IS NULL
-			 OR LTRIM(RTRIM(@Search)) = ''
-			 OR MobileNo LIKE '%' + @Search + '%'
-			 OR UniqueCode LIKE '%' + @Search + '%'
-        );
+        -- SELECT
+        --     COUNT(1) AS TotalRecords,
+        --     @Page AS CurrentPage,
+        --     @Limit AS [Limit],
+        --     CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
+        -- FROM #FinalReport
+        -- WHERE (
+        --     @CodeStatusFilter IS NULL OR
+        --     Result = @CodeStatusFilter OR
+        --     (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+        -- )
+        -- AND (
+        --      @Search IS NULL
+        --      OR LTRIM(RTRIM(@Search)) = ''
+        --      OR MobileNo LIKE '%' + @Search + '%'
+        --      OR UniqueCode LIKE '%' + @Search + '%'
+        --      OR Comp_ID LIKE '%' + @Search + '%'
+        --      OR Comp_Name LIKE '%' + @Search + '%'
+        -- );
     END
 END
+GO

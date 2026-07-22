@@ -1,17 +1,4 @@
-USE [Vcqru]
-GO
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-
--- =========================================================================================================
--- Author:      Antigravity
--- Create Date: 2026-07-13
--- Description: Identifies negative balance users (-ve balance only) in date range, returning ConsumerName,
---              MobileNumber, Company details, negative Balance, and LatestActivityDate.
--- =========================================================================================================
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
+ALTER   PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
 (
     @Comp_ID         NVARCHAR(50),
     @DatePreset      NVARCHAR(20) = 'TODAY',   -- TODAY, TOMORROW, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, YEAR, ALL, CUSTOM
@@ -25,7 +12,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
-
+    
     -----------------------------------------
     -- Date Range
     -----------------------------------------
@@ -94,73 +81,124 @@ BEGIN
     -----------------------------------------
     -- Temp Data
     -----------------------------------------
-    IF OBJECT_ID('tempdb..#Temp') IS NOT NULL
-        DROP TABLE #Temp;
+    
 
-    SELECT
-        PET.Comp_ID,
-        PET.CompanyName,
-        PET.MobileNo,
-        PET.CheckedDate,
-        PET.TransferedAmount AS Amount,
-        PET.Points,
-        'P' AS Source
-    INTO #Temp
-    FROM ProEnq_Transactions PET WITH(NOLOCK)
-    WHERE PET.TransferedAmount = 0
-      AND PET.CheckedDate >= @StartDate
-      AND PET.CheckedDate < @EndDate
-      AND PET.Comp_ID = @Comp_ID
 
-    UNION ALL
-
-    SELECT
-        CT.Comp_id,
-        CT.Comp_Name AS CompanyName,
-        CT.MobileNo,
-        CT.Claim_date AS CheckedDate,
-        CT.Amount,
-        NULL AS Points,
-        'C' AS Source
-    FROM Claim_Transaction CT WITH(NOLOCK)
-    WHERE CT.Claim_date >= @StartDate
-      AND CT.Claim_date < @EndDate
-      AND CT.Comp_id = @Comp_ID;
-
-    -----------------------------------------
-    -- Summary (Negative Balance Only)
-    -----------------------------------------
+	DECLARE @CRate DECIMAL(18,2) = 1.00;
+ --add earnedpoints,Assinged points in 2nd table
+ --job , for 7 comp sumary date()1 drill down , 2nd droll down , 3 drill down report , points 0 on some codes
+--select @CRate = CashValue/PointValue from [dbo].[PointConversionRate] where Comp_ID = @Comp_ID and IsActive = 1
+--select  @CRate
+ --earned points ()
+ 
     IF OBJECT_ID('tempdb..#Summary') IS NOT NULL
         DROP TABLE #Summary;
 
+/*============================================================
+  Remove duplicate claim records first
+============================================================*/
+;WITH UniqueClaims AS
+(
     SELECT
-        T.CompanyName,
-        T.MobileNo AS MobileNumber,
-        ISNULL(MC.ConsumerName, '') AS ConsumerName,
-        SUM(CASE WHEN T.Source='P' THEN ISNULL(T.Points,0) ELSE 0 END) AS EarnedPoints,
-        SUM(CASE WHEN T.Source='C' THEN ISNULL(T.Amount,0) ELSE 0 END) AS RedeemPoints,
-        SUM(CASE WHEN T.Source='P' THEN ISNULL(T.Points,0) ELSE 0 END)
-        -
-        SUM(CASE WHEN T.Source='C' THEN ISNULL(T.Amount,0) ELSE 0 END) AS Balance,
-        MAX(T.CheckedDate) AS LatestActivityDate
+        c.*,
+        
+        ROW_NUMBER() OVER
+        (
+            PARTITION BY
+                c.Comp_ID,
+                c.MobileNo,
+                c.Claim_Date,
+                c.Amount,
+                ISNULL(c.IsApproved, 0)
+            ORDER BY
+                c.Claim_Date DESC
+        ) AS DuplicateRank
+
+    FROM dbo.ClaimDetails c
+    WHERE --c.MobileNo = @MobileNo
+       c.Comp_ID = @Comp_ID and
+        ISNULL(c.IsApproved, 0) <> 2
+      AND ISNULL(c.Amount, 0) <> 0
+),
+PointsSummary AS
+(
+    SELECT MobileNo,
+        SUM
+        (
+            CAST(ISNULL(Points, 0) AS DECIMAL(18, 2))
+        ) AS TotalPoints,
+		 SUM
+        (
+            CAST(ISNULL(AssignPoint, 0) AS DECIMAL(18, 2))
+        ) AS AssingedPoints
+    FROM dbo.TempCodesActivityReport 
+    WHERE --MobileNo = @MobileNo
+      Comp_ID = @Comp_ID group by MobileNo
+),
+ClaimSummary AS
+(
+    SELECT mobileno,
+        SUM
+        (
+            CAST(ISNULL(Amount, 0) AS DECIMAL(18, 2))
+        ) AS TotalClaimAmount,
+		  
+        SUM
+        (
+            CAST(ISNULL(pointsvalue, 0) AS DECIMAL(18, 2))
+        ) AS TotalClaimAmountPointsValue,
+
+		SUM
+        (
+            CAST(ISNULL(tdsAmount, 0) AS DECIMAL(18, 2))
+        ) AS TotalClaimAmountPointsValuetds
+
+    FROM UniqueClaims
+    WHERE Comp_ID = @comp_id and DuplicateRank = 1 group by mobileno
+),
+PayoutSummary AS
+(
+    SELECT MobileNo,
+        SUM
+        (
+            CAST(ISNULL(Amount, 0) AS DECIMAL(18, 2))
+        ) AS TotalPaidPoints ,
+		SUM
+        (
+            CAST(ISNULL(FinalPayment, 0) AS DECIMAL(18, 2))
+        ) AS TotalPaidAmount ,
+		SUM
+        (
+            CAST(ISNULL(tdsAmount, 0) AS DECIMAL(18, 2))
+        ) AS TotalPaidtds
+    FROM dbo.TempUPIPayoutReport
+    WHERE --MobileNo = @MobileNo
+      Comp_ID = @Comp_ID and  
+	  code1 > 0 and BankStatus = 'Success' group by MobileNo
+)
+
+    SELECT
+        p.MobileNo,
+        d.ConsumerName,
+        ISNULL(P.TotalPoints, 0) AS TotalPoints,
+        ISNULL(P.AssingedPoints, 0) AS AssingedPoints,
+        ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0) AS TotalClaimAmount,
+        ISNULL(P.TotalPoints, 0) - (ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0)) AS AvailableBalance,
+        (ISNULL(TotalClaimAmountPointsValue, 0) + ISNULL(TotalPaidAmount, 0)) AS PaidAmount,
+        (ISNULL(TotalClaimAmountPointsValuetds, 0) + ISNULL(TotalPaidtds, 0)) AS TDS
     INTO #Summary
-    FROM #Temp T
-    LEFT JOIN M_Consumer MC WITH(NOLOCK) ON RIGHT(MC.MobileNo, 10) = RIGHT(T.MobileNo, 10) AND MC.IsDelete = 0
+    FROM PointsSummary P
+    LEFT JOIN ClaimSummary C ON p.MobileNo = c.MobileNo
+    LEFT JOIN PayoutSummary U ON p.MobileNo = u.MobileNo
+    LEFT JOIN M_Consumer d ON p.MobileNo = d.MobileNo
     WHERE
-        @Search IS NULL
-        OR @Search = ''
-        OR T.CompanyName LIKE '%' + @Search + '%'
-        OR T.Comp_ID LIKE '%' + @Search + '%'
-        OR T.MobileNo LIKE '%' + @Search + '%'
-        OR MC.ConsumerName LIKE '%' + @Search + '%'
-    GROUP BY
-        T.Comp_ID,
-        T.CompanyName,
-        T.MobileNo,
-        MC.ConsumerName
-    HAVING
-        (SUM(CASE WHEN T.Source='P' THEN ISNULL(T.Points,0) ELSE 0 END)
-        - SUM(CASE WHEN T.Source='C' THEN ISNULL(T.Amount,0) ELSE 0 END)) < 0;
+        (ISNULL(P.TotalPoints, 0) - (ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0))) < 0
+        AND (
+            @Search IS NULL
+            OR @Search = ''
+            OR p.MobileNo LIKE '%' + @Search + '%'
+            OR d.ConsumerName LIKE '%' + @Search + '%'
+        );
 
     DECLARE @TotalRecords INT;
     SELECT @TotalRecords = COUNT(*) FROM #Summary;
@@ -169,25 +207,24 @@ BEGIN
     BEGIN
         SELECT *
         FROM #Summary
-        ORDER BY CompanyName, MobileNumber;
+        ORDER BY MobileNo;
     END
     ELSE
     BEGIN
         SELECT *
         FROM #Summary
-        ORDER BY CompanyName, MobileNumber
+        ORDER BY MobileNo
         OFFSET (@Page - 1) * @Limit ROWS
         FETCH NEXT @Limit ROWS ONLY;
 
         SELECT
-            @TotalRecords TotalRecords,
-            @Page CurrentPage,
-            @Limit [Limit],
-            CEILING(@TotalRecords * 1.0 / @Limit) TotalPages;
+            @TotalRecords AS TotalRecords,
+            @Page AS CurrentPage,
+            @Limit AS [Limit],
+            CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
     END
 
-    DROP TABLE IF EXISTS #Temp;
     DROP TABLE IF EXISTS #Summary;
 
 END
-GO
+
