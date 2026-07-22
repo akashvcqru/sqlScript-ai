@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[MobileToAccount_Audit]    Script Date: 3/2/2026 12:27:12 PM ******/
+/****** Object:  Table [dbo].[MobileToAccount_Audit]    Script Date: 3/2/2026 12:27:12 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -12,6 +12,8 @@ CREATE TABLE [dbo].[MobileToAccount_Audit](
 	[IFSC_Code] [varchar](20) NULL,
 	[VPA] [varchar](100) NULL,
 	[Bank_Reference] [varchar](50) NULL,
+	[Reference_Id] [varchar](100) NULL,
+	[Status] [varchar](20) NULL,
 	[Requested_At] [datetime] NULL,
 	[Completed_At] [datetime] NULL,
 	[Source] [varchar](20) NULL,
