@@ -12,7 +12,7 @@ ALTER   PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
-
+    
     -----------------------------------------
     -- Date Range
     -----------------------------------------

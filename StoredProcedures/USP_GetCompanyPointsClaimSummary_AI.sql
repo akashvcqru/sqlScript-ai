@@ -124,9 +124,16 @@ BEGIN
     -- Cursor to iterate through each distinct Comp_ID in TempCodesActivityReport
     DECLARE @CurrentComp_ID NVARCHAR(50);
     DECLARE comp_cursor CURSOR LOCAL FAST_FORWARD FOR 
-    SELECT DISTINCT Comp_ID 
-    FROM dbo.TempCodesActivityReport 
-    WHERE Comp_ID IS NOT NULL AND Comp_ID <> '';
+    SELECT DISTINCT t.Comp_ID 
+    FROM dbo.TempCodesActivityReport t
+    LEFT JOIN dbo.comp_reg c ON t.Comp_ID = c.Comp_ID
+    WHERE t.Comp_ID IS NOT NULL AND t.Comp_ID <> ''
+      AND (
+          @Search IS NULL
+          OR @Search = ''
+          OR t.Comp_ID LIKE '%' + @Search + '%'
+          OR c.comp_name LIKE '%' + @Search + '%'
+      );
 
     OPEN comp_cursor;
     FETCH NEXT FROM comp_cursor INTO @CurrentComp_ID;
