@@ -303,29 +303,7 @@ BEGIN
                             INSERT INTO tblUPITransactionDetails (M_Consumerid, MobileNo, Code1, Code2, Amount, Comp_Id, Status, ReqDate)
                             VALUES (@M_Consumerid, @MobileNo, @Code1, @Code2, @Cash, @Comp_ID, 'Pending', GETDATE());
 
-                            -- 2. Update Paytm_balance (Deduct from company pool)
-                            IF EXISTS (SELECT 1 FROM Paytm_balance WHERE Comp_ID = @Comp_ID)
-                            BEGIN
-                                UPDATE Paytm_balance 
-                                SET Amount = ISNULL(Amount, 0) - @Cash, 
-                                    Updated_date = GETDATE() 
-                                WHERE Comp_ID = @Comp_ID;
-                            END
-                            ELSE
-                            BEGIN
-                                INSERT INTO Paytm_balance (Comp_ID, Amount, Updated_date)
-                                VALUES (@Comp_ID, -@Cash, GETDATE());
-                            END
-
-                            -- 3. Update tblCashWalletBalance (Ledger)
-                            DECLARE @OldWalletBal DECIMAL(18,2) = 0;
-                            SELECT TOP 1 @OldWalletBal = ISNULL(NewBal, 0) 
-                            FROM tblCashWalletBalance 
-                            WHERE M_Consumerid = @M_Consumerid AND Comp_Id = @Comp_ID 
-                            ORDER BY Id DESC;
-                            
-                            INSERT INTO tblCashWalletBalance (Comp_Id, M_Consumerid, OldBal, NewBal, Amount, Cr_Dr_Type, Updated_date, Remarks, Service_ID)
-                            VALUES (@Comp_ID, @M_Consumerid, @OldWalletBal, @OldWalletBal + @Cash, @Cash, 'Credit', GETDATE(), 'Cashback for code ' + CAST(@Code1 AS VARCHAR) + '-' + CAST(@Code2 AS VARCHAR), 'SRV1029');
+                            -- Credit entry to tblCashWalletBalance is removed for Instant Cash (only Debit entry is added during payout)
                         END
                     END
                 END
