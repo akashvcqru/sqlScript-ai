@@ -53,59 +53,149 @@ BEGIN
 
         IF @Comp_ID IS NOT NULL
         BEGIN
-            -- Last imported date
-            SELECT @FromDate = MAX(ReqDate)
-            FROM TempUPIPayoutReport
-            WHERE Comp_ID = @Comp_ID;
-
-            -- First run
-            IF @FromDate IS NULL
-            BEGIN
-                SELECT @FromDate = Reg_Date
-                FROM Comp_Reg
+            BEGIN TRY
+                -- Last imported date
+                SELECT @FromDate = MAX(ReqDate)
+                FROM TempUPIPayoutReport
                 WHERE Comp_ID = @Comp_ID;
-            END
-            ELSE
-            BEGIN
-                SET @FromDate = DATEADD(SECOND,1,@FromDate);
-            END
 
-            PRINT 'Processing : ' + @CompanyName;
-            PRINT 'Comp_ID     : ' + @Comp_ID;
-            PRINT 'FromDate    : ' + CONVERT(VARCHAR(19),@FromDate,120);
+                -- First run
+                IF @FromDate IS NULL
+                BEGIN
+                    SELECT @FromDate = Reg_Date
+                    FROM Comp_Reg
+                    WHERE Comp_ID = @Comp_ID;
+                END
+                ELSE
+                BEGIN
+                    SET @FromDate = DATEADD(SECOND,1,@FromDate);
+                END
 
-            INSERT INTO dbo.TempUPIPayoutReport
-            (
-                Comp_ID,
-                Comp_Name,
-                ConsumerName,
-                MobileNo,
-                Code1,
-                Code2,
-                UPI_Id,
-                OldBal,
-                Amount,
-                FinalPayment,
-                tdsAmount,
-                tdsper,
-                ChargedAmount,
-                GstAmount,
-                NewBal,
-                OrderId,
-                BankStatus,
-                BankRemark,
-                ReqDate,
-                FinalStatus,
-                FinalRemark
-            )
-            EXEC dbo.GetUPIpayoutRportBL_AI_FillData
-                @Compid       = @Comp_ID,
-                @FromDate     = @FromDate,
-                @ToDate       = @ToDate,
-                @datePreset   = NULL,
-                @StatusFilter = NULL,
-                @MobileNo     = NULL,
-                @IsExport     = 1;
+                PRINT 'Processing : ' + @CompanyName;
+                PRINT 'Comp_ID     : ' + @Comp_ID;
+                PRINT 'FromDate    : ' + CONVERT(VARCHAR(19),@FromDate,120);
+
+                INSERT INTO dbo.TempUPIPayoutReport
+                (
+                    Comp_ID,
+                    Comp_Name,
+                    ConsumerName,
+                    MobileNo,
+                    Code1,
+                    Code2,
+                    UPI_Id,
+                    OldBal,
+                    Amount,
+                    FinalPayment,
+                    tdsAmount,
+                    tdsper,
+                    ChargedAmount,
+                    GstAmount,
+                    NewBal,
+                    OrderId,
+                    BankStatus,
+                    BankRemark,
+                    ReqDate,
+                    FinalStatus,
+                    FinalRemark
+                )
+                EXEC dbo.GetUPIpayoutRportBL_AI_FillData
+                    @Compid       = @Comp_ID,
+                    @FromDate     = @FromDate,
+                    @ToDate       = @ToDate,
+                    @datePreset   = NULL,
+                    @StatusFilter = NULL,
+                    @MobileNo     = NULL,
+                    @IsExport     = 1;
+
+                DECLARE @InsertedCount INT = @@ROWCOUNT;
+
+                IF EXISTS (
+                    SELECT 1 
+                    FROM dbo.TempDataSyncLog 
+                    WHERE Comp_ID = @Comp_ID 
+                      AND CAST(SyncDateTime AS DATE) = CAST(GETDATE() AS DATE)
+                )
+                BEGIN
+                    UPDATE dbo.TempDataSyncLog
+                    SET 
+                        PayoutReportCount = @InsertedCount,
+                        PayoutFromDate = @FromDate,
+                        PayoutToDate = @ToDate,
+                        Status = 'Success',
+                        ErrorMessage = NULL,
+                        SyncDateTime = GETDATE()
+                    WHERE Comp_ID = @Comp_ID 
+                      AND CAST(SyncDateTime AS DATE) = CAST(GETDATE() AS DATE);
+                END
+                ELSE
+                BEGIN
+                    INSERT INTO dbo.TempDataSyncLog
+                    (
+                        Comp_ID,
+                        Comp_Name,
+                        PayoutReportCount,
+                        PayoutFromDate,
+                        PayoutToDate,
+                        Status
+                    )
+                    VALUES
+                    (
+                        @Comp_ID,
+                        @CompanyName,
+                        @InsertedCount,
+                        @FromDate,
+                        @ToDate,
+                        'Success'
+                    );
+                END
+            END TRY
+            BEGIN CATCH
+                DECLARE @ErrorMsg NVARCHAR(1000) = ERROR_MESSAGE();
+                PRINT 'Error Processing : ' + @CompanyName + ' - ' + @ErrorMsg;
+
+                IF EXISTS (
+                    SELECT 1 
+                    FROM dbo.TempDataSyncLog 
+                    WHERE Comp_ID = @Comp_ID 
+                      AND CAST(SyncDateTime AS DATE) = CAST(GETDATE() AS DATE)
+                )
+                BEGIN
+                    UPDATE dbo.TempDataSyncLog
+                    SET 
+                        PayoutReportCount = 0,
+                        PayoutFromDate = @FromDate,
+                        PayoutToDate = @ToDate,
+                        Status = 'Failed',
+                        ErrorMessage = LEFT(@ErrorMsg, 1000),
+                        SyncDateTime = GETDATE()
+                    WHERE Comp_ID = @Comp_ID 
+                      AND CAST(SyncDateTime AS DATE) = CAST(GETDATE() AS DATE);
+                END
+                ELSE
+                BEGIN
+                    INSERT INTO dbo.TempDataSyncLog
+                    (
+                        Comp_ID,
+                        Comp_Name,
+                        PayoutReportCount,
+                        PayoutFromDate,
+                        PayoutToDate,
+                        Status,
+                        ErrorMessage
+                    )
+                    VALUES
+                    (
+                        @Comp_ID,
+                        @CompanyName,
+                        0,
+                        @FromDate,
+                        @ToDate,
+                        'Failed',
+                        LEFT(@ErrorMsg, 1000)
+                    );
+                END
+            END CATCH
         END
         ELSE
         BEGIN

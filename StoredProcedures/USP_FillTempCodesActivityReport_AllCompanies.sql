@@ -53,53 +53,143 @@ BEGIN
 
         IF @Comp_ID IS NOT NULL
         BEGIN
-            -- Last imported date for this company
-            SELECT @FromDate = MAX(Enq_Date)
-            FROM TempCodesActivityReport
-            WHERE Comp_ID = @Comp_ID;
-
-            -- First run
-            IF @FromDate IS NULL
-            BEGIN
-                SELECT @FromDate = Reg_Date
-                FROM Comp_Reg
+            BEGIN TRY
+                -- Last imported date for this company
+                SELECT @FromDate = MAX(Enq_Date)
+                FROM TempCodesActivityReport
                 WHERE Comp_ID = @Comp_ID;
-            END
-            ELSE
-            BEGIN
-                SET @FromDate = DATEADD(SECOND,1,@FromDate);
-            END
 
-            PRINT 'Processing : ' + @CompanyName;
-            PRINT 'Comp_ID     : ' + @Comp_ID;
-            PRINT 'FromDate    : ' + CONVERT(VARCHAR(19),@FromDate,120);
+                -- First run
+                IF @FromDate IS NULL
+                BEGIN
+                    SELECT @FromDate = Reg_Date
+                    FROM Comp_Reg
+                    WHERE Comp_ID = @Comp_ID;
+                END
+                ELSE
+                BEGIN
+                    SET @FromDate = DATEADD(SECOND,1,@FromDate);
+                END
 
-            INSERT INTO TempCodesActivityReport
-            (
-                Comp_ID,
-                Comp_Name,
-                UniqueCode,
-                Enq_Date,
-                Dial_Mode,
-                ConsumerName,
-                MobileNo,
-                State,
-                City,
-                Pro_Name,
-                Points,
-                Result,
-                Latitude,
-                Longitude,
-                AssignPoint,
-                WornPoint,
-                ReferralPoints
-            )
-            EXEC dbo.SP_BL_GetCodesActivityReport_AI_FillData
-                @Comp_Id    = @Comp_ID,
-                @datePreset = NULL,
-                @FromDate   = @FromDate,
-                @ToDate     = @ToDate,
-                @IsExport   = 1;
+                PRINT 'Processing : ' + @CompanyName;
+                PRINT 'Comp_ID     : ' + @Comp_ID;
+                PRINT 'FromDate    : ' + CONVERT(VARCHAR(19),@FromDate,120);
+
+                INSERT INTO TempCodesActivityReport
+                (
+                    Comp_ID,
+                    Comp_Name,
+                    UniqueCode,
+                    Enq_Date,
+                    Dial_Mode,
+                    ConsumerName,
+                    MobileNo,
+                    State,
+                    City,
+                    Pro_Name,
+                    Points,
+                    Result,
+                    Latitude,
+                    Longitude,
+                    AssignPoint,
+                    WornPoint,
+                    ReferralPoints
+                )
+                EXEC dbo.SP_BL_GetCodesActivityReport_AI_FillData
+                    @Comp_Id    = @Comp_ID,
+                    @datePreset = NULL,
+                    @FromDate   = @FromDate,
+                    @ToDate     = @ToDate,
+                    @IsExport   = 1;
+
+                DECLARE @InsertedCount INT = @@ROWCOUNT;
+
+                IF EXISTS (
+                    SELECT 1 
+                    FROM dbo.TempDataSyncLog 
+                    WHERE Comp_ID = @Comp_ID 
+                      AND CAST(SyncDateTime AS DATE) = CAST(GETDATE() AS DATE)
+                )
+                BEGIN
+                    UPDATE dbo.TempDataSyncLog
+                    SET 
+                        CodeActivityCount = @InsertedCount,
+                        CodeActivityFromDate = @FromDate,
+                        CodeActivityToDate = @ToDate,
+                        Status = 'Success',
+                        ErrorMessage = NULL,
+                        SyncDateTime = GETDATE()
+                    WHERE Comp_ID = @Comp_ID 
+                      AND CAST(SyncDateTime AS DATE) = CAST(GETDATE() AS DATE);
+                END
+                ELSE
+                BEGIN
+                    INSERT INTO dbo.TempDataSyncLog
+                    (
+                        Comp_ID,
+                        Comp_Name,
+                        CodeActivityCount,
+                        CodeActivityFromDate,
+                        CodeActivityToDate,
+                        Status
+                    )
+                    VALUES
+                    (
+                        @Comp_ID,
+                        @CompanyName,
+                        @InsertedCount,
+                        @FromDate,
+                        @ToDate,
+                        'Success'
+                    );
+                END
+            END TRY
+            BEGIN CATCH
+                DECLARE @ErrorMsg NVARCHAR(1000) = ERROR_MESSAGE();
+                PRINT 'Error Processing : ' + @CompanyName + ' - ' + @ErrorMsg;
+
+                IF EXISTS (
+                    SELECT 1 
+                    FROM dbo.TempDataSyncLog 
+                    WHERE Comp_ID = @Comp_ID 
+                      AND CAST(SyncDateTime AS DATE) = CAST(GETDATE() AS DATE)
+                )
+                BEGIN
+                    UPDATE dbo.TempDataSyncLog
+                    SET 
+                        CodeActivityCount = 0,
+                        CodeActivityFromDate = @FromDate,
+                        CodeActivityToDate = @ToDate,
+                        Status = 'Failed',
+                        ErrorMessage = LEFT(@ErrorMsg, 1000),
+                        SyncDateTime = GETDATE()
+                    WHERE Comp_ID = @Comp_ID 
+                      AND CAST(SyncDateTime AS DATE) = CAST(GETDATE() AS DATE);
+                END
+                ELSE
+                BEGIN
+                    INSERT INTO dbo.TempDataSyncLog
+                    (
+                        Comp_ID,
+                        Comp_Name,
+                        CodeActivityCount,
+                        CodeActivityFromDate,
+                        CodeActivityToDate,
+                        Status,
+                        ErrorMessage
+                    )
+                    VALUES
+                    (
+                        @Comp_ID,
+                        @CompanyName,
+                        0,
+                        @FromDate,
+                        @ToDate,
+                        'Failed',
+                        LEFT(@ErrorMsg, 1000)
+                    );
+                END
+            END CATCH
         END
         ELSE
         BEGIN
