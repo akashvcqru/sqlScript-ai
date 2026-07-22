@@ -316,7 +316,7 @@ select * into #temp from TransactionData
         IsSuccess,
         TransactionType,
         ApprovalStatus,
-        AffectsBalance, AssignPoint,
+         AssignPoint,
         TransactionValue AS WonPoints,
 
         CASE

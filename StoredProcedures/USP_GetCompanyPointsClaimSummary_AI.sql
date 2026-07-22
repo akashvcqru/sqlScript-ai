@@ -96,140 +96,112 @@ BEGIN
     IF @Page IS NULL OR @Page < 1 SET @Page = 1;
     IF @Limit IS NULL OR @Limit < 1 SET @Limit = 10;
 
+    -- Temporary table to capture output of USP_GetNegativeBalancePendingUsers_AI
+    CREATE TABLE #UserSummary (
+        MobileNo NVARCHAR(50),
+        ConsumerName NVARCHAR(150),
+        TotalPoints DECIMAL(18,2),
+        AssingedPoints DECIMAL(18,2),
+        TotalClaimAmount DECIMAL(18,2),
+        AvailableBalance DECIMAL(18,2),
+        PaidAmount DECIMAL(18,2),
+        TDS DECIMAL(18,2)
+    );
 
+    -- Temporary table to hold aggregated company summaries
+    CREATE TABLE #CompanySummary (
+        Comp_ID NVARCHAR(50),
+        Comp_Name NVARCHAR(150),
+        TotalPoints DECIMAL(18,2),
+        AssingedPoints DECIMAL(18,2),
+        TotalClaimAmount DECIMAL(18,2),
+        AvailableBalance DECIMAL(18,2),
+        PaidAmount DECIMAL(18,2),
+        TDS DECIMAL(18,2),
+        TotalUsers INT
+    );
 
+    -- Cursor to iterate through each distinct Comp_ID in TempCodesActivityReport
+    DECLARE @CurrentComp_ID NVARCHAR(50);
+    DECLARE comp_cursor CURSOR LOCAL FAST_FORWARD FOR 
+    SELECT DISTINCT Comp_ID 
+    FROM dbo.TempCodesActivityReport 
+    WHERE Comp_ID IS NOT NULL AND Comp_ID <> '';
 
+    OPEN comp_cursor;
+    FETCH NEXT FROM comp_cursor INTO @CurrentComp_ID;
 
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        TRUNCATE TABLE #UserSummary;
 
-	DECLARE @CRate DECIMAL(18,2) = 1.00;
- --add earnedpoints,Assinged points in 2nd table
- --job , for 7 comp sumary date()1 drill down , 2nd droll down , 3 drill down report , points 0 on some codes
---select @CRate = CashValue/PointValue from [dbo].[PointConversionRate] where Comp_ID = @Comp_ID and IsActive = 1
---select  @CRate
- --earned points ()
- 
-/*============================================================
-  Remove duplicate claim records first
-============================================================*/
-;WITH UniqueClaims AS
-(
-    SELECT
-        c.*,
-        
-        ROW_NUMBER() OVER
-        (
-            PARTITION BY
-                c.Comp_ID,
-                c.MobileNo,
-                c.Claim_Date,
-                c.Amount,
-                ISNULL(c.IsApproved, 0)
-            ORDER BY
-                c.Claim_Date DESC
-        ) AS DuplicateRank
- 
-    FROM dbo.ClaimDetails c
-    WHERE --c.MobileNo = @MobileNo
-      --AND c.Comp_ID = @Comp_ID
-	  c.Comp_ID in (select distinct comp_id from TempCodesActivityReport)  and 
-       ISNULL(c.IsApproved, 0) <> 2
-      AND ISNULL(c.Amount, 0) <> 0
-),
-PointsSummary AS
-(
-    SELECT Comp_ID,
-        SUM
-        (
-            CAST(ISNULL(Points, 0) AS DECIMAL(18, 2))
-        ) AS TotalPoints,
-		 SUM
-        (
-            CAST(ISNULL(AssignPoint, 0) AS DECIMAL(18, 2))
-        ) AS AssingedPoints
-    FROM dbo.TempCodesActivityReport group by Comp_ID
-    --WHERE MobileNo = @MobileNo
-     -- AND Comp_ID = @Comp_ID
-),
-ClaimSummary AS
-(
-    SELECT Comp_ID,
-        SUM
-        (
-            CAST(ISNULL(Amount, 0) AS DECIMAL(18, 2))
-        ) AS TotalClaimAmount,
-		  
-        SUM
-        (
-            CAST(ISNULL(pointsvalue, 0) AS DECIMAL(18, 2))
-        ) AS TotalClaimAmountPointsValue,
+        -- Execute USP_GetNegativeBalancePendingUsers_AI for this company
+        -- We pass IsExport = 1 to skip pagination inside the SP and fetch all user records
+        INSERT INTO #UserSummary (MobileNo, ConsumerName, TotalPoints, AssingedPoints, TotalClaimAmount, AvailableBalance, PaidAmount, TDS)
+        EXEC [dbo].[USP_GetNegativeBalancePendingUsers_AI] 
+            @Comp_ID = @CurrentComp_ID, 
+            @DatePreset = @DatePreset, 
+            @FromDate = @FromDate, 
+            @ToDate = @ToDate, 
+            @Page = 1, 
+            @Limit = 10000000, 
+            @Search = NULL, 
+            @IsExport = 1;
 
-		SUM
-        (
-            CAST(ISNULL(tdsAmount, 0) AS DECIMAL(18, 2))
-        ) AS TotalClaimAmountPointsValuetds
+        -- Check if any negative balance users exist for this company
+        IF EXISTS (SELECT 1 FROM #UserSummary)
+        BEGIN
+            DECLARE @CompName NVARCHAR(150) = NULL;
+            SELECT TOP 1 @CompName = comp_name FROM dbo.comp_reg WHERE Comp_ID = @CurrentComp_ID;
 
-    FROM UniqueClaims
-    WHERE DuplicateRank = 1 group by Comp_ID
-),
-PayoutSummary AS
-(
-    SELECT Comp_ID,
-        SUM
-        (
-            CAST(ISNULL(Amount, 0) AS DECIMAL(18, 2))
-        ) AS TotalPaidPoints ,
-		SUM
-        (
-            CAST(ISNULL(FinalPayment, 0) AS DECIMAL(18, 2))
-        ) AS TotalPaidAmount ,
-		SUM
-        (
-            CAST(ISNULL(tdsAmount, 0) AS DECIMAL(18, 2))
-        ) AS TotalPaidtds
-    FROM dbo.TempUPIPayoutReport
-    WHERE --MobileNo = @MobileNo
-     -- AND Comp_ID = @Comp_ID and  
-	  code1 > 0 and BankStatus = 'Success' group by Comp_ID
-)
+            -- Aggregate the user statistics to company level
+            INSERT INTO #CompanySummary (Comp_ID, Comp_Name, TotalPoints, AssingedPoints, TotalClaimAmount, AvailableBalance, PaidAmount, TDS, TotalUsers)
+            SELECT 
+                @CurrentComp_ID,
+                ISNULL(@CompName, @CurrentComp_ID),
+                SUM(TotalPoints),
+                SUM(AssingedPoints),
+                SUM(TotalClaimAmount),
+                SUM(AvailableBalance),
+                SUM(PaidAmount),
+                SUM(TDS),
+                COUNT(1)
+            FROM #UserSummary;
+        END
 
- IF OBJECT_ID('tempdb..#Summary') IS NOT NULL
-        DROP TABLE #Summary;
+        FETCH NEXT FROM comp_cursor INTO @CurrentComp_ID;
+    END;
 
- SELECT
- p.Comp_ID,d.comp_name,
-    ISNULL(P.TotalPoints, 0) AS TotalPoints, AssingedPoints,
- 
-    ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0) AS TotalClaimAmount,
- 
-   -- ISNULL(U.TotalPaidPoints, 0) AS TotalPaidPoints,
- 
-    ISNULL(P.TotalPoints, 0)
-        - (ISNULL(C.TotalClaimAmount, 0)+ISNULL(U.TotalPaidPoints, 0)) AS AvailableBalance,
-	(ISNULL(TotalClaimAmountPointsValue,0) + ISNULL(TotalPaidAmount,0)) as PaidAmount, (ISNULL(TotalClaimAmountPointsValuetds,0) + ISNULL(TotalPaidtds,0) ) as TDS
- 
-FROM PointsSummary P
-inner JOIN ClaimSummary C on p.Comp_ID = c.Comp_ID
-inner JOIN PayoutSummary U on c.Comp_ID = u.Comp_ID
-inner join comp_reg d on  p.Comp_ID =  d.Comp_ID
+    CLOSE comp_cursor;
+    DEALLOCATE comp_cursor;
+
+    -- Apply search filter
+    IF OBJECT_ID('tempdb..#FinalSummary') IS NOT NULL
+        DROP TABLE #FinalSummary;
+
+    SELECT *
+    INTO #FinalSummary
+    FROM #CompanySummary
     WHERE
         @Search IS NULL
         OR @Search = ''
-        OR p.Comp_ID LIKE '%' + @Search + '%'
-        OR d.comp_name LIKE '%' + @Search + '%';
+        OR Comp_ID LIKE '%' + @Search + '%'
+        OR Comp_Name LIKE '%' + @Search + '%';
 
     DECLARE @TotalRecords INT;
-    SELECT @TotalRecords = COUNT(*) FROM #Summary;
+    SELECT @TotalRecords = COUNT(*) FROM #FinalSummary;
 
+    -- Return the output with pagination support
     IF @IsExport = 1
     BEGIN
         SELECT *
-        FROM #Summary
+        FROM #FinalSummary
         ORDER BY Comp_ID;
     END
     ELSE
     BEGIN
         SELECT *
-        FROM #Summary
+        FROM #FinalSummary
         ORDER BY Comp_ID
         OFFSET (@Page - 1) * @Limit ROWS
         FETCH NEXT @Limit ROWS ONLY;
@@ -241,5 +213,8 @@ inner join comp_reg d on  p.Comp_ID =  d.Comp_ID
             CEILING(@TotalRecords * 1.0 / @Limit) AS TotalPages;
     END
 
-    DROP TABLE IF EXISTS #Summary;
+    -- Clean up temp tables
+    DROP TABLE IF EXISTS #UserSummary;
+    DROP TABLE IF EXISTS #CompanySummary;
+    DROP TABLE IF EXISTS #FinalSummary;
 END
