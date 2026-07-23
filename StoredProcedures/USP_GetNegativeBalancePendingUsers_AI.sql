@@ -152,7 +152,8 @@ ClaimSummary AS
 		SUM
         (
             CAST(ISNULL(tdsAmount, 0) AS DECIMAL(18, 2))
-        ) AS TotalClaimAmountPointsValuetds
+        ) AS TotalClaimAmountPointsValuetds,
+        MAX(Claim_Date) AS LastClaimDate
 
     FROM UniqueClaims
     WHERE Comp_ID = @comp_id and DuplicateRank = 1 group by mobileno
@@ -164,14 +165,15 @@ PayoutSummary AS
         (
             CAST(ISNULL(Amount, 0) AS DECIMAL(18, 2))
         ) AS TotalPaidPoints ,
-		SUM
+		 SUM
         (
             CAST(ISNULL(FinalPayment, 0) AS DECIMAL(18, 2))
         ) AS TotalPaidAmount ,
-		SUM
+		 SUM
         (
             CAST(ISNULL(tdsAmount, 0) AS DECIMAL(18, 2))
-        ) AS TotalPaidtds
+        ) AS TotalPaidtds,
+        MAX(ReqDate) AS LastPaymentDate
     FROM dbo.TempUPIPayoutReport
     WHERE --MobileNo = @MobileNo
       Comp_ID = @Comp_ID and  
@@ -187,7 +189,13 @@ PayoutSummary AS
         ISNULL(P.TotalPoints, 0) - (ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0)) AS AvailableBalance,
         (ISNULL(TotalClaimAmountPointsValue, 0) + ISNULL(TotalPaidAmount, 0)) AS PaidAmount,
         (ISNULL(TotalClaimAmountPointsValuetds, 0) + ISNULL(TotalPaidtds, 0)) AS TDS,
-        P.LastCodeCheckDate
+        P.LastCodeCheckDate,
+        CASE
+            WHEN C.LastClaimDate IS NULL THEN U.LastPaymentDate
+            WHEN U.LastPaymentDate IS NULL THEN C.LastClaimDate
+            WHEN C.LastClaimDate > U.LastPaymentDate THEN C.LastClaimDate
+            ELSE U.LastPaymentDate
+        END AS LastPaymentDate
     INTO #Summary
     FROM PointsSummary P
     LEFT JOIN ClaimSummary C ON p.MobileNo = c.MobileNo
