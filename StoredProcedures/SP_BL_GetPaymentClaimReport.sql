@@ -188,12 +188,15 @@ BEGIN
             ELSE ''Pending''
         END AS Claim_Status,
         CD.vendor_comment,
-        CD.action_date
+        CD.action_date,
+        ISNULL(CD.Gifts_Redeemed, CG.Gift_name) AS GiftName
     FROM ClaimDetails CD
     LEFT JOIN Comp_Reg CR
         ON CR.Comp_ID = CD.Comp_id
     LEFT JOIN M_Consumer MC 
         ON MC.MobileNo = CD.Mobileno
+    LEFT JOIN Claim_gift CG
+        ON CG.gift_id = CD.Gift_id
     OUTER APPLY
     (
         SELECT TOP 1 *
