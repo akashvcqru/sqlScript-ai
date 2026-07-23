@@ -101,75 +101,36 @@ BEGIN
     ---------------------------------------------------------
     -- CLEANUP TEMP TABLES
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Pro_enq;
-    DROP TABLE IF EXISTS #FinalResult;
-    DROP TABLE IF EXISTS #GroupedResult;
+    DROP TABLE IF EXISTS #TempResult;
 
     ---------------------------------------------------------
     -- GET SUSPICIOUS DUPLICATED CODES
-    ---------------------------------------------------------
-    SELECT Received_Code1, Received_Code2
-    INTO #Pro_enq
-    FROM Pro_enq WITH (NOLOCK)
-    WHERE Enq_Date >= @StartDate
-      AND Enq_Date < @EndDate
-      AND is_success = 1
-    GROUP BY Received_Code1, Received_Code2
-    HAVING COUNT(Enq_date) > 1;
-
-    CREATE CLUSTERED INDEX IX_Pro_enq_codes ON #Pro_enq(Received_Code1, Received_Code2);
-
-    ---------------------------------------------------------
-    -- COMPILE COMPREHENSIVE FRAUD CHECK DETAILS
     -- (excl Comp-1669)
     ---------------------------------------------------------
-    SELECT DISTINCT
+    SELECT 
+        a.comp_id,
+        b.Comp_Name,
+        b.Status, 
         a.Received_Code1,
         a.Received_Code2,
-        aa.Enq_Date,
-        aa.MobileNo,
-        c.comp_id,
-        c.Pro_Name,
-        c.Pro_ID,
-        cr.Comp_Name AS CompanyName
-    INTO #FinalResult
-    FROM #Pro_enq a
-    INNER JOIN M_Code b WITH (NOLOCK)
-        ON a.Received_Code1 = CAST(b.code1 AS VARCHAR(50))
-       AND a.Received_Code2 = CAST(b.code2 AS VARCHAR(50))
-    INNER JOIN Pro_enq aa WITH (NOLOCK)
-        ON a.Received_Code1 = aa.Received_Code1
-       AND a.Received_Code2 = aa.Received_Code2
-    INNER JOIN Pro_reg c WITH (NOLOCK)
-        ON b.Pro_id = c.Pro_id
-    LEFT JOIN Comp_Reg cr WITH (NOLOCK)
-        ON c.comp_id = cr.Comp_ID AND cr.Status = 1
-    WHERE c.comp_id <> 'Comp-1669'
+        a.IS_Success,
+        COUNT(1) AS [TotalCheckCount]
+    INTO #TempResult
+    FROM Pro_enq a WITH (NOLOCK)
+    INNER JOIN Comp_Reg b WITH (NOLOCK) ON a.Comp_ID = b.Comp_ID 
+    WHERE a.Enq_Date >= @StartDate
+      AND a.Enq_Date < @EndDate
+      AND a.Comp_ID NOT IN ('comp-1669', '')
+      AND a.IS_Success = '1'
       AND (
           @Search IS NULL OR @Search = ''
           OR a.Received_Code1 LIKE '%' + @Search + '%'
           OR a.Received_Code2 LIKE '%' + @Search + '%'
-          OR aa.MobileNo LIKE '%' + @Search + '%'
-          OR c.comp_id LIKE '%' + @Search + '%'
-          OR c.Pro_Name LIKE '%' + @Search + '%'
-          OR cr.Comp_Name LIKE '%' + @Search + '%'
-      );
-
-    ---------------------------------------------------------
-    -- GROUP AND AGGREGATE RESULTS
-    ---------------------------------------------------------
-    SELECT 
-        comp_id,
-        CompanyName,
-        Pro_ID,
-        Pro_Name,
-        Received_Code1,
-        Received_Code2,
-        COUNT(MobileNo) AS [totak fraud check],
-        MAX(Enq_Date) AS MaxEnqDate
-    INTO #GroupedResult
-    FROM #FinalResult
-    GROUP BY comp_id, CompanyName, Pro_ID, Pro_Name, Received_Code1, Received_Code2;
+          OR a.Comp_ID LIKE '%' + @Search + '%'
+          OR b.Comp_Name LIKE '%' + @Search + '%'
+      )
+    GROUP BY a.comp_id, b.Comp_Name, b.Status, a.Received_Code1, a.Received_Code2, a.IS_Success
+    HAVING COUNT(1) > 1;
 
     ---------------------------------------------------------
     -- OUTPUT AND PAGINATION
@@ -178,29 +139,27 @@ BEGIN
     BEGIN
         SELECT 
             comp_id, 
-            CompanyName,
-            Pro_ID,
-            Pro_Name, 
+            Comp_Name,
+            Status as comp_status, 
             Received_Code1, 
             Received_Code2, 
-            [totak fraud check],
-            MaxEnqDate AS LastCodeCheckDate
-        FROM #GroupedResult
-        ORDER BY MaxEnqDate DESC;
+            IS_Success,
+            TotalCheckCount
+        FROM #TempResult
+        ORDER BY TotalCheckCount DESC, comp_id;
     END
     ELSE
     BEGIN
         SELECT 
             comp_id, 
-            CompanyName,
-            Pro_ID,
-            Pro_Name, 
+            Comp_Name,
+            Status as comp_status, 
             Received_Code1, 
             Received_Code2, 
-            [totak fraud check],
-            MaxEnqDate AS LastCodeCheckDate
-        FROM #GroupedResult
-        ORDER BY MaxEnqDate DESC
+            IS_Success,
+            TotalCheckCount
+        FROM #TempResult
+        ORDER BY TotalCheckCount DESC, comp_id
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
         SELECT
@@ -208,7 +167,9 @@ BEGIN
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM #GroupedResult;
+        FROM #TempResult;
     END
+
+    DROP TABLE IF EXISTS #TempResult;
 END
 GO
