@@ -148,9 +148,9 @@ BEGIN
         INSERT INTO #UserSummary (MobileNo, ConsumerName, TotalPoints, AssingedPoints, TotalClaimAmount, AvailableBalance, PaidAmount, TDS, LastCodeCheckDate)
         EXEC [dbo].[USP_GetNegativeBalancePendingUsers_AI] 
             @Comp_ID = @CurrentComp_ID, 
-            @DatePreset = @DatePreset, 
-            @FromDate = @FromDate, 
-            @ToDate = @ToDate, 
+            @DatePreset = 'ALL', 
+            @FromDate = NULL, 
+            @ToDate = NULL, 
             @Page = 1, 
             @Limit = 10000000, 
             @Search = NULL, 

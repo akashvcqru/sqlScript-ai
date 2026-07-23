@@ -200,7 +200,9 @@ PayoutSummary AS
             OR @Search = ''
             OR p.MobileNo LIKE '%' + @Search + '%'
             OR d.ConsumerName LIKE '%' + @Search + '%'
-        );
+        )
+        AND P.LastCodeCheckDate >= @StartDate
+        AND P.LastCodeCheckDate < @EndDate;
 
     DECLARE @TotalRecords INT;
     SELECT @TotalRecords = COUNT(*) FROM #Summary;
