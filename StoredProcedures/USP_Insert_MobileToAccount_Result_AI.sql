@@ -1,6 +1,6 @@
 CREATE OR ALTER PROCEDURE [dbo].[USP_Insert_MobileToAccount_Result_AI]  
 (  
-    @MobileNo VARCHAR(10),  
+    @MobileNo VARCHAR(20),  
   
     @Message VARCHAR(50) = NULL,  
     @Name_At_Bank VARCHAR(150) = NULL,  
@@ -20,6 +20,8 @@ AS
 BEGIN  
     SET NOCOUNT ON;  
   
+    DECLARE @CleanMobile VARCHAR(10) = RIGHT(REPLACE(REPLACE(REPLACE(ISNULL(@MobileNo, ''), '+', ''), '-', ''), ' ', ''), 10);
+
     -- 1. Insert into MobileToAccount_Audit
     INSERT INTO MobileToAccount_Audit  
     (  
@@ -38,7 +40,7 @@ BEGIN
     )  
     VALUES  
     (  
-        LEFT(@MobileNo, 10),  
+        @CleanMobile,  
         LEFT(@Message, 50),  
         LEFT(@Name_At_Bank, 150),  
         LEFT(@Account_Number, 30),  
@@ -59,7 +61,7 @@ BEGIN
 
         SELECT TOP 1 @M_Consumerid = M_Consumerid
         FROM M_Consumer
-        WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
+        WHERE RIGHT(MobileNo, 10) = @CleanMobile
           AND IsDelete = 0;
 
         IF (@M_Consumerid IS NOT NULL)
@@ -75,9 +77,9 @@ BEGIN
                 ORDER BY Row_ID DESC;
 
                 UPDATE M_BankAccount
-                SET Account_No = @Account_Number,
-                    IFSC_Code = UPPER(@IFSC_Code),
-                    Account_HolderNm = ISNULL(NULLIF(@Name_At_Bank, ''), Account_HolderNm)
+                SET Account_No = LEFT(@Account_Number, 50),
+                    IFSC_Code = UPPER(LEFT(@IFSC_Code, 50)),
+                    Account_HolderNm = LEFT(ISNULL(NULLIF(@Name_At_Bank, ''), Account_HolderNm), 70)
                 WHERE M_Consumerid = @M_Consumerid;
             END
             ELSE
@@ -112,9 +114,9 @@ BEGIN
                 (
                     @Bank_ID,
                     @M_Consumerid,
-                    @Account_Number,
-                    UPPER(@IFSC_Code),
-                    @Name_At_Bank,
+                    LEFT(@Account_Number, 50),
+                    UPPER(LEFT(@IFSC_Code, 50)),
+                    LEFT(@Name_At_Bank, 70),
                     GETDATE(),
                     1
                 );
@@ -142,9 +144,9 @@ BEGIN
                 (
                     ISNULL(@Bank_ID, 'ACC_AUTO'),
                     @M_Consumerid,
-                    @Account_Number,
-                    UPPER(@IFSC_Code),
-                    @Name_At_Bank,
+                    LEFT(@Account_Number, 50),
+                    UPPER(LEFT(@IFSC_Code, 50)),
+                    LEFT(@Name_At_Bank, 70),
                     GETDATE(),
                     1,
                     1,
