@@ -13,42 +13,82 @@ GO
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetFraudCodeDetails_Admin_AI]
 (
-    @Code1 VARCHAR(50),
-    @Code2 VARCHAR(50)
+    @Code1           VARCHAR(50),
+    @Code2           VARCHAR(50),
+    @Page            INT = NULL,
+    @Limit           INT = NULL,
+    @IsExport        BIT = NULL
 )
 AS
 BEGIN
     SET NOCOUNT ON;
     SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
+    IF @Page IS NULL OR @Page < 1 SET @Page = 1;
+    IF @Limit IS NULL OR @Limit < 1 SET @Limit = 10;
+    IF @IsExport IS NULL SET @IsExport = 0;
+
+    DECLARE @Offset INT = (@Page - 1) * @Limit;
+
+    DROP TABLE IF EXISTS #TempResult;
+
     SELECT 
-        (pe.Received_Code1 + pe.Received_Code2) AS CodeChecked,
-        pe.MobileNo AS MobileNo,
-        pe.Enq_Date AS EnqDate,
-        ISNULL(pe.Latitude, ISNULL(g.Latitude, '')) AS Lat,
-        ISNULL(pe.Longitude, ISNULL(g.Longitude, '')) AS [Long],
-        ISNULL(ms.ServiceName, '') AS ServiceName,
-        CASE 
-            WHEN pe.is_success = 1 THEN 'Authenticate'
-            WHEN pe.is_success = 2 THEN 'Reauthenticate'
-            ELSE 'Invalid'
-        END AS CodeCheckStatus
+        pe.Dial_Mode,
+        pe.Enq_Date,
+        pe.MobileNo,
+        pe.Latitude,
+        pe.Longitude,
+        pe.comp_id, 
+        pe.Received_Code1,
+        pe.Received_Code2,
+        pe.IS_Success
+    INTO #TempResult
     FROM Pro_Enq pe WITH (NOLOCK)
-    INNER JOIN M_Code b WITH (NOLOCK)
-        ON pe.Received_Code1 = CAST(b.code1 AS VARCHAR(50))
-       AND pe.Received_Code2 = CAST(b.code2 AS VARCHAR(50))
-    LEFT JOIN M_ServiceSubscription mss WITH (NOLOCK)
-        ON b.Pro_ID = mss.Pro_ID AND pe.Comp_ID = mss.Comp_ID AND mss.IsDelete = 0 AND mss.IsActive = 1
-    LEFT JOIN M_Service ms WITH (NOLOCK)
-        ON mss.Service_ID = ms.Service_ID
-    LEFT JOIN (
-        SELECT 
-            Code1, Code2, MobileNo, Latitude, Longitude, Comp_Id,
-            ROW_NUMBER() OVER (PARTITION BY Code1, Code2, MobileNo, Comp_Id ORDER BY Enq_Date DESC) as rn
-        FROM GeoLocationData WITH (NOLOCK)
-    ) g ON g.Code1 = pe.Received_Code1 AND g.Code2 = pe.Received_Code2 AND RIGHT(g.MobileNo, 10) = RIGHT(pe.MobileNo, 10) AND g.Comp_Id = pe.Comp_ID AND g.rn = 1
     WHERE pe.Received_Code1 = @Code1
       AND pe.Received_Code2 = @Code2
-    ORDER BY pe.Enq_Date DESC;
+      AND pe.IS_Success = '1';
+
+    -- Return details
+    IF @IsExport = 1
+    BEGIN
+        SELECT 
+            Dial_Mode,
+            Enq_Date,
+            MobileNo,
+            Latitude,
+            Longitude,
+            comp_id, 
+            Received_Code1,
+            Received_Code2,
+            IS_Success
+        FROM #TempResult
+        ORDER BY Enq_Date DESC;
+    END
+    ELSE
+    BEGIN
+        SELECT 
+            Dial_Mode,
+            Enq_Date,
+            MobileNo,
+            Latitude,
+            Longitude,
+            comp_id, 
+            Received_Code1,
+            Received_Code2,
+            IS_Success
+        FROM #TempResult
+        ORDER BY Enq_Date DESC
+        OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
+
+        -- Return pagination metadata
+        SELECT
+            COUNT(1) AS TotalRecords,
+            @Page AS CurrentPage,
+            @Limit AS [Limit],
+            CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
+        FROM #TempResult;
+    END
+
+    DROP TABLE IF EXISTS #TempResult;
 END
 GO
