@@ -1,7 +1,7 @@
 ALTER   PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
 (
     @Comp_ID         NVARCHAR(50),
-    @DatePreset      NVARCHAR(20) = 'TODAY',   -- TODAY, TOMORROW, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, YEAR, ALL, CUSTOM
+    @DatePreset      NVARCHAR(20) = 'ALL',   -- TODAY, TOMORROW, YESTERDAY, WEEK, LASTWEEK, MONTH, LASTMONTH, YEAR, ALL, CUSTOM
     @FromDate        NVARCHAR(30) = NULL,
     @ToDate          NVARCHAR(30) = NULL,
     @Page            INT = 1,
@@ -130,7 +130,8 @@ PointsSummary AS
 		 SUM
         (
             CAST(ISNULL(AssignPoint, 0) AS DECIMAL(18, 2))
-        ) AS AssingedPoints
+        ) AS AssingedPoints,
+        MAX(Enq_Date) AS LastCodeCheckDate
     FROM dbo.TempCodesActivityReport 
     WHERE --MobileNo = @MobileNo
       Comp_ID = @Comp_ID group by MobileNo
@@ -185,7 +186,8 @@ PayoutSummary AS
         ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0) AS TotalClaimAmount,
         ISNULL(P.TotalPoints, 0) - (ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0)) AS AvailableBalance,
         (ISNULL(TotalClaimAmountPointsValue, 0) + ISNULL(TotalPaidAmount, 0)) AS PaidAmount,
-        (ISNULL(TotalClaimAmountPointsValuetds, 0) + ISNULL(TotalPaidtds, 0)) AS TDS
+        (ISNULL(TotalClaimAmountPointsValuetds, 0) + ISNULL(TotalPaidtds, 0)) AS TDS,
+        P.LastCodeCheckDate
     INTO #Summary
     FROM PointsSummary P
     LEFT JOIN ClaimSummary C ON p.MobileNo = c.MobileNo

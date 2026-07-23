@@ -105,7 +105,8 @@ BEGIN
         TotalClaimAmount DECIMAL(18,2),
         AvailableBalance DECIMAL(18,2),
         PaidAmount DECIMAL(18,2),
-        TDS DECIMAL(18,2)
+        TDS DECIMAL(18,2),
+        LastCodeCheckDate DATETIME
     );
 
     -- Temporary table to hold aggregated company summaries
@@ -144,7 +145,7 @@ BEGIN
 
         -- Execute USP_GetNegativeBalancePendingUsers_AI for this company
         -- We pass IsExport = 1 to skip pagination inside the SP and fetch all user records
-        INSERT INTO #UserSummary (MobileNo, ConsumerName, TotalPoints, AssingedPoints, TotalClaimAmount, AvailableBalance, PaidAmount, TDS)
+        INSERT INTO #UserSummary (MobileNo, ConsumerName, TotalPoints, AssingedPoints, TotalClaimAmount, AvailableBalance, PaidAmount, TDS, LastCodeCheckDate)
         EXEC [dbo].[USP_GetNegativeBalancePendingUsers_AI] 
             @Comp_ID = @CurrentComp_ID, 
             @DatePreset = @DatePreset, 

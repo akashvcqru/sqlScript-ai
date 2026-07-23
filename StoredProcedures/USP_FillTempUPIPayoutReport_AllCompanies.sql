@@ -13,18 +13,20 @@ BEGIN
     DECLARE @Companies TABLE
     (
         ID INT IDENTITY(1,1),
-        CompanyName NVARCHAR(200)
+        Comp_ID VARCHAR(20)
     );
 
-    INSERT INTO @Companies (CompanyName)
+    INSERT INTO @Companies (Comp_ID)
     VALUES
-    ('SHERKOTTI INDUSTRIES PRIVATE LIMITED'),
-    ('PANKAJ PETRO CHEMICALS'),
-    ('CHAUDHARY MARBLES'),
-    ('SURIE POLEX INDUSTRIES LLP'),
-    ('OCI Wires and Cables'),
-    ('TYCON CABLES INDIA PRIVATE LIMITED'),
-    ('Wembley');
+    ('Comp-1726'),
+    ('Comp-1823'),
+    ('Comp-1863'),
+    ('Comp-1727'),
+    ('Comp-1466'),
+    ('Comp-1896'),
+    ('Comp-1750'),
+    ('Comp-1684'),
+    ('Comp-1702');
 
     DECLARE
         @i INT = 1,
@@ -43,15 +45,15 @@ BEGIN
         SET @Comp_ID = NULL;
         SET @FromDate = NULL;
 
-        SELECT @CompanyName = CompanyName
+        SELECT @Comp_ID = Comp_ID
         FROM @Companies
         WHERE ID = @i;
 
-        SELECT @Comp_ID = Comp_ID
+        SELECT @CompanyName = Comp_Name
         FROM Comp_Reg
-        WHERE Comp_Name LIKE '%' + @CompanyName + '%';
+        WHERE Comp_ID = @Comp_ID;
 
-        IF @Comp_ID IS NOT NULL
+        IF @Comp_ID IS NOT NULL AND @CompanyName IS NOT NULL
         BEGIN
             BEGIN TRY
                 -- Last imported date
