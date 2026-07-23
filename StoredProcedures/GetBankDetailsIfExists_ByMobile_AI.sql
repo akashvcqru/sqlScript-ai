@@ -1,4 +1,4 @@
-CREATE PROCEDURE [dbo].[GetBankDetailsIfExists_ByMobile_AI]
+CREATE OR ALTER PROCEDURE [dbo].[GetBankDetailsIfExists_ByMobile_AI]
 (
     @MobileNo VARCHAR(20)
 )
@@ -56,7 +56,7 @@ BEGIN
             Requested_At     AS requested_at
         FROM MobileToAccount_Audit
         WHERE RIGHT(MobileNo, 10) = @MobileNo
-        ORDER BY Completed_At DESC, Id DESC;
+        ORDER BY CASE WHEN ISNULL(IFSC_Code, '') <> '' THEN 1 ELSE 2 END, Completed_At DESC, Id DESC;
     END
     -- 3. If not found in either table
     ELSE
