@@ -86,7 +86,8 @@ BEGIN
             NULL AS CompId,
             NULL AS ProductImage,
             0 AS WarrantyPeriod,
-            NULL AS ExpirationDate;
+            NULL AS ExpirationDate,
+            NULL AS ProId;
         RETURN;
     END
 
@@ -108,7 +109,8 @@ BEGIN
             @ActualCompID AS CompId,
             NULL AS ProductImage,
             0 AS WarrantyPeriod,
-            NULL AS ExpirationDate;
+            NULL AS ExpirationDate,
+            @ProID AS ProId;
         RETURN;
     END
 
@@ -138,7 +140,8 @@ BEGIN
                 @ActualCompID AS CompId,
                 NULL AS ProductImage,
                 0 AS WarrantyPeriod,
-                NULL AS ExpirationDate;
+                NULL AS ExpirationDate,
+                @ProID AS ProId;
             RETURN;
         END
 
@@ -160,7 +163,8 @@ BEGIN
                 @ActualCompID AS CompId,
                 NULL AS ProductImage,
                 0 AS WarrantyPeriod,
-                NULL AS ExpirationDate;
+                NULL AS ExpirationDate,
+                @ProID AS ProId;
             RETURN;
         END
 
@@ -182,7 +186,8 @@ BEGIN
                 @ActualCompID AS CompId,
                 NULL AS ProductImage,
                 0 AS WarrantyPeriod,
-                NULL AS ExpirationDate;
+                NULL AS ExpirationDate,
+                @ProID AS ProId;
             RETURN;
         END
 
@@ -204,7 +209,8 @@ BEGIN
                 @ActualCompID AS CompId,
                 NULL AS ProductImage,
                 0 AS WarrantyPeriod,
-                NULL AS ExpirationDate;
+                NULL AS ExpirationDate,
+                @ProID AS ProId;
             RETURN;
         END
 
@@ -226,7 +232,8 @@ BEGIN
                 @ActualCompID AS CompId,
                 NULL AS ProductImage,
                 0 AS WarrantyPeriod,
-                NULL AS ExpirationDate;
+                NULL AS ExpirationDate,
+                @ProID AS ProId;
             RETURN;
         END
 
@@ -248,7 +255,8 @@ BEGIN
                 @ActualCompID AS CompId,
                 NULL AS ProductImage,
                 0 AS WarrantyPeriod,
-                NULL AS ExpirationDate;
+                NULL AS ExpirationDate,
+                @ProID AS ProId;
             RETURN;
         END
 
@@ -270,7 +278,8 @@ BEGIN
                 @ActualCompID AS CompId,
                 NULL AS ProductImage,
                 0 AS WarrantyPeriod,
-                NULL AS ExpirationDate;
+                NULL AS ExpirationDate,
+                @ProID AS ProId;
             RETURN;
         END
     END
@@ -335,7 +344,8 @@ BEGIN
             @ActualCompID AS CompId,
             @ProductImage AS ProductImage,
             @WarrantyPeriod AS WarrantyPeriod,
-            @ExistingExpiration AS ExpirationDate;
+            @ExistingExpiration AS ExpirationDate,
+            @ProID AS ProId;
         RETURN;
     END
 
@@ -418,7 +428,8 @@ BEGIN
             @ActualCompID AS CompId,
             @ProductImage AS ProductImage,
             @WarrantyPeriod AS WarrantyPeriod,
-            CONVERT(VARCHAR(11), @ExpirationDate, 106) AS ExpirationDate;
+            CONVERT(VARCHAR(11), @ExpirationDate, 106) AS ExpirationDate,
+            @ProID AS ProId;
 
     END TRY
     BEGIN CATCH
@@ -436,7 +447,8 @@ BEGIN
             @ActualCompID AS CompId,
             @ProductImage AS ProductImage,
             @WarrantyPeriod AS WarrantyPeriod,
-            NULL AS ExpirationDate;
+            NULL AS ExpirationDate,
+            @ProID AS ProId;
     END CATCH
 END
 GO

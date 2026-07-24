@@ -42,7 +42,7 @@ BEGIN
         ISNULL(pr.Dispatch_Location, '')                      AS Dispatch_Location,
         '/assets/Product/comp-' 
             + SUBSTRING(pr.Comp_ID, 6, 4) 
-            + '/' + pr.Pro_ID + '.jpg'                        AS ImgPath -- This is a placeholder, usually it's just Pro_ID + extension
+            + '/' + pr.Pro_ID                                 AS ImgPath -- This is a placeholder, usually it's just Pro_ID + extension
     FROM   Pro_Reg pr
     LEFT JOIN M_Label ml ON pr.Label_Code = ml.Label_Code
     WHERE
