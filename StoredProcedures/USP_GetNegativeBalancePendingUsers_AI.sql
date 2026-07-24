@@ -39,7 +39,7 @@ BEGIN
         SET @StartDate = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         SET @EndDate   = DATEADD(DAY, 2, CAST(GETDATE() AS DATE));
     END
-    ELSE IF (@Preset = 'YESTERDAY')
+    ELSE IF (@Preset = 'YESTERDAY' OR @Preset = 'LASTDAY')
     BEGIN
         SET @StartDate = DATEADD(DAY, -1, CAST(GETDATE() AS DATE));
         SET @EndDate   = CAST(GETDATE() AS DATE);
