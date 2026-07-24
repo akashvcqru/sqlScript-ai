@@ -106,7 +106,7 @@ BEGIN
         ISNULL(pr.Dispatch_Location, '')                      AS Dispatch_Location,
         '/assets/Product/comp-' 
             + SUBSTRING(pr.Comp_ID, 6, 4) 
-            + '/' + pr.Pro_ID + '.jpg'                        AS ImgPath,
+            + '/' + pr.Pro_ID                                 AS ImgPath,
         ISNULL(latest_batch.Batch_No, '')                     AS Batch_No,
         ISNULL(CONVERT(VARCHAR, latest_batch.Mfd_Date, 105), '') AS Mfd_Date,
         ISNULL(CONVERT(VARCHAR, latest_batch.Exp_Date, 105), '') AS Exp_Date,
