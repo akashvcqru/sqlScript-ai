@@ -1,4 +1,4 @@
-﻿ALTER PROCEDURE [dbo].[USP_WarrantyCodeCheckReport_AI]
+ALTER PROCEDURE [dbo].[USP_WarrantyCodeCheckReport_AI]
 (
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,
@@ -115,7 +115,7 @@ BEGIN
         OUTER APPLY (
             SELECT TOP 1 Enq_Date, Latitude, Longitude
             FROM pro_enq peq WITH (NOLOCK)
-            WHERE peq.Received_Code1 = Mc.Code1 AND peq.Received_Code2 = Mc.Code2
+            WHERE peq.Received_Code1 = CAST(Mc.Code1 AS NVARCHAR(50)) AND peq.Received_Code2 = CAST(Mc.Code2 AS NVARCHAR(50))
             ORDER BY Enq_Date DESC
         ) pe
         OUTER APPLY (

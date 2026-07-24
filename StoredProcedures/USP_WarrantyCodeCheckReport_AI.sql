@@ -99,6 +99,7 @@ BEGIN
     ;WITH MainResult AS (
         SELECT    
             war.[id] AS id,
+            pe.[Enq_Date] AS Enq_Date,
             war.[PurchaseDate] AS PurchaseDate,
             pr.[Pro_Name] AS Pro_Name,
             pr.[Pro_ID] AS Pro_ID,
@@ -116,15 +117,30 @@ BEGIN
             war.[Brand] AS Brand,
             war.[Ratting] AS Ratting,
             war.[batryType] AS batryType,
-            war.[Model] AS Model
+            war.[Model] AS Model,
+            pe.[Latitude] AS Latitude,
+            pe.[Longitude] AS Longitude,
+            mcns.[City] AS City,
+            mcns.[state] AS State,
+            mcns.[PinCode] AS Pincode
         FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
         INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
-        INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
+        INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]
+        OUTER APPLY (
+            SELECT TOP 1 Enq_Date, Latitude, Longitude
+            FROM pro_enq peq WITH (NOLOCK)
+            WHERE peq.Received_Code1 = CAST(Mc.Code1 AS NVARCHAR(50)) AND peq.Received_Code2 = CAST(Mc.Code2 AS NVARCHAR(50))
+            ORDER BY Enq_Date DESC
+        ) pe
+        OUTER APPLY (
+            SELECT TOP 1 City, state, PinCode
+            FROM m_consumer mcon WITH (NOLOCK)
+            WHERE mcon.MobileNo = war.Mobile OR RIGHT(mcon.MobileNo, 10) = RIGHT(war.Mobile, 10)
+            ORDER BY M_Consumerid DESC
+        ) mcns
         WHERE pr.[Comp_ID] = @Comp_Id
-          -- Date filtering on PurchaseDate (reference page load/filtering logic uses PurchaseDate)
           AND (@StartDate IS NULL OR war.PurchaseDate >= @StartDate)
           AND (@EndDate IS NULL OR war.PurchaseDate <= @EndDate)
-          -- General Search filter (includes Code search without hyphen)
           AND (@SearchParam IS NULL OR 
                war.Mobile LIKE @SearchParam OR 
                war.BillNo LIKE @SearchParam OR 
@@ -149,11 +165,9 @@ BEGIN
     FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
     INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
     INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
-    WHERE pr.[Comp_ID] = @Comp_Id
-      -- Date filtering on PurchaseDate
+    WHERE pr.[Comp_ID] = @Comp_Id AND war.Comp_ID=@Comp_ID
       AND (@StartDate IS NULL OR war.PurchaseDate >= @StartDate)
       AND (@EndDate IS NULL OR war.PurchaseDate <= @EndDate)
-      -- General Search filter (includes Code search without hyphen)
       AND (@SearchParam IS NULL OR 
            war.Mobile LIKE @SearchParam OR 
            war.BillNo LIKE @SearchParam OR 

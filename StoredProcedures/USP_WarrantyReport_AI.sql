@@ -111,7 +111,7 @@ BEGIN
                 WHEN @Comp_Id = 'Comp-1913' THEN war.Serialno
                 ELSE war.[BillNo]
             END AS [BillNo],
-            war.OldSerialno,
+            war.Serialno,
             pr.[Pro_Name] AS [Product_Name],    
             (SELECT TOP 1 Logo_Path FROM Comp_Reg WITH (NOLOCK) WHERE Comp_ID = pr.Comp_ID) AS [LogoPath],
             CONCAT(Mc.[Code1], Mc.[Code2]) AS [Code],    
