@@ -130,6 +130,7 @@ BEGIN
                 ELSE ISNULL(war.[VendorClaimStatus], '') 
             END AS VendorClaimStatus,   
             war.claimdate as [ClaimDate],  
+            war.OldSerialno,
             CASE 
                 WHEN @Comp_Id = 'Comp-1827' THEN war.SerialNo
                 WHEN @Comp_Id = 'Comp-1993' THEN war.SerialNo
