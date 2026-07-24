@@ -1,3 +1,10 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetNegativeBalancePendingUsers_AI]    Script Date: 7/24/2026 10:36:35 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 ALTER   PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
 (
     @Comp_ID         NVARCHAR(50),
