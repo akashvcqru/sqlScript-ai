@@ -39,6 +39,7 @@ BEGIN
         WHERE id = @Id;
 
         -- Insert new record for retry/re-entry (IsWarrantyClaimed, VendorClaimStatus, VendorComments, ImagePath = NULL)
+        /*
         INSERT INTO [dbo].[WarrentyDetails] (
             BillNo, PurchaseDate, Email, Mobile, WarrantyPeriod, ExpirationDate, 
             IsWarrantyClaimed, ImagePath, Comment, ImagePathBill, VendorClaimStatus, 
@@ -56,6 +57,7 @@ BEGIN
             AlternateMobileNo, Comp_id, DeviceType
         FROM [dbo].[WarrentyDetails]
         WHERE id = @Id;
+        */
 
         SELECT 1 AS Success, 'Warranty claim rejected successfully.' AS Message;
     END
