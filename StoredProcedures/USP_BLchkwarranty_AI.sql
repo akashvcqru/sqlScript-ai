@@ -28,7 +28,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_BLchkwarranty_AI]
     @BillNo NVARCHAR(50) = NULL,
     @PurchaseFrom VARCHAR(50) = NULL,
     @ImagePathBill NVARCHAR(200) = NULL,
-    @SerialNo VARCHAR(100) = NULL
+    @SerialNo VARCHAR(100) = NULL,
+    @VehicleNumber NVARCHAR(100) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -360,13 +361,13 @@ BEGIN
             Code, Mobile, Email, WarrantyPeriod, ExpirationDate, 
             PurchaseDate, Comment, IsWarrantyClaimed, VendorClaimStatus, 
             claimdate, Brand, Comp_id, State, City, Pincode, Address, ImagePath,
-            BillNo, PurchaseFrom, ImagePathBill, Serialno
+            BillNo, PurchaseFrom, ImagePathBill, Serialno, VehicleNumber
         )
         VALUES (
             @CodeKey, @MobileNo, @Email, CAST(@WarrantyPeriod AS VARCHAR(50)), @ExpirationDate, 
             ISNULL(@PurchaseDate, GETDATE()), ISNULL(@Remark, 'Registered via Web API'), NULL, NULL, 
             GETDATE(), @BrandName, ISNULL(@Comp_ID, @ActualCompID), @State, @City, @PinCode, @Address, @ImagePath,
-            @BillNo, @PurchaseFrom, @ImagePathBill, @SerialNo
+            @BillNo, @PurchaseFrom, @ImagePathBill, @SerialNo, @VehicleNumber
         );
 
         -- Find or Create Consumer in M_Consumer (optional but good practice to sync)
