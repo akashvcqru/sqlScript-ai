@@ -123,7 +123,7 @@ BEGIN
     END
 
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Candidates, #Users, #State, #Benefit, #Claims, #TDS, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals;
+    DROP TABLE IF EXISTS #Candidates, #Users, #State, #Benefit, #Claims, #TDS, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals, #OtherEarnedPoints;
 
     ---------------------------------------------------------
     -- CANDIDATE USERS FOR THIS COMPANY
@@ -141,6 +141,8 @@ BEGIN
         INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
         INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
         WHERE PR.Comp_Id = @Comp_Id
+        UNION
+        SELECT M_Consumerid FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id
     ) x;
 
     CREATE CLUSTERED INDEX IX_Candidates_ConsumerId ON #Candidates(M_ConsumerId);
@@ -326,6 +328,30 @@ BEGIN
     CREATE CLUSTERED INDEX IX_Benefit_ConsumerId ON #Benefit(M_ConsumerId);
 
     ---------------------------------------------------------
+    -- OTHER EARNED POINTS (KYCRewards, InvoiceRewards, etc. from BLoyaltyPointsEarned)
+    ---------------------------------------------------------
+    SELECT 
+        BL.M_Consumerid,
+        SUM(CAST(
+            CASE 
+                WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
+                ELSE ISNULL(BL.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS OtherPoints
+    INTO #OtherEarnedPoints
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    LEFT JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
+    WHERE BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+      AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
+      AND (BL.compid IS NULL OR CL.Comp_Id IS NOT NULL)
+      AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
+      AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
+      AND (@EndDate   IS NULL OR BL.UpdateDate < @EndDate)
+    GROUP BY BL.M_Consumerid;
+
+    CREATE CLUSTERED INDEX IX_OtherEarnedPoints_ConsumerId ON #OtherEarnedPoints(M_Consumerid);
+
+    ---------------------------------------------------------
     -- REFERRAL CALCULATION (OPTIMIZED)
     ---------------------------------------------------------
     SELECT 
@@ -464,19 +490,20 @@ BEGIN
         ISNULL(S.City,  U.City)  AS City,
         U.PinCode,
         U.KYCStatus,
-        ISNULL(B.Benefit,0) AS PointsEarned,
+        ISNULL(B.Benefit,0) + ISNULL(O.OtherPoints, 0) AS PointsEarned,
         ISNULL(R.ReferralAmount,0) AS RefralAmount,
         ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0) AS RedeemAmount,
-        ISNULL(B.Benefit, 0) + ISNULL(R.ReferralAmount, 0) - (
+        ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralAmount, 0) - (
             ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0)
         ) AS BalanceAmount,
         ISNULL(TDS.TDSAmount, 0) AS TDSAmount,
         B.LastScan,
-        ROW_NUMBER() OVER (ORDER BY ISNULL(B.Benefit,0) DESC, U.M_ConsumerId) AS RN
+        ROW_NUMBER() OVER (ORDER BY ISNULL(B.Benefit,0) + ISNULL(O.OtherPoints, 0) DESC, U.M_ConsumerId) AS RN
     INTO #FinalData
     FROM #Users U
     LEFT JOIN #State   S  ON S.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #Benefit B  ON B.M_ConsumerId = U.M_ConsumerId
+    LEFT JOIN #OtherEarnedPoints O ON O.M_Consumerid = U.M_ConsumerId
     LEFT JOIN #Referrals R ON R.M_Consumerid = U.M_ConsumerId
     LEFT JOIN #Claims  C  ON C.Mobileno     = U.MobileNo
     LEFT JOIN #TDS     TDS ON TDS.Mobileno   = U.MobileNo
@@ -484,7 +511,7 @@ BEGIN
     LEFT JOIN #BPoints BP ON BP.RedeemBy    = U.M_ConsumerId
     LEFT JOIN #Transactions T ON T.M_Consumerid = CAST(U.M_ConsumerId AS VARCHAR(50))
     WHERE
-        (ISNULL(B.Benefit, 0) > 0 OR ISNULL(R.ReferralAmount, 0) > 0)
+        (ISNULL(B.Benefit, 0) > 0 OR ISNULL(R.ReferralAmount, 0) > 0 OR ISNULL(O.OtherPoints, 0) > 0)
         AND (@StateFilter IS NULL OR ISNULL(S.State, U.State) = @StateFilter)
         AND (
             @KYCStatusFilter IS NULL OR
