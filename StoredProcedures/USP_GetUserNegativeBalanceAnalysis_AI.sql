@@ -189,7 +189,11 @@ TransactionData AS
             ISNULL(c.pointsvalue, 0) AS DECIMAL(18, 2)
         ) AS TransactionValue1,
         c.tdsAmount,
-        'Claim Raised' AS TransactionType,
+        CASE 
+            WHEN ISNULL(c.IsApproved, 0) = 0 THEN 'Claim Raised'
+            WHEN c.IsApproved = 1 THEN 'Amount Claimed'
+            ELSE 'Claim Raised'
+        END AS TransactionType,
         CASE
             WHEN ISNULL(c.IsApproved, 0) = 0
                 THEN 'Pending'
@@ -301,7 +305,7 @@ select * into #temp from TransactionData
         1 AS SortOrder
     FROM #temp
     WHERE DuplicateRank = 1
-      AND TransactionType IN ('Claim Raised','Amount Paid')
+      AND TransactionType IN ('Claim Raised', 'Amount Claimed', 'Amount Paid')
       AND ISNULL(tdsAmount,0) > 0
 )
 
@@ -322,7 +326,7 @@ select * into #temp from TransactionData
         CASE
             WHEN TransactionType = 'Points Earned'
                 THEN '+' + CONVERT(VARCHAR(30), TransactionValue)
-            WHEN TransactionType IN ('Claim Raised','Amount Paid')
+            WHEN TransactionType IN ('Claim Raised', 'Amount Claimed', 'Amount Paid')
                 THEN CONVERT(VARCHAR(30), TransactionValue)
             ELSE NULL
         END AS DisplayValue,
