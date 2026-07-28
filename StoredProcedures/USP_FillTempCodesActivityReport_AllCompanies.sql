@@ -106,6 +106,63 @@ BEGIN
 
                 DECLARE @InsertedCount INT = @@ROWCOUNT;
 
+                INSERT INTO dbo.TempCodesActivityReport
+                (
+                    Comp_ID,
+                    Comp_Name,
+                    UniqueCode,
+                    Enq_Date,
+                    Dial_Mode,
+                    ConsumerName,
+                    MobileNo,
+                    State,
+                    City,
+                    Pro_Name,
+                    Points,
+                    Result,
+                    Latitude,
+                    Longitude,
+                    AssignPoint,
+                    WornPoint,
+                    ReferralPoints
+                )
+                SELECT
+                    b.compid,
+                    cr.Comp_Name,
+                    b.Code1,
+                    b.UpdateDate,
+                    b.ServiceName,
+                    mc.ConsumerName,
+                    mc.MobileNo,
+                    mc.State,
+                    mc.City,
+                    b.ServiceName,
+                    ISNULL(b.Points,0),
+                    'Success',
+                    NULL,
+                    NULL,
+                    ISNULL(b.Points,0),
+                    ISNULL(b.Points,0),
+                    0
+                FROM dbo.BLoyaltyPointsEarned b
+                INNER JOIN dbo.M_Consumer mc
+                    ON mc.M_Consumerid = b.M_Consumerid
+                LEFT JOIN dbo.Comp_Reg cr
+                    ON cr.Comp_ID = b.compid
+                WHERE b.ServiceName IN
+                (
+                    'InvoiceBenifit',
+                    'InvoiceRewards',
+                    'KYCRewards',
+                    'MounthlyBenifits',
+                    'Supervisor'
+                ) AND ISNULL(b.Points,0) > 0
+                AND b.compid = @Comp_ID
+                AND b.UpdateDate >= @FromDate
+                AND b.UpdateDate <= @ToDate;
+
+                SET @InsertedCount = @InsertedCount + @@ROWCOUNT;
+
                 IF EXISTS (
                     SELECT 1 
                     FROM dbo.TempDataSyncLog 

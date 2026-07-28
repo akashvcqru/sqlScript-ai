@@ -13,8 +13,8 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI_FillData]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
-    @FromDate DATE = NULL,             -- Explicit Start Date
-    @ToDate DATE = NULL,               -- Explicit End Date
+    @FromDate DATETIME = NULL,             -- Explicit Start Date
+    @ToDate DATETIME = NULL,               -- Explicit End Date
     @CodeStatusFilter NVARCHAR(20) = NULL, -- (Verified, Already Scanned, Invalid)
     @StateFilter NVARCHAR(100) = NULL,
     @DialModeFilter NVARCHAR(50) = NULL,
@@ -47,8 +47,8 @@ BEGIN
     -- Explicit date range wins
     IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
     BEGIN
-        SET @StartDate = CAST(@FromDate AS DATETIME);
-        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
+        SET @StartDate = @FromDate;
+        SET @EndDate   = DATEADD(DAY, 1, @ToDate);
     END
     ELSE
     BEGIN

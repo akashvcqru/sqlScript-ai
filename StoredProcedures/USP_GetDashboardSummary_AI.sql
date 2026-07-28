@@ -295,7 +295,7 @@ BEGIN
             ISNULL(Points_Val, Amount) as ClaimAmount
         FROM tblUPITransactionDetails 
         WHERE RIGHT(Mobileno, 10) = RIGHT(@MobileNo, 10) 
-          AND Status IN ('Pending','Success') 
+          AND (Status = 'Success' OR (Status = 'Pending' AND ReqDate >= DATEADD(day, -30, GETDATE()))) 
           AND Comp_id = @CompID 
           AND Code2 > 0
     ) t
