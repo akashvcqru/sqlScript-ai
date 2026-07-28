@@ -126,6 +126,11 @@ BEGIN
        c.Comp_ID = @Comp_ID and
         ISNULL(c.IsApproved, 0) <> 2
       AND ISNULL(c.Amount, 0) <> 0
+      AND c.Claim_Date <= (
+          SELECT MAX(p.ReqDate)
+          FROM dbo.TempUPIPayoutReport p
+          WHERE p.Comp_ID = c.Comp_ID
+      )
 ),
 PointsSummary AS
 (
