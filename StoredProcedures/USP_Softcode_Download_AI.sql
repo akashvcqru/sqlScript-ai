@@ -17,7 +17,8 @@ CREATE PROCEDURE [dbo].[USP_Softcode_Download_AI]
     @IsDefault INT,
     @LabelCode VARCHAR(50),
     @TrackingNo VARCHAR(50),
-    @ProductRange VARCHAR(100) = NULL
+    @ProductRange VARCHAR(100) = NULL,
+    @ServiceID VARCHAR(50) = 'SRV1001'
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -102,7 +103,7 @@ BEGIN
         FROM M_ServiceSubscription
         WHERE Pro_ID = @ProID 
           AND Comp_ID = @CompID 
-          AND Service_ID = 'SRV1001'
+          AND Service_ID = @ServiceID
           AND start_order = @startOrderVal 
           AND start_series = @startSeriesVal 
           AND end_order = @endOrderVal 
@@ -118,7 +119,7 @@ BEGIN
 
             -- Try to get template subscription row
             DECLARE @templateExists INT = 0;
-            SELECT TOP 1 @templateExists = 1 FROM M_ServiceSubscription WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND Service_ID = 'SRV1001';
+            SELECT TOP 1 @templateExists = 1 FROM M_ServiceSubscription WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND Service_ID = @ServiceID;
             
             IF @templateExists = 1
             BEGIN
@@ -150,8 +151,8 @@ BEGIN
 
                 SET @sql = N'INSERT INTO M_ServiceSubscription (' + @columnsList + N') 
                              SELECT TOP 1 ' + @selectList + N' FROM M_ServiceSubscription 
-                             WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND Service_ID = ''SRV1001''';
-                EXEC sp_executesql @sql, N'@ProID VARCHAR(50), @CompID VARCHAR(50)', @ProID = @ProID, @CompID = @CompID;
+                             WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND Service_ID = @ServiceID';
+                EXEC sp_executesql @sql, N'@ProID VARCHAR(50), @CompID VARCHAR(50), @ServiceID VARCHAR(50)', @ProID = @ProID, @CompID = @CompID, @ServiceID = @ServiceID;
             END
             ELSE
             BEGIN
@@ -166,7 +167,7 @@ BEGIN
                         @selectList2 = @selectList2 + 
                             CASE 
                                 WHEN COLUMN_NAME = 'Subscribe_Id' THEN '''' + @newSubId + ''','
-                                WHEN COLUMN_NAME = 'Service_ID' THEN '''SRV1001'','
+                                WHEN COLUMN_NAME = 'Service_ID' THEN '''' + @ServiceID + ''','
                                 WHEN COLUMN_NAME = 'start_order' THEN CAST(@startOrderVal AS VARCHAR(50)) + ','
                                 WHEN COLUMN_NAME = 'end_order' THEN CAST(@endOrderVal AS VARCHAR(50)) + ','
                                 WHEN COLUMN_NAME = 'start_series' THEN CAST(@startSeriesVal AS VARCHAR(50)) + ','
@@ -194,7 +195,7 @@ BEGIN
                     INSERT INTO M_ServiceSubscription 
                     (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, PlanMasterPeriod, PlanSalePeriod, PlanMasterPrice, PlanSalePrice, start_order, start_series, end_order, end_series, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType)
                     VALUES 
-                    (@newSubId, 'SRV1001', @CompID, @ProID, 'PLN1002', 'SILVER PLAN', 6, 0, 0, 0, @startOrderVal, @startSeriesVal, @endOrderVal, @endSeriesVal, CAST(@MfdDate AS DATETIME), DATEADD(month, 6, CAST(@MfdDate AS DATETIME)), GETDATE(), 1, 0, 1, 'Service');
+                    (@newSubId, @ServiceID, @CompID, @ProID, 'PLN1002', 'SILVER PLAN', 6, 0, 0, 0, @startOrderVal, @startSeriesVal, @endOrderVal, @endSeriesVal, CAST(@MfdDate AS DATETIME), DATEADD(month, 6, CAST(@MfdDate AS DATETIME)), GETDATE(), 1, 0, 1, 'Service');
                 END
             END
 
@@ -202,7 +203,7 @@ BEGIN
             UPDATE Code_Gen SET PrStart = TRY_CAST(PrStart AS BIGINT) + 1 WHERE Prfor = 'Subscription';
 
             SET @currentSubId = @newSubId;
-            SET @currentServiceId = 'SRV1001';
+            SET @currentServiceId = @ServiceID;
             
             SELECT TOP 1 @subDateFrom = DateFrom, @subDateTo = DateTo 
             FROM M_ServiceSubscription 
