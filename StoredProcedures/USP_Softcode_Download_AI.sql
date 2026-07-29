@@ -224,8 +224,23 @@ BEGIN
         DECLARE @seriesLimitStr VARCHAR(100) = 'From ' + RIGHT('0000' + CAST(@startOrderVal AS VARCHAR(4)), 4) + '-' + RIGHT('0000' + CAST(@startSeriesVal AS VARCHAR(4)), 4) + ' To ' + RIGHT('0000' + CAST(@endOrderVal AS VARCHAR(4)), 4) + '-' + RIGHT('0000' + CAST(@endSeriesVal AS VARCHAR(4)), 4);
         DECLARE @newTProRowId BIGINT = 0;
         
+        -- Fetch the top latest Batch_No for this product from T_Pro (excluding tracking IDs with hyphens)
+        DECLARE @LatestBatchNo VARCHAR(100) = NULL;
+        SELECT TOP 1 @LatestBatchNo = Batch_No 
+        FROM T_Pro 
+        WHERE Pro_ID = @ProID 
+          AND Batch_No IS NOT NULL 
+          AND Batch_No <> '' 
+          AND Batch_No NOT LIKE '%-%'
+        ORDER BY Row_ID DESC;
+
+        IF @LatestBatchNo IS NULL OR @LatestBatchNo = ''
+        BEGIN
+            SET @LatestBatchNo = @TrackingNo;
+        END
+        
         INSERT INTO T_Pro (Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date, Series_Limit)
-        VALUES (@ProID, @TrackingNo, @Mrp, CAST(@MfdDate AS DATETIME), @transDtTo, 'Soft Code Batch', GETDATE(), @seriesLimitStr);
+        VALUES (@ProID, @LatestBatchNo, @Mrp, CAST(@MfdDate AS DATETIME), @transDtTo, 'Soft Code Batch', GETDATE(), @seriesLimitStr);
         
         SET @newTProRowId = SCOPE_IDENTITY();
 
