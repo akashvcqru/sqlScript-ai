@@ -284,6 +284,8 @@ BEGIN
         );
         
         DECLARE @xmlStr NVARCHAR(MAX) = CAST(@xmlData AS NVARCHAR(MAX));
+        DECLARE @TempInserted TABLE (InsertedId INT);
+        INSERT INTO @TempInserted (InsertedId)
         EXEC InsertUserFrequency @XmlData = @xmlStr;
 
         -- 10. Update tbl_SoftCodegenrate_Details
