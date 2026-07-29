@@ -231,13 +231,13 @@ PayoutSummary AS
     BEGIN
         SELECT *
         FROM #Summary
-        ORDER BY MobileNo;
+        ORDER BY LastPaymentDate DESC;
     END
     ELSE
     BEGIN
         SELECT *
         FROM #Summary
-        ORDER BY MobileNo
+        ORDER BY LastPaymentDate DESC
         OFFSET (@Page - 1) * @Limit ROWS
         FETCH NEXT @Limit ROWS ONLY;
 
