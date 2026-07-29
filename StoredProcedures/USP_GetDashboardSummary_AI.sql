@@ -9,7 +9,8 @@ GO
 ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
-    @CompID VARCHAR(50)
+    @CompID VARCHAR(50),
+    @OverallStatsOnly BIT = 0
 )
 AS
 BEGIN
@@ -259,6 +260,17 @@ BEGIN
             ELSE @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
         END as TotalPoints,
         @HasServiceWiseGifts as HasServiceWiseGifts;
+
+    IF @OverallStatsOnly = 1
+    BEGIN
+        DROP TABLE IF EXISTS #UserScans;
+        DROP TABLE IF EXISTS #EarnedPoints;
+        DROP TABLE IF EXISTS #ConfigPoints;
+        DROP TABLE IF EXISTS #ScanServices;
+        DROP TABLE IF EXISTS #ConfiguredPoints;
+        DROP TABLE IF EXISTS #ReferralStats;
+        RETURN;
+    END
 
     -- Result Set 2: Service-Wise Stats
     SELECT 
