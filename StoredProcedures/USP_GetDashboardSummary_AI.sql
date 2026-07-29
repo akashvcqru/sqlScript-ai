@@ -201,7 +201,7 @@ BEGIN
     FROM BLoyaltyPointsEarned BL
     INNER JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
     WHERE BL.M_Consumerid = @M_Consumerid 
-      AND BL.ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards');
+      AND BL.ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards','Transfer From User');
 
     ---------------------------------------------------------
     -- Calculate specific totals for this consumer
