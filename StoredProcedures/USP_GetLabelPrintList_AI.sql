@@ -25,6 +25,12 @@ BEGIN
     DECLARE @RegDate DATETIME;
     SELECT TOP 1 @RegDate = Reg_Date FROM Comp_Reg WHERE Comp_ID = @Comp_ID AND Status = 1;
 
+    DECLARE @SettingsExist INT = 0;
+    IF EXISTS (SELECT 1 FROM M_QRCode_Print_Settings WHERE Comp_ID = @Comp_ID)
+    BEGIN
+        SET @SettingsExist = 1;
+    END
+
     -- Normalize empty or zero product ID
     IF @Pro_ID = '' OR @Pro_ID = '0'
         SET @Pro_ID = NULL;
@@ -73,7 +79,7 @@ BEGIN
             ISNULL(B.Display_Product, B.Pro_Name) AS Pro_Name,
             CAST(PB.Print_DateTime AS DATE) AS print_date,
             S.IsDispatched,
-            CASE WHEN LR.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType,
+            CASE WHEN @SettingsExist = 1 AND LR.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType,
             PB.TotalRecords
         FROM PaginatedBatches PB
         INNER JOIN Pro_Reg B ON PB.Pro_ID = B.Pro_ID
@@ -133,7 +139,7 @@ BEGIN
             B.Pro_Name,
             CAST(PB.Print_DateTime AS DATE) AS print_date,
             S.IsDispatched,
-            CASE WHEN LR.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType,
+            CASE WHEN @SettingsExist = 1 AND LR.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType,
             PB.TotalRecords
         FROM PaginatedBatches PB
         INNER JOIN Pro_Reg B ON PB.Pro_ID = B.Pro_ID
