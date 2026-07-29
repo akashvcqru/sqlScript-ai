@@ -174,6 +174,8 @@ BEGIN
         ISNULL(CD.tdsper, 0) AS tdsper,
         MC.ConsumerName,
         MC.City,
+        MC.PinCode AS Pincode,
+        MC.state AS State,
         MB.Account_No,
         MB.Account_HolderNm,
         MB.Bank_Name AS [Bank Name],

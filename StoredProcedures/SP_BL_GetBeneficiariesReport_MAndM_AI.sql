@@ -126,7 +126,7 @@ BEGIN
     ---------------------------------------------------------
     -- CLEAN TEMP TABLES
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Users, #State, #Benefit, #Claims, #UPI, #BPoints, #FinalData, #Referrals;
+    DROP TABLE IF EXISTS #Users, #State, #Benefit, #Claims, #UPI, #BPoints, #FinalData, #Referrals, #OtherEarnedPoints;
 
     ---------------------------------------------------------
     -- USERS + KYC
@@ -201,6 +201,23 @@ BEGIN
     GROUP BY BL.M_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_Benefit_ConsumerId ON #Benefit(M_ConsumerId);
+
+    ---------------------------------------------------------
+    -- OTHER EARNED POINTS (KYCRewards, InvoiceRewards, etc. from BLoyaltyPointsEarned)
+    ---------------------------------------------------------
+    SELECT 
+        BL.M_Consumerid,
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS OtherPoints
+    INTO #OtherEarnedPoints
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    WHERE BL.compid = @ActualCompId
+      AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+      AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
+      AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
+      AND (@EndDate   IS NULL OR BL.UpdateDate < @EndDate)
+    GROUP BY BL.M_Consumerid;
+
+    CREATE CLUSTERED INDEX IX_OtherEarnedPoints_ConsumerId ON #OtherEarnedPoints(M_Consumerid);
 
     ---------------------------------------------------------
     -- REFERRAL CALCULATION (OPTIMIZED)
@@ -288,23 +305,24 @@ BEGIN
         ISNULL(S.City,  U.City)  AS City,
         U.PinCode,
         U.KYCStatus,
-        ISNULL(B.Benefit,0) AS PointsEarned,
+        ISNULL(B.Benefit,0) + ISNULL(O.OtherPoints, 0) AS PointsEarned,
         ISNULL(R.ReferralAmount,0) AS RefralAmount,
         ISNULL(C.ClaimsAmount,0) + ISNULL(UU.UPIAmount,0) + ISNULL(BP.BPointsAmount,0) AS RedeemAmount,
-        ISNULL(B.Benefit,0) + ISNULL(R.ReferralAmount,0) - (ISNULL(C.ClaimsAmount,0) + ISNULL(UU.UPIAmount,0) + ISNULL(BP.BPointsAmount,0)) AS BalanceAmount,
+        ISNULL(B.Benefit,0) + ISNULL(O.OtherPoints,0) + ISNULL(R.ReferralAmount,0) - (ISNULL(C.ClaimsAmount,0) + ISNULL(UU.UPIAmount,0) + ISNULL(BP.BPointsAmount,0)) AS BalanceAmount,
         ISNULL(C.TDSAmount,0) AS TDSAmount,
         B.LastScan,
-        ROW_NUMBER() OVER (ORDER BY ISNULL(B.Benefit,0) DESC, U.M_ConsumerId) AS RN
+        ROW_NUMBER() OVER (ORDER BY ISNULL(B.Benefit,0) + ISNULL(O.OtherPoints, 0) DESC, U.M_ConsumerId) AS RN
     INTO #FinalData
     FROM #Users U
     LEFT JOIN #State   S  ON S.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #Benefit B  ON B.M_ConsumerId = U.M_ConsumerId
+    LEFT JOIN #OtherEarnedPoints O ON O.M_Consumerid = U.M_ConsumerId
     LEFT JOIN #Referrals R ON R.M_Consumerid = U.M_ConsumerId
     LEFT JOIN #Claims  C  ON C.Mobileno     = U.MobileNo
     LEFT JOIN #UPI     UU ON UU.M_Consumerid = CAST(U.M_ConsumerId AS VARCHAR(50))
     LEFT JOIN #BPoints BP ON BP.RedeemBy    = U.M_ConsumerId
     WHERE
-        (ISNULL(B.Benefit, 0) > 0 OR ISNULL(R.ReferralAmount, 0) > 0)
+        (ISNULL(B.Benefit, 0) > 0 OR ISNULL(R.ReferralAmount, 0) > 0 OR ISNULL(O.OtherPoints, 0) > 0)
         AND (@StateFilter IS NULL OR ISNULL(S.State, U.State) = @StateFilter)
         AND (
             @KYCStatusFilter IS NULL OR

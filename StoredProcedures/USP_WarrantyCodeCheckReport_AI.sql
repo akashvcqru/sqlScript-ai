@@ -122,7 +122,8 @@ BEGIN
             pe.[Longitude] AS Longitude,
             mcns.[City] AS City,
             mcns.[state] AS State,
-            mcns.[PinCode] AS Pincode
+            mcns.[PinCode] AS Pincode,
+            war.[vehicleNumber] AS VehicleNumber
         FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
         INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
         INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]
