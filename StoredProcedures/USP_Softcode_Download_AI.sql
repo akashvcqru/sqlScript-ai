@@ -18,7 +18,8 @@ CREATE PROCEDURE [dbo].[USP_Softcode_Download_AI]
     @LabelCode VARCHAR(50),
     @TrackingNo VARCHAR(50),
     @ProductRange VARCHAR(100) = NULL,
-    @ServiceID VARCHAR(50) = 'SRV1001'
+    @ServiceID VARCHAR(50) = 'SRV1001',
+    @ProductQTY INT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -298,7 +299,7 @@ BEGIN
         INSERT INTO tbl_SoftCodegenrate_Details 
         (Pro_id, Comp_id, NOOfLabelRequest, Frequency, ProductRange, ProductQTY, Manufacture_date, TrackingId, chkdiffrentpoint, pointsdata, datefrom, dateto, MRP, Isdefault)
         VALUES 
-        (@ProID, @CompID, @Qty, @Frequency, @ProductRange, @Qty, CAST(@MfdDate AS DATETIME), @TrackingNo, @ChkDiffPoint, @PointsData, @transDtFrom, @transDtTo, @Mrp, @IsDefault);
+        (@ProID, @CompID, @Qty, @Frequency, @ProductRange, ISNULL(@ProductQTY, @Qty), CAST(@MfdDate AS DATETIME), @TrackingNo, @ChkDiffPoint, @PointsData, @transDtFrom, @transDtTo, @Mrp, @IsDefault);
 
         -- 11. Update Code_Gen for LabelTracking seed
         UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'LabelTracking';
