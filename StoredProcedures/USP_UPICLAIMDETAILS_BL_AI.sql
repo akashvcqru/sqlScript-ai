@@ -24,7 +24,7 @@ a.SupervisorValue,
 a.SupervisorGet,
 a.SupervisorValueType,
 a.SupervisorMobileNo
-from ClaimDetails a left join M_Service aa on aa.Service_ID = a.Service_ID where Mobileno=@Mobileno and Comp_id=@compId
+from ClaimDetails a left join M_Service aa on aa.Service_ID = a.Service_ID where Mobileno=@Mobileno and Comp_id=@compId and a.Row_id not in (select Row_id from ClaimDetails where IsReqClaimReport = 0)
 
 --(Comp_id = @compId or (@compId IN ('Comp-1650', 'Comp-1567') and Comp_id IN ('Comp-1650', 'Comp-1567') ) )
 

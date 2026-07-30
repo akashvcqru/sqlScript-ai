@@ -33,6 +33,7 @@ BEGIN
     WHERE a.Comp_id = b.CompID     
       AND a.Mobileno = @Mobileno     
       AND a.Comp_id = @Comp_id      
+      AND a.Row_id NOT IN (SELECT Row_id FROM ClaimDetails WHERE IsReqClaimReport = 0)
     
     UNION ALL      
     
@@ -59,6 +60,7 @@ BEGIN
       AND a.Mobileno = @Mobileno   
       AND a.Comp_id = @Comp_id  
 	  and Claim_mode='Manual'  
+      AND a.Row_id NOT IN (SELECT Row_id FROM ClaimDetails WHERE IsReqClaimReport = 0)
   --and (a.Comp_id = @Comp_id or (@Comp_id IN ('Comp-1650', 'Comp-1567') and a.Comp_id IN ('Comp-1650', 'Comp-1567') ) )   
     
     UNION ALL

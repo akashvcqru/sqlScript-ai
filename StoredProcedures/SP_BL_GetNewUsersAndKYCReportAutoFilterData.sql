@@ -157,10 +157,10 @@ BEGIN
         SET @BaseWhere += N' AND MC.[State] = @StateFilter';
 
     ------------------------------------------------------
-    -- Mobile Number Search
+    -- Mobile Number & User Type Search
     ------------------------------------------------------
     IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
-        SET @BaseWhere += N' AND MC.MobileNo LIKE ''%'' + @Search + ''%''';
+        SET @BaseWhere += N' AND (MC.MobileNo LIKE ''%'' + @Search + ''%'' OR UT.User_Type LIKE ''%'' + @Search + ''%'')';
 
     ------------------------------------------------------
     -- Data Query
@@ -247,6 +247,7 @@ BEGIN
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
         FROM tbl_Vendorvisekycstatus VKS
         INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
+        LEFT JOIN User_Type UT ON UT.Row_ID = VKS.Vrkabel_User_Type
         ' + @BaseWhere;
     END
 

@@ -49,7 +49,8 @@ BEGIN
         WHERE a.Comp_id = b.CompID       
           AND a.Mobileno IN (SELECT MobileNo FROM #Consumerlist)  
           AND a.Comp_id = @Comp_id        
-
+          AND a.Row_id NOT IN (SELECT Row_id FROM ClaimDetails WHERE IsReqClaimReport = 0)
+ 
         UNION ALL        
 
         -- Cash transfer records (no gift associated)      
@@ -75,6 +76,7 @@ BEGIN
           AND Mobileno = @Mobileno       
           AND Comp_id = @Comp_id  
           AND Claim_mode = 'Manual'      
+          AND Row_id NOT IN (SELECT Row_id FROM ClaimDetails WHERE IsReqClaimReport = 0)
     ) AS FinalResultSet;
 
     -- Step 3: Return the result
