@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[m_dealermaster]    Script Date: 3/2/2026 12:27:10 PM ******/
+/****** Object:  Table [dbo].[m_dealermaster]    Script Date: 3/2/2026 12:27:10 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -16,7 +16,7 @@ CREATE TABLE [dbo].[m_dealermaster](
 	[Created_Date] [datetime] NULL,
 	[Created_By] [bigint] NULL,
 	[Updated_Date] [datetime] NULL,
-	[Updated_By] [bigint] NULL,
+	[Updated_By] [nvarchar](255) NULL,
 	[D_Name] [nvarchar](100) NULL,
 	[Comp_id] [nvarchar](50) NULL,
 	[City] [varchar](100) NULL,
