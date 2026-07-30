@@ -125,6 +125,7 @@ BEGIN
             END AS Status,
             '' as Service_ID,
             FORMAT(pe.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+            pe.Enq_Date AS Sort_Date,
             ISNULL(cr.Comp_Name, 'N/A') AS Comp_Name,  
             ISNULL(pr.Pro_Name, 'N/A') AS Pro_Name,  
             CONCAT(pe.Received_Code1, pe.Received_Code2) AS [Code],  
@@ -142,7 +143,6 @@ BEGIN
         WHERE pe.MobileNo = @MobileNo   
           AND pr.Comp_ID = @Comp_ID  
     )
-    --ConsumerData AS (  
         SELECT   
             t.*,  
             mc.M_Consumerid   
@@ -150,10 +150,19 @@ BEGIN
         INNER JOIN M_Consumer mc   
             ON mc.MobileNo = t.MobileNo   
         WHERE mc.IsDelete = 0  
-    --)  
   
     SELECT   
-        t2.*,  
+        t2.Status,  
+        t2.Service_ID,  
+        t2.Enq_Date,  
+        t2.Comp_Name,  
+        t2.Pro_Name,  
+        t2.Code,  
+        t2.Code1,  
+        t2.Code2,  
+        t2.MobileNo,  
+        t2.M_Consumerid,  
+        t2.Sort_Date,
         CASE 
             WHEN sst.Points IS NOT NULL AND sst.Points <> 0 THEN CONCAT('+', CAST(sst.Points AS VARCHAR(50)))
             ELSE '0'
@@ -181,7 +190,17 @@ BEGIN
     UNION
 
 	SELECT   
-    t2.*,   
+    t2.Status,  
+    t2.Service_ID,  
+    t2.Enq_Date,  
+    t2.Comp_Name,  
+    t2.Pro_Name,  
+    t2.Code,  
+    t2.Code1,  
+    t2.Code2,  
+    t2.MobileNo,  
+    t2.M_Consumerid,  
+    t2.Sort_Date,
     '0' AS Points,   
     s.ServiceName AS ServiceName,  
     s.ServiceName AS ServiceNameNew,
@@ -199,14 +218,6 @@ INNER JOIN M_ServiceSubscription ss
     ON m.Pro_id = ss.Pro_id 
     AND ss.IsActive = 1 
     AND ss.IsDelete = 0
-    --AND (
-    --    m.Series_Order > ss.start_order 
-    --    OR (m.Series_Order = ss.start_order AND m.Series_Serial >= ss.start_series)
-    --)
-    --AND (
-    --    m.Series_Order < ss.end_order 
-    --    OR (m.Series_Order = ss.end_order AND m.Series_Serial <= ss.end_series)
-    --)
 INNER JOIN M_Service s 
     ON ss.Service_ID = s.Service_ID
 WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
@@ -215,7 +226,17 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
     UNION  
   
     SELECT   
-        t2.*,   
+        t2.Status,  
+        t2.Service_ID,  
+        t2.Enq_Date,  
+        t2.Comp_Name,  
+        t2.Pro_Name,  
+        t2.Code,  
+        t2.Code1,  
+        t2.Code2,  
+        t2.MobileNo,  
+        t2.M_Consumerid,  
+        t2.Sort_Date,
         '0' AS Points,   
         'buildloyalty' AS ServiceName,  
         'buildloyalty' AS ServiceNameNew,
@@ -241,6 +262,7 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
         '' AS Code2,  
         @MobileNo AS MobileNo,  
         @M_Consumer_id AS M_Consumerid,  
+        bll.UpdateDate AS Sort_Date,
         CASE 
             WHEN bll.Points IS NOT NULL AND bll.Points <> '' AND bll.Points <> '0' THEN CONCAT('+', bll.Points)
             WHEN bll.cash IS NOT NULL AND bll.cash <> '' AND bll.cash <> '0' THEN CONCAT('+', bll.cash)
@@ -283,5 +305,5 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
       AND bll.ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards', 'Transfer From User')   
       AND bll.compid = @Comp_ID  
   
-    ORDER BY Enq_Date DESC;  
+    ORDER BY Sort_Date DESC;  
 END
