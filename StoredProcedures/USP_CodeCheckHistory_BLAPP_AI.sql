@@ -5,7 +5,7 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-ALTER PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]  
+CREATE OR ALTER PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]  
     @MobileNo VARCHAR(15),  
     @Comp_ID VARCHAR(100),  
     @M_Consumer_id INT,
@@ -253,7 +253,8 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
             WHEN bll.ServiceName = 'Supervisor' THEN 'Supervisor'
             WHEN bll.ServiceName = 'InvoiceBenifit' THEN 'Invoice Benefit'
             WHEN bll.ServiceName = 'InvoiceRewards' THEN 'Invoice Rewards'
-            WHEN bll.ServiceName = 'Transfer From User' THEN 'Transfer From User'
+            WHEN bll.ServiceName = 'Transfer From User' THEN 
+                CONCAT('Transfer From User, ', ISNULL(u.ConsumerName, ''), ', ', ISNULL(RIGHT(pth.fromMobileno, 10), ''), ', ', COALESCE(ut_u.User_Type, ut_u2.User_Type, u.Other_Role, ''))
             ELSE bll.ServiceName 
         END AS ServiceNameNew,
         'Green' AS ColourCode,
@@ -273,6 +274,11 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
         END AS InvoiceAmount  
     FROM BLoyaltyPointsEarned bll  
     INNER JOIN Comp_Reg cr ON cr.Comp_ID = bll.compid  
+    LEFT JOIN PointsTransferHistory pth WITH (NOLOCK) ON bll.BLoyalty_PointEarnedID = pth.BLoyaltyPointsEarnedId
+    LEFT JOIN M_Consumer u WITH (NOLOCK) ON RIGHT(pth.fromMobileno, 10) = RIGHT(u.MobileNo, 10) AND u.IsDelete = 0
+    LEFT JOIN tbl_Vendorvisekycstatus vk_u WITH (NOLOCK) ON u.M_Consumerid = vk_u.M_consumerId AND vk_u.Comp_id = bll.compid AND vk_u.IsDelete = 0
+    LEFT JOIN User_Type ut_u WITH (NOLOCK) ON CAST(vk_u.Vrkabel_User_Type AS VARCHAR) = CAST(ut_u.Row_ID AS VARCHAR) AND ut_u.Comp_ID = bll.compid
+    LEFT JOIN User_Type ut_u2 WITH (NOLOCK) ON CAST(u.Vrkabel_User_Type AS VARCHAR) = CAST(ut_u2.Row_ID AS VARCHAR) AND ut_u2.Comp_ID = bll.compid
     WHERE bll.M_Consumerid = @M_Consumer_id   
       AND bll.ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards', 'Transfer From User')   
       AND bll.compid = @Comp_ID  
