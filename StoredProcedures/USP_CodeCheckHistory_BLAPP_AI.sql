@@ -253,6 +253,7 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
             WHEN bll.ServiceName = 'Supervisor' THEN 'Supervisor'
             WHEN bll.ServiceName = 'InvoiceBenifit' THEN 'Invoice Benefit'
             WHEN bll.ServiceName = 'InvoiceRewards' THEN 'Invoice Rewards'
+            WHEN bll.ServiceName = 'Transfer From User' THEN 'Transfer From User'
             ELSE bll.ServiceName 
         END AS ServiceNameNew,
         'Green' AS ColourCode,
@@ -273,7 +274,7 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
     FROM BLoyaltyPointsEarned bll  
     INNER JOIN Comp_Reg cr ON cr.Comp_ID = bll.compid  
     WHERE bll.M_Consumerid = @M_Consumer_id   
-      AND bll.ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards')   
+      AND bll.ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards', 'Transfer From User')   
       AND bll.compid = @Comp_ID  
   
     ORDER BY Enq_Date DESC;  
