@@ -133,6 +133,7 @@ BEGIN
     WHERE CD.Comp_id = @Comp_Id
       AND (@StartDate IS NULL OR CD.Claim_Date >= @StartDate)
       AND (@EndDate   IS NULL OR CD.Claim_Date <  DATEADD(DAY, 1, @EndDate))
+      AND CD.Row_id NOT IN (SELECT Row_id FROM ClaimDetails WHERE IsReqClaimReport = 0)
 ';
 
     IF @ClaimStatus IS NOT NULL
