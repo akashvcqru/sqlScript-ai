@@ -89,12 +89,34 @@ BEGIN
             INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Points, Cash, ServiceName)  
             VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @Points, @IsCash, @Service_ID);  
 
+            DECLARE @PE_ID INT = NULL;
+            IF EXISTS (SELECT 1 FROM M_Consumer_M_Code (NOLOCK) WHERE M_Consumer_MCodeid = @intM_Consumer_MCode)
+            BEGIN
+                DECLARE @Code1_val NVARCHAR(50), @Code2_val NVARCHAR(50), @MobileNo_val NVARCHAR(50);
+                
+                SELECT @Code1_val = mc.Code1, @Code2_val = mc.Code2, @MobileNo_val = con.MobileNo
+                FROM M_Consumer_M_Code mcc (NOLOCK)
+                INNER JOIN M_Code mc (NOLOCK) ON mcc.M_Codeid = mc.Row_ID
+                INNER JOIN M_Consumer con (NOLOCK) ON mcc.M_Consumerid = con.M_Consumerid
+                WHERE mcc.M_Consumer_MCodeid = @intM_Consumer_MCode;
+
+                SELECT TOP 1 @PE_ID = Row_id
+                FROM Pro_Enq (NOLOCK)
+                WHERE Received_Code1 = CAST(@Code1_val AS VARCHAR(5)) AND Received_Code2 = CAST(@Code2_val AS VARCHAR(8))
+                  AND RIGHT(MobileNo, 10) = RIGHT(@MobileNo_val, 10)
+                ORDER BY Enq_Date DESC;
+            END
+            ELSE
+            BEGIN
+                SET @PE_ID = @intM_Consumer_MCode;
+            END
+
             UPDATE [dbo].[ConsumerPointsCashDetails]
             SET Points = ISNULL(Points, 0) + @Points, 
                 Cash = ISNULL(Cash, 0) + @IsCash,
                 SST_Id = @SST_Id,
                 Service_ID = @Service_ID
-            WHERE PE_ID = @intM_Consumer_MCode;
+            WHERE PE_ID = @PE_ID;
   
             SET @BLoyalty_PointEarnedID = SCOPE_IDENTITY();  
   

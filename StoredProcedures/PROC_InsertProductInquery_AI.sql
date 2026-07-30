@@ -3,7 +3,7 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE [dbo].[PROC_InsertProductInquery_AI]  
+CREATE OR ALTER PROCEDURE [dbo].[PROC_InsertProductInquery_AI]  
       @Dial_Mode nvarchar(50)  
   ,@Enq_Date datetime  
   ,@Mode_Detail nvarchar(250)  
@@ -192,6 +192,20 @@ begin
  insert into enq_dealerid(enq_id,dealerid,dealer_mobile,createddate) values(@scp,@dealerid,@dealer_mobile,@Enq_Date)  
 end  
 end   
+
+    IF ISNULL(@scp, 0) > 0 AND ISNULL(@M_Codeid, 0) > 0 AND ISNULL(@M_Consumerid, 0) > 0
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM M_Consumer_M_Code WHERE M_Consumerid = @M_Consumerid AND M_Codeid = @M_Codeid)
+        BEGIN
+            INSERT INTO M_Consumer_M_Code (M_Consumerid, M_Codeid, Pro_id, CreatedDate, Compid)
+            VALUES (@M_Consumerid, @M_Codeid, @Proid, GETDATE(), @Compid);
+            SET @MConsumerMCodeid = SCOPE_IDENTITY();
+        END
+        ELSE
+        BEGIN
+            SELECT @MConsumerMCodeid = M_Consumer_MCodeid FROM M_Consumer_M_Code WHERE M_Consumerid = @M_Consumerid AND M_Codeid = @M_Codeid;
+        END
+    END
 end  
 else   
 begin    
@@ -238,6 +252,9 @@ BEGIN
 END
   
 SELECT @M_Consumerid =M_Consumerid FROM [M_Consumer] where [MobileNo] = @MobileNo  
-SELECT ISNULL(@scp, 0) AS Row_ID;
+IF @Is_Success = 1 AND ISNULL(@MConsumerMCodeid, 0) > 0
+    SELECT @MConsumerMCodeid AS Row_ID;
+ELSE
+    SELECT ISNULL(@scp, 0) AS Row_ID;
 END
 GO
