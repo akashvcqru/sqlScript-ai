@@ -191,10 +191,10 @@ FROM
         SET @BaseWhere += N' AND MC.[State] = @StateFilter';
 
     ------------------------------------------------------
-    -- Mobile Number Search
+    -- Mobile Number, User Type & Dealer Type Search
     ------------------------------------------------------
     IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
-        SET @BaseWhere += N' AND MC.MobileNo LIKE ''%'' + @Search + ''%''';
+        SET @BaseWhere += N' AND (MC.MobileNo LIKE ''%'' + @Search + ''%'' OR UT.User_Type LIKE ''%'' + @Search + ''%'' OR TD.DealerType LIKE ''%'' + @Search + ''%'')';
 
     ------------------------------------------------------
     -- Data Query
@@ -253,6 +253,7 @@ FROM
     ) VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
 	LEFT JOIN #TempDealerMaster TD ON MC.employeeID=TD.DealerTechnicianId AND MC.distributorID=TD.DealerCode
+    LEFT JOIN User_Type UT ON UT.Row_ID = VKS.Vrkabel_User_Type
     OUTER APPLY (
         SELECT TOP 1 *
         FROM M_BankAccount MB
@@ -283,6 +284,8 @@ FROM
             FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
         ) VKS
         INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
+        LEFT JOIN #TempDealerMaster TD ON MC.employeeID=TD.DealerTechnicianId AND MC.distributorID=TD.DealerCode
+        LEFT JOIN User_Type UT ON UT.Row_ID = VKS.Vrkabel_User_Type
         ' + @BaseWhere;
     END
 
