@@ -118,7 +118,38 @@ BEGIN
         IF @M_Codeid IS NULL
         BEGIN
             ROLLBACK TRANSACTION;
-            SELECT 0 AS ResultCode, 'The code you entered is invalid. Please check and try again.' AS Message;
+            
+            DECLARE @InvalidMessage NVARCHAR(MAX) = NULL;
+
+            -- Try specific company first
+            IF @Comp_ID IS NOT NULL AND @Comp_ID <> ''
+            BEGIN
+                SELECT TOP 1 @InvalidMessage = Message_Text 
+                FROM LandingPage_CodeCheckMessages 
+                WHERE Comp_ID = @Comp_ID 
+                  AND (Service_ID = 'SRV1029' OR Service_ID IS NULL)
+                  AND Message_Type IN ('Invalid', 'InvalidCode', 'Error')
+                  AND IsActive = 1
+                ORDER BY CASE WHEN Service_ID = 'SRV1029' THEN 0 ELSE 1 END;
+            END
+
+            -- Try Default company fallback
+            IF @InvalidMessage IS NULL OR @InvalidMessage = ''
+            BEGIN
+                SELECT TOP 1 @InvalidMessage = Message_Text 
+                FROM LandingPage_CodeCheckMessages 
+                WHERE Comp_ID = 'Default' 
+                  AND (Service_ID = 'SRV1029' OR Service_ID IS NULL)
+                  AND Message_Type IN ('Invalid', 'InvalidCode', 'Error')
+                  AND IsActive = 1
+                ORDER BY CASE WHEN Service_ID = 'SRV1029' THEN 0 ELSE 1 END;
+            END
+
+            -- Final hardcoded fallback
+            IF @InvalidMessage IS NULL OR @InvalidMessage = ''
+                SET @InvalidMessage = 'The code you entered is invalid. Please check and try again.';
+
+            SELECT 0 AS ResultCode, @InvalidMessage AS Message;
             RETURN;
         END
 
@@ -291,7 +322,35 @@ BEGIN
         IF @UseCount > 0
         BEGIN
             COMMIT TRANSACTION;
-            SELECT 2 AS ResultCode, 'Code is already checked.' AS Message;
+
+            DECLARE @AlreadyMessage NVARCHAR(MAX) = NULL;
+
+            -- Try specific company first
+            SELECT TOP 1 @AlreadyMessage = Message_Text 
+            FROM LandingPage_CodeCheckMessages 
+            WHERE Comp_ID = @ActualComp_ID 
+              AND (Service_ID = 'SRV1029' OR Service_ID IS NULL)
+              AND Message_Type IN ('Already', 'AlreadyChecked', 'AlreadyUsed')
+              AND IsActive = 1
+            ORDER BY CASE WHEN Service_ID = 'SRV1029' THEN 0 ELSE 1 END;
+
+            -- Try Default company fallback
+            IF @AlreadyMessage IS NULL OR @AlreadyMessage = ''
+            BEGIN
+                SELECT TOP 1 @AlreadyMessage = Message_Text 
+                FROM LandingPage_CodeCheckMessages 
+                WHERE Comp_ID = 'Default' 
+                  AND (Service_ID = 'SRV1029' OR Service_ID IS NULL)
+                  AND Message_Type IN ('Already', 'AlreadyChecked', 'AlreadyUsed')
+                  AND IsActive = 1
+                ORDER BY CASE WHEN Service_ID = 'SRV1029' THEN 0 ELSE 1 END;
+            END
+
+            -- Final hardcoded fallback
+            IF @AlreadyMessage IS NULL OR @AlreadyMessage = ''
+                SET @AlreadyMessage = 'Code is already checked.';
+
+            SELECT 2 AS ResultCode, @AlreadyMessage AS Message;
             RETURN;
         END
 
@@ -434,13 +493,21 @@ BEGIN
         -------------------------------------------------------------------
         SELECT TOP 1 @Message = Message_Text 
         FROM LandingPage_CodeCheckMessages 
-        WHERE Comp_ID = @ActualComp_ID AND Service_ID = 'SRV1029' AND Message_Type = 'Success' AND IsActive = 1;
+        WHERE Comp_ID = @ActualComp_ID 
+          AND (Service_ID = 'SRV1029' OR Service_ID IS NULL)
+          AND Message_Type = 'Success' 
+          AND IsActive = 1
+        ORDER BY CASE WHEN Service_ID = 'SRV1029' THEN 0 ELSE 1 END;
 
         IF @Message = '' OR @Message IS NULL
         BEGIN
             SELECT TOP 1 @Message = Message_Text 
             FROM LandingPage_CodeCheckMessages 
-            WHERE Service_ID = 'SRV1029' AND Message_Type = 'Success' AND IsActive = 1;
+            WHERE Comp_ID = 'Default' 
+              AND (Service_ID = 'SRV1029' OR Service_ID IS NULL)
+              AND Message_Type = 'Success' 
+              AND IsActive = 1
+            ORDER BY CASE WHEN Service_ID = 'SRV1029' THEN 0 ELSE 1 END;
         END
 
         IF @Message = '' OR @Message IS NULL SET @Message = 'Success! Code Verified.';
