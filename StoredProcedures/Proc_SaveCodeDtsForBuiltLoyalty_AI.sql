@@ -82,9 +82,12 @@ BEGIN
                 (SELECT Service_ID FROM M_ServiceSubscription (NOLOCK) WHERE Subscribe_Id IN   
                     (SELECT Subscribe_Id FROM M_ServiceSubscriptionTrans (NOLOCK) WHERE SST_Id = @SST_Id));  
   
-            IF (@Service_ID = 'SRV1029' OR @IsCashConvert = 1)
+            IF (@Service_ID IN ('SRV1029', 'SRV1005') OR @IsCashConvert = 1)
             BEGIN
-                SET @IsCash = @Points;
+                IF @IsCash = 0 OR @IsCash IS NULL
+                BEGIN
+                    SET @IsCash = @Points;
+                END
             END
 
             IF (@ccompid IN ('Comp-1869', 'Comp-1727', 'Comp-1900'))

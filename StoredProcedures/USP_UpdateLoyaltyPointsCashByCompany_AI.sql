@@ -305,7 +305,11 @@ BEGIN
         -- 1. Update BLoyaltyPointsEarned
         UPDATE b
         SET b.Points = CASE WHEN t.Resolved_Service_ID IN ('SRV1001', 'SRV1029') THEN t.Resolved_Points ELSE 0 END,
-            b.Cash = CASE WHEN t.Resolved_Service_ID = 'SRV1005' THEN t.Resolved_Cash WHEN t.Resolved_Service_ID = 'SRV1029' THEN t.Resolved_Points ELSE 0 END,
+            b.Cash = CASE 
+                WHEN t.Resolved_Service_ID = 'SRV1005' THEN CASE WHEN ISNULL(t.Resolved_Cash, 0) = 0 THEN t.Resolved_Points ELSE t.Resolved_Cash END
+                WHEN t.Resolved_Service_ID = 'SRV1029' THEN t.Resolved_Points 
+                ELSE 0 
+            END,
             b.SST_id = t.Resolved_SST_Id,
             b.Service_ID = t.Resolved_Service_ID,
             b.compid = t.Resolved_Comp_ID,
@@ -318,7 +322,11 @@ BEGIN
         -- 2. Update ConsumerPointsCashDetails
         UPDATE c
         SET c.Points = CASE WHEN t.Resolved_Service_ID IN ('SRV1001', 'SRV1029') THEN t.Resolved_Points ELSE 0 END,
-            c.Cash = CASE WHEN t.Resolved_Service_ID = 'SRV1005' THEN t.Resolved_Cash WHEN t.Resolved_Service_ID = 'SRV1029' THEN t.Resolved_Points ELSE 0 END,
+            c.Cash = CASE 
+                WHEN t.Resolved_Service_ID = 'SRV1005' THEN CASE WHEN ISNULL(t.Resolved_Cash, 0) = 0 THEN t.Resolved_Points ELSE t.Resolved_Cash END
+                WHEN t.Resolved_Service_ID = 'SRV1029' THEN t.Resolved_Points 
+                ELSE 0 
+            END,
             c.SST_Id = t.Resolved_SST_Id,
             c.Comp_id = t.Resolved_Comp_ID
         FROM dbo.ConsumerPointsCashDetails c
