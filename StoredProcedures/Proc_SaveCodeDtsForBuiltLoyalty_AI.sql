@@ -33,8 +33,12 @@ BEGIN
   
         BEGIN TRANSACTION;  
   
-        SELECT @M_Consumerid = m_consumerid, @ccompid = Compid, @Pro_ID = Pro_id   
-        FROM M_Consumer_M_Code (NOLOCK) WHERE M_Consumer_MCodeid = @intM_Consumer_MCode;  
+        SELECT @M_Consumerid = mcc.m_consumerid, @ccompid = mcc.Compid, @Pro_ID = mcc.Pro_id   
+        FROM M_Consumer_M_Code mcc (NOLOCK)
+        INNER JOIN M_Code mc (NOLOCK) ON mcc.M_Codeid = mc.Row_ID
+        WHERE mcc.M_Consumer_MCodeid = @intM_Consumer_MCode
+          AND mc.Code1 = TRY_CAST(@code1 AS NUMERIC(18,0))
+          AND mc.Code2 = TRY_CAST(@code2 AS NUMERIC(18,0));  
   
         IF @M_Consumerid IS NULL
         BEGIN
@@ -45,9 +49,10 @@ BEGIN
             ORDER BY mc.Entry_Date DESC;
         END
         IF @ccompid IS NULL OR @Pro_ID IS NULL
-        BEGIN
-            SELECT TOP 1 @ccompid = comp_id, @Pro_ID = Pro_ID FROM M_Code (NOLOCK) WHERE Code1 = @code1 AND Code2 = @code2;
-        END
+            SELECT TOP 1 @ccompid = p.Comp_ID, @Pro_ID = c.Pro_ID 
+            FROM M_Code c (NOLOCK) 
+            INNER JOIN Pro_Reg p (NOLOCK) ON c.Pro_ID = p.Pro_ID
+            WHERE c.Code1 = @code1 AND c.Code2 = @code2;
         INSERT INTO BuiltLoyaltyMCodeCheck (sst_id, M_Consumer_MCOdeid, M_Cunsumerid, Createdate)  
         VALUES (@SST_Id, @intM_Consumer_MCode, @M_Consumerid, GETDATE());  
   
@@ -77,6 +82,14 @@ BEGIN
                 (SELECT Service_ID FROM M_ServiceSubscription (NOLOCK) WHERE Subscribe_Id IN   
                     (SELECT Subscribe_Id FROM M_ServiceSubscriptionTrans (NOLOCK) WHERE SST_Id = @SST_Id));  
   
+            IF (@Service_ID IN ('SRV1029', 'SRV1005') OR @IsCashConvert = 1)
+            BEGIN
+                IF @IsCash = 0 OR @IsCash IS NULL
+                BEGIN
+                    SET @IsCash = @Points;
+                END
+            END
+
             IF (@ccompid IN ('Comp-1869', 'Comp-1727', 'Comp-1900'))
             BEGIN 
                 IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[BLoyaltyPointsEarned_Temp]') AND type in (N'U'))
@@ -90,19 +103,21 @@ BEGIN
             VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @Points, @IsCash, @Service_ID);  
 
             DECLARE @PE_ID INT = NULL;
-            IF EXISTS (SELECT 1 FROM M_Consumer_M_Code (NOLOCK) WHERE M_Consumer_MCodeid = @intM_Consumer_MCode)
-            BEGIN
-                DECLARE @Code1_val NVARCHAR(50), @Code2_val NVARCHAR(50), @MobileNo_val NVARCHAR(50);
-                
-                SELECT @Code1_val = mc.Code1, @Code2_val = mc.Code2, @MobileNo_val = con.MobileNo
-                FROM M_Consumer_M_Code mcc (NOLOCK)
+            IF EXISTS (
+                SELECT 1 FROM M_Consumer_M_Code mcc (NOLOCK)
                 INNER JOIN M_Code mc (NOLOCK) ON mcc.M_Codeid = mc.Row_ID
-                INNER JOIN M_Consumer con (NOLOCK) ON mcc.M_Consumerid = con.M_Consumerid
-                WHERE mcc.M_Consumer_MCodeid = @intM_Consumer_MCode;
+                WHERE mcc.M_Consumer_MCodeid = @intM_Consumer_MCode
+                  AND mc.Code1 = TRY_CAST(@code1 AS NUMERIC(18,0))
+                  AND mc.Code2 = TRY_CAST(@code2 AS NUMERIC(18,0))
+            )
+            BEGIN
+                DECLARE @MobileNo_val NVARCHAR(50);
+                SELECT @MobileNo_val = MobileNo FROM M_Consumer (NOLOCK) WHERE M_Consumerid = @M_Consumerid;
 
                 SELECT TOP 1 @PE_ID = Row_id
                 FROM Pro_Enq (NOLOCK)
-                WHERE Received_Code1 = CAST(@Code1_val AS VARCHAR(5)) AND Received_Code2 = CAST(@Code2_val AS VARCHAR(8))
+                WHERE TRY_CAST(Received_Code1 AS NUMERIC(18,0)) = TRY_CAST(@code1 AS NUMERIC(18,0)) 
+                  AND TRY_CAST(Received_Code2 AS NUMERIC(18,0)) = TRY_CAST(@code2 AS NUMERIC(18,0))
                   AND RIGHT(MobileNo, 10) = RIGHT(@MobileNo_val, 10)
                 ORDER BY Enq_Date DESC;
             END
