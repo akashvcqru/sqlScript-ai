@@ -45,6 +45,20 @@ declare @compid1 nvarchar(50)
 select @compid1=pr.comp_id from  M_Code mc inner join pro_reg pr on pr.Pro_ID=mc.Pro_ID where mc.Code1=@Received_Code1 and mc.Code2=@Received_Code2  
 SELECT @M_Consumerid =M_Consumerid FROM [M_Consumer] WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete=0  ORDER BY Entry_Date DESC;  
 
+IF ISNULL(@SST_ID, 0) = 0
+BEGIN
+    SELECT TOP 1 @SST_ID = sst.SST_Id
+    FROM M_ServiceSubscription s (NOLOCK)
+    INNER JOIN M_ServiceSubscriptionTrans sst (NOLOCK) ON s.Subscribe_Id = sst.Subscribe_Id
+    INNER JOIN M_Code c (NOLOCK) ON s.Pro_ID = c.Pro_ID
+    WHERE c.Code1 = TRY_CAST(@Received_Code1 AS NUMERIC(18,0)) AND c.Code2 = TRY_CAST(@Received_Code2 AS NUMERIC(18,0))
+      AND c.Series_Order BETWEEN s.start_order AND s.end_order
+      AND c.Series_Serial BETWEEN s.start_series AND s.end_series
+      AND s.IsActive = 1 AND ISNULL(s.IsDelete, 0) = 0
+      AND sst.IsActive = 1 AND ISNULL(sst.IsDelete, 0) = 0
+    ORDER BY sst.SST_Id DESC;
+END
+
   --Tej Multivendor kyc
  DECLARE @cntTj INT = 0,  
         @conrid INT = 0,  
