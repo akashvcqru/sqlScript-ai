@@ -1,9 +1,12 @@
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_UpdateVendorKycStatusDeleteMark_Job_AI]    Script Date: 7/31/2026 6:19:31 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE OR ALTER PROCEDURE [dbo].[USP_UpdateVendorKycStatusDeleteMark_Job_AI]
+ALTER   PROCEDURE [dbo].[USP_UpdateVendorKycStatusDeleteMark_Job_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -16,7 +19,7 @@ BEGIN
             M_Consumerid INT,
             comp_id VARCHAR(20)
         );
-
+		
         -- 2. Insert records that have a pending delete request older than 30 days
         INSERT INTO #TempDeleted (M_Consumerid, comp_id)
         SELECT DISTINCT d.M_Consumerid, d.comp_id
@@ -24,10 +27,10 @@ BEGIN
         INNER JOIN tbl_Vendorvisekycstatus k
             ON k.M_consumerId = d.M_Consumerid
            AND k.Comp_id = d.comp_id
-        -- WHERE d.IsActive = 1
-        --   AND k.IsActive = 1
-        --   AND k.IsDelete = 0
-        --   AND d.Entry_date < DATEADD(day, -30, GETDATE());
+         WHERE d.IsActive = 1
+         -- AND k.IsActive = 1
+         --  AND k.IsDelete = 0
+          AND d.Entry_date < DATEADD(day, -30, GETDATE());
 
         -- 3. Update tbl_Vendorvisekycstatus to set IsDelete = 1
         UPDATE k
@@ -62,4 +65,3 @@ BEGIN
         RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
     END CATCH
 END
-GO
