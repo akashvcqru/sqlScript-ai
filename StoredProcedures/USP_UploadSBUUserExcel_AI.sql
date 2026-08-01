@@ -38,6 +38,7 @@ BEGIN
             dm.Zone = src.Zone,
             dm.D_State = src.D_State,
             dm.DealerLocation = src.DealerLocation,
+            dm.City = src.DealerLocation,
             dm.D_Name = src.D_Name,
             dm.Mobile_Num = src.Mobile_Num,
             dm.D_Status = 'Active',
@@ -51,10 +52,10 @@ BEGIN
 
         -- 3. Insert new SBU records
         INSERT INTO m_dealermaster (
-            Zone, D_State, DealerCode, DealerType, DealerLocation, DealerTechnicianId, D_Status, D_Name, Comp_id, Mobile_Num, Created_Date, Created_By, Updated_Date, Updated_By
+            Zone, D_State, DealerCode, DealerType, DealerLocation, City, DealerTechnicianId, D_Status, D_Name, Comp_id, Mobile_Num, Created_Date, Created_By, Updated_Date, Updated_By
         )
         SELECT 
-            src.Zone, src.D_State, src.DealerCode, 'SBU', src.DealerLocation, src.DealerTechnicianId, 'Active', src.D_Name, @Comp_id, src.Mobile_Num, GETDATE(), @UpdatedBy, GETDATE(), @UpdatedBy
+            src.Zone, src.D_State, src.DealerCode, 'SBU', src.DealerLocation, src.DealerLocation, src.DealerTechnicianId, 'Active', src.D_Name, @Comp_id, src.Mobile_Num, GETDATE(), @UpdatedBy, GETDATE(), @UpdatedBy
         FROM @SBUTable src
         WHERE NOT EXISTS (
             SELECT 1 
