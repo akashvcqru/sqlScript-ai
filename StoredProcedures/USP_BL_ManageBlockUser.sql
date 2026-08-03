@@ -103,14 +103,14 @@ BEGIN
                 mc.MobileNo AS MobileNumber,
                 mc.PinCode,
                 mc.City,
-                mc.block_date AS block_date
+                vks.Block_Date AS block_date
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE vks.Comp_id = @Comp_Id 
               AND vks.IsDelete = 1
               AND (
-                  (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
-                  OR (mc.block_date IS NULL AND @Win = 'ALL')
+                  (vks.Block_Date >= @StartDate AND vks.Block_Date < @EndDate)
+                  OR (vks.Block_Date IS NULL AND @Win = 'ALL')
               )
               AND (
                   @Search IS NULL 
@@ -128,14 +128,14 @@ BEGIN
                 mc.MobileNo AS MobileNumber,
                 mc.PinCode,
                 mc.City,
-                mc.block_date AS block_date
+                vks.Block_Date AS block_date
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE vks.Comp_id = @Comp_Id 
               AND vks.IsDelete = 1
               AND (
-                  (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
-                  OR (mc.block_date IS NULL AND @Win = 'ALL')
+                  (vks.Block_Date >= @StartDate AND vks.Block_Date < @EndDate)
+                  OR (vks.Block_Date IS NULL AND @Win = 'ALL')
               )
               AND (
                   @Search IS NULL 
@@ -156,8 +156,8 @@ BEGIN
             WHERE vks.Comp_id = @Comp_Id 
               AND vks.IsDelete = 1
               AND (
-                  (mc.block_date >= @StartDate AND mc.block_date < @EndDate)
-                  OR (mc.block_date IS NULL AND @Win = 'ALL')
+                  (vks.Block_Date >= @StartDate AND vks.Block_Date < @EndDate)
+                  OR (vks.Block_Date IS NULL AND @Win = 'ALL')
               )
               AND (
                   @Search IS NULL 
@@ -191,7 +191,8 @@ BEGIN
 
         UPDATE tbl_Vendorvisekycstatus
         SET IsActive = 1,
-            IsDelete = 1
+            IsDelete = 1,
+            Block_Date = GETDATE()
         WHERE M_consumerId = @ConsumerID AND Comp_id = @Comp_Id;
 
         IF @@ROWCOUNT > 0
