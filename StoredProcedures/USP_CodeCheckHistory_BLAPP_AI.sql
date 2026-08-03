@@ -54,6 +54,19 @@ BEGIN
 
     IF @Comp_ID = 'comp-1274' OR @Comp_ID = 'Comp-1274'
     BEGIN
+        ;WITH ScansWithRn AS (
+            SELECT 
+                pe.Is_Success,
+                pe.Enq_Date,
+                pe.Received_Code1,
+                pe.Received_Code2,
+                pe.MobileNo,
+                ROW_NUMBER() OVER (PARTITION BY pe.Received_Code1, pe.Received_Code2, pe.Is_Success ORDER BY pe.Enq_Date) as rn
+            FROM Pro_Enq pe WITH (NOLOCK)
+            WHERE pe.MobileNo = @MobileNo
+              AND (@Year IS NULL OR YEAR(pe.Enq_Date) = @Year)
+              AND (@Month IS NULL OR MONTH(pe.Enq_Date) = @Month)
+        )
         SELECT   
             CASE   
                 WHEN pe.Is_Success = 1 THEN 'Success'   
@@ -83,11 +96,11 @@ BEGIN
                 ELSE 'Red'  
             END AS ColourCode,
             CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
-        FROM Pro_Enq pe
-        INNER JOIN M_Code m 
+        FROM ScansWithRn pe
+        INNER JOIN M_Code m WITH (NOLOCK)
             ON TRY_CAST(pe.Received_Code1 AS INT) = m.Code1
             AND TRY_CAST(pe.Received_Code2 AS INT) = m.Code2
-        INNER JOIN M_ServiceSubscription ss 
+        INNER JOIN M_ServiceSubscription ss WITH (NOLOCK)
             ON m.Pro_id = ss.Pro_id 
             AND ss.IsActive = 1 AND ss.IsDelete = 0
             AND (
@@ -98,22 +111,44 @@ BEGIN
                 m.Series_Order < ss.end_order 
                 OR (m.Series_Order = ss.end_order AND m.Series_Serial <= ss.end_series)
             )
-        INNER JOIN M_ServiceSubscriptionTrans sst 
+        INNER JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK)
             ON sst.Subscribe_Id = ss.Subscribe_Id
             AND sst.IsActive = 1 AND sst.IsDelete = 0
-        INNER JOIN M_Service s 
+        INNER JOIN M_Service s WITH (NOLOCK)
             ON ss.Service_ID = s.Service_ID
-        LEFT JOIN Pro_Reg pr 
+        LEFT JOIN Pro_Reg pr WITH (NOLOCK)
             ON pr.Pro_ID = m.Pro_ID
-        LEFT JOIN Comp_Reg cr 
+        LEFT JOIN Comp_Reg cr WITH (NOLOCK)
             ON cr.Comp_ID = pr.Comp_ID
-        WHERE pe.MobileNo = @MobileNo
-          AND pr.Comp_ID = @Comp_ID
-          AND (@Year IS NULL OR YEAR(pe.Enq_Date) = @Year)
-          AND (@Month IS NULL OR MONTH(pe.Enq_Date) = @Month)
+        WHERE pr.Comp_ID = @Comp_ID
+          AND (pe.Is_Success != 1 OR pe.rn <= ISNULL(sst.Frequency, 1))
         ORDER BY pe.Enq_Date DESC;
         RETURN;
     END
+
+    -- Get Config Points and Frequency for fallback
+    IF OBJECT_ID('tempdb..#ConfigPoints') IS NOT NULL DROP TABLE #ConfigPoints;
+
+    SELECT 
+        m.Row_ID AS M_Codeid,
+        SS.Service_ID,
+        MAX(ISNULL(SST.Frequency, 1)) AS Frequency
+    INTO #ConfigPoints
+    FROM Pro_Enq pe WITH (NOLOCK)
+    INNER JOIN M_Code m WITH (NOLOCK) 
+        ON TRY_CAST(pe.Received_Code1 AS INT) = m.Code1 
+       AND TRY_CAST(pe.Received_Code2 AS INT) = m.Code2
+    INNER JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = m.Pro_ID
+    INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = m.Pro_ID
+    INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+    WHERE pe.MobileNo = @MobileNo 
+      AND pr.Comp_ID = @Comp_ID
+      AND SS.IsActive = 1 AND SS.IsDelete = 0
+      AND SST.IsActive = 1 AND SST.IsDelete = 0
+      AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
+      AND (m.Series_Order > SS.start_order OR (m.Series_Order = SS.start_order AND m.Series_Serial >= SS.start_series))
+      AND (m.Series_Order < SS.end_order OR (m.Series_Order = SS.end_order AND m.Series_Serial <= SS.end_series))
+    GROUP BY m.Row_ID, SS.Service_ID;
 
     ;WITH EnquiryData AS (  
         SELECT   
@@ -131,25 +166,34 @@ BEGIN
             CONCAT(pe.Received_Code1, pe.Received_Code2) AS [Code],  
             TRY_CAST(pe.Received_Code1 AS INT) AS Code1,  
             TRY_CAST(pe.Received_Code2 AS INT) AS Code2,  
-            pe.MobileNo  
-        FROM Pro_Enq pe  
-        LEFT JOIN M_Code m   
+            pe.MobileNo,
+            m.Row_ID AS M_Codeid,
+            ROW_NUMBER() OVER (PARTITION BY pe.Received_Code1, pe.Received_Code2, pe.Is_Success ORDER BY pe.Enq_Date) as rn,
+            pe.Is_Success
+        FROM Pro_Enq pe WITH (NOLOCK)
+        LEFT JOIN M_Code m WITH (NOLOCK)
             ON TRY_CAST(pe.Received_Code1 AS INT) = m.Code1   
             AND TRY_CAST(pe.Received_Code2 AS INT) = m.Code2  
-        LEFT JOIN Pro_Reg pr   
+        LEFT JOIN Pro_Reg pr WITH (NOLOCK)
             ON pr.Pro_ID = m.Pro_ID  
-        LEFT JOIN Comp_Reg cr   
+        LEFT JOIN Comp_Reg cr WITH (NOLOCK)
             ON cr.Comp_ID = pr.Comp_ID  
         WHERE pe.MobileNo = @MobileNo   
           AND pr.Comp_ID = @Comp_ID  
     )
-        SELECT   
-            t.*,  
-            mc.M_Consumerid   
-       into #ConsumerData FROM EnquiryData t  
-        INNER JOIN M_Consumer mc   
-            ON mc.MobileNo = t.MobileNo   
-        WHERE mc.IsDelete = 0  
+    SELECT   
+        t.*,  
+        mc.M_Consumerid   
+    INTO #ConsumerData 
+    FROM EnquiryData t  
+    INNER JOIN M_Consumer mc WITH (NOLOCK) ON mc.MobileNo = t.MobileNo   
+    LEFT JOIN (
+        SELECT M_Codeid, MAX(Frequency) AS Frequency
+        FROM #ConfigPoints
+        GROUP BY M_Codeid
+    ) CP ON CP.M_Codeid = t.M_Codeid
+    WHERE mc.IsDelete = 0  
+      AND (t.Is_Success != 1 OR t.rn <= ISNULL(CP.Frequency, 1));  
   
     SELECT   
         t2.Status,  

@@ -89,13 +89,13 @@ BEGIN
             SELECT BMC2.Pkid, BMC2.M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY BMC2.M_Consumer_MCOdeid ORDER BY BMC2.Createdate ASC) as rn
             FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK)
             INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid
-            WHERE MC2.M_Consumerid = @M_Consumerid
+            WHERE MC2.M_Codeid IN (SELECT M_Codeid FROM #UserScans)
         ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
         INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
         LEFT JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON BL.SST_id = SST.SST_Id
         LEFT JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
         INNER JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
-        WHERE MC.M_Consumerid = @M_Consumerid
+        WHERE MC.M_Codeid IN (SELECT M_Codeid FROM #UserScans)
 
         UNION ALL
 
@@ -113,7 +113,7 @@ BEGIN
             SELECT BMC2.Pkid, BMC2.M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY BMC2.M_Consumer_MCOdeid ORDER BY BMC2.Createdate ASC) as rn
             FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK)
             INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid
-            WHERE MC2.M_Consumerid = @M_Consumerid
+            WHERE MC2.M_Codeid IN (SELECT M_Codeid FROM #UserScans)
         ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
         INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
         INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
@@ -122,7 +122,7 @@ BEGIN
         LEFT JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON BL.SST_id = SST.SST_Id
         LEFT JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
         WHERE BL.compid IS NULL
-          AND MC.M_Consumerid = @M_Consumerid
+          AND MC.M_Codeid IN (SELECT M_Codeid FROM #UserScans)
     ) x
     GROUP BY M_Codeid, ISNULL(Service_ID, 'SRV1001');
 
@@ -138,7 +138,8 @@ BEGIN
                 ELSE ISNULL(SST.IsCash, 0) * @Multiplier
             END 
         AS DECIMAL(18,2))) AS ConfigPoints,
-        MAX(CAST(ISNULL(SST.IsCash, 0) AS DECIMAL(18,2))) AS ConfigCash
+        MAX(CAST(ISNULL(SST.IsCash, 0) AS DECIMAL(18,2))) AS ConfigCash,
+        MAX(ISNULL(SST.Frequency, 1)) AS Frequency
     INTO #ConfigPoints
     FROM #UserScans US
     INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = US.Pro_ID
@@ -235,21 +236,48 @@ BEGIN
     SELECT @ClaimsAmount = ISNULL(SUM(CASE WHEN ISNULL(Amount, 0) > 0 THEN Amount ELSE ISNULL(TRY_CONVERT(NUMERIC(18,2), PointsValue), 0) END), 0)
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
-    WHERE Isapproved IN (0, 1)
+    WHERE Isapproved = 1
       AND CD.Mobileno = @MobileNo;
 
     DECLARE @RedeemAmount DECIMAL(18,2) = 0;
     SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount;
 
+    -- Calculate precise counts using SP_BL_GetCodesActivityReport_AI logic
+    DECLARE @SuccessCodeCount INT = 0;
+    SELECT @SuccessCodeCount = COUNT(*)
+    FROM #UserScans US
+    LEFT JOIN (
+        SELECT M_Codeid, MAX(Frequency) AS Frequency
+        FROM #ConfigPoints
+        GROUP BY M_Codeid
+    ) CP ON CP.M_Codeid = US.M_Codeid
+    WHERE US.rn <= ISNULL(CP.Frequency, 1);
+
+    DECLARE @UnsuccessCodeCount INT = 0;
+    SELECT @UnsuccessCodeCount = COUNT(pe.Received_Code1)
+    FROM Pro_Enq pe WITH (NOLOCK)
+    INNER JOIN M_code M WITH (NOLOCK) ON pe.Received_Code1 = M.Code1 AND pe.Received_Code2 = M.Code2
+    INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
+    WHERE pe.MobileNo = @MobileNo
+      AND PR.Comp_ID = @CompID
+      -- Count ONLY 'Already Scanned' (Is_Success = '2')
+      AND pe.Is_Success = '2';
+
+    DECLARE @InvalidCodeCount INT = 0;
+    SELECT @InvalidCodeCount = COUNT(pe.Received_Code1)
+    FROM Pro_Enq pe WITH (NOLOCK)
+    INNER JOIN M_code M WITH (NOLOCK) ON pe.Received_Code1 = M.Code1 AND pe.Received_Code2 = M.Code2
+    INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
+    WHERE pe.MobileNo = @MobileNo
+      AND PR.Comp_ID = @CompID
+      AND pe.Is_Success NOT IN ('1', '2');
+
     -- Result Set 1: Overall Stats
     SELECT 
-        (SELECT COUNT(pe.Received_Code1) 
-         FROM Pro_Enq pe 
-         WHERE pe.MobileNo = @MobileNo) as TotalCode,
+        (@SuccessCodeCount + @UnsuccessCodeCount + @InvalidCodeCount) as TotalCode,
         @RedeemAmount as ReedemPoints,
-        (SELECT COUNT(pe.Received_Code1) 
-         FROM Pro_Enq pe 
-         WHERE pe.MobileNo = @MobileNo AND pe.Is_Success = 1) as SuccessCode,
+        @SuccessCodeCount as SuccessCode,
+        @UnsuccessCodeCount as UnsuccessCode,
         CASE 
             WHEN @CompID = 'Comp-1274' THEN (SELECT ISNULL(SUM(cash), 0) FROM BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND compid LIKE '%' + @CompID + '%')
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(cash AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
@@ -259,7 +287,8 @@ BEGIN
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
             ELSE @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
         END as TotalPoints,
-        @HasServiceWiseGifts as HasServiceWiseGifts;
+        @HasServiceWiseGifts as HasServiceWiseGifts,
+        @InvalidCodeCount as InvalidCode;
 
     IF @OverallStatsOnly = 1
     BEGIN
