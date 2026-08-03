@@ -88,8 +88,7 @@ BEGIN
         SELECT COUNT(1) AS TotalRecords
         FROM SetRequestLabelLimit s WITH (NOLOCK)
         LEFT JOIN Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = s.Comp_ID
-        LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = s.Pro_ID
-        WHERE (@Search IS NULL OR s.Comp_ID LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%' OR s.Pro_ID LIKE '%' + @Search + '%' OR pr.Pro_Name LIKE '%' + @Search + '%')
+        WHERE (@Search IS NULL OR s.Comp_ID LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
           AND (@StartDate IS NULL OR s.Req_Date >= @StartDate)
           AND (@EndDate IS NULL OR s.Req_Date < @EndDate);
     END
@@ -99,16 +98,11 @@ BEGIN
         s.Row_ID,
         s.Comp_ID,
         cr.Comp_Name AS CompName,
-        s.Pro_ID,
-        pr.Pro_Name AS ProName,
         s.MonthlyLimit,
-        s.Req_Date,
-        s.IsApproved,
-        s.Approved_Date
+        s.Req_Date
     FROM SetRequestLabelLimit s WITH (NOLOCK)
     LEFT JOIN Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = s.Comp_ID
-    LEFT JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = s.Pro_ID
-    WHERE (@Search IS NULL OR s.Comp_ID LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%' OR s.Pro_ID LIKE '%' + @Search + '%' OR pr.Pro_Name LIKE '%' + @Search + '%')
+    WHERE (@Search IS NULL OR s.Comp_ID LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
       AND (@StartDate IS NULL OR s.Req_Date >= @StartDate)
       AND (@EndDate IS NULL OR s.Req_Date < @EndDate)
     ORDER BY s.Req_Date DESC
