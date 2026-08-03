@@ -338,7 +338,12 @@ select * into #temp from TransactionData
 
         AmountTransaction,
         tdsTransaction,
-        SortOrder
+        SortOrder,
+        SUM(ISNULL(TransactionValue, 0)) 
+            OVER (
+                ORDER BY TransactionDate ASC, SortOrder ASC
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ) AS RunningBalance
     INTO #Summary
     FROM FinalData;
 
