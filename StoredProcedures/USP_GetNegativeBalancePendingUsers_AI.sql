@@ -190,6 +190,63 @@ PayoutSummary AS
     WHERE --MobileNo = @MobileNo
       Comp_ID = @Comp_ID and  
 	  code1 > 0 and BankStatus = 'Success' group by MobileNo
+),
+AllTransactions AS
+(
+    SELECT 
+        MobileNo,
+        Enq_Date AS TransactionDate,
+        ISNULL(Points, 0) AS WonPoints,
+        'Points Earned' AS TransactionType
+    FROM dbo.TempCodesActivityReport
+    WHERE Comp_ID = @Comp_ID
+
+    UNION ALL
+
+    SELECT 
+        MobileNo,
+        Claim_Date AS TransactionDate,
+        -ISNULL(Amount, 0) AS WonPoints,
+        CASE 
+            WHEN ISNULL(IsApproved, 0) = 0 THEN 'Claim Raised'
+            WHEN IsApproved = 1 THEN 'Amount Claimed'
+            ELSE 'Claim Raised'
+        END AS TransactionType
+    FROM UniqueClaims
+    WHERE DuplicateRank = 1
+
+    UNION ALL
+
+    SELECT 
+        MobileNo,
+        ReqDate AS TransactionDate,
+        -ISNULL(Amount, 0) AS WonPoints,
+        'Amount Paid' AS TransactionType
+    FROM dbo.TempUPIPayoutReport
+    WHERE Comp_ID = @Comp_ID and code1 > 0 and BankStatus = 'Success'
+),
+RunningBalances AS
+(
+    SELECT 
+        MobileNo,
+        TransactionDate,
+        TransactionType,
+        SUM(WonPoints) OVER (
+            PARTITION BY MobileNo 
+            ORDER BY TransactionDate, WonPoints DESC
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS RunningBalance
+    FROM AllTransactions
+),
+FraudClaims AS
+(
+    SELECT 
+        MobileNo,
+        MAX(TransactionDate) AS LastFraudClaimDate
+    FROM RunningBalances
+    WHERE RunningBalance < 0
+      AND TransactionType IN ('Claim Raised', 'Amount Claimed', 'Amount Paid')
+    GROUP BY MobileNo
 )
 
     SELECT
@@ -207,12 +264,14 @@ PayoutSummary AS
             WHEN U.LastPaymentDate IS NULL THEN C.LastClaimDate
             WHEN C.LastClaimDate > U.LastPaymentDate THEN C.LastClaimDate
             ELSE U.LastPaymentDate
-        END AS LastPaymentDate
+        END AS LastPaymentDate,
+        F.LastFraudClaimDate
     INTO #Summary
     FROM PointsSummary P
     LEFT JOIN ClaimSummary C ON p.MobileNo = c.MobileNo
     LEFT JOIN PayoutSummary U ON p.MobileNo = u.MobileNo
     LEFT JOIN M_Consumer d ON p.MobileNo = d.MobileNo
+    LEFT JOIN FraudClaims F ON p.MobileNo = f.MobileNo
     WHERE
         (ISNULL(P.TotalPoints, 0) - (ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0))) < 0
         AND (
