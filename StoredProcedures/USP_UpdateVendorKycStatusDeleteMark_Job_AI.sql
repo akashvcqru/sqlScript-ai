@@ -32,9 +32,10 @@ BEGIN
          --  AND k.IsDelete = 0
           AND d.Entry_date < DATEADD(day, -30, GETDATE());
 
-        -- 3. Update tbl_Vendorvisekycstatus to set IsDelete = 1
+        -- 3. Update tbl_Vendorvisekycstatus to set IsDelete = 1 and Block_Date = GETDATE()
         UPDATE k
-        SET k.IsDelete = 1
+        SET k.IsDelete = 1,
+            k.Block_Date = GETDATE()
         FROM tbl_Vendorvisekycstatus k
         INNER JOIN #TempDeleted t
             ON k.M_consumerId = t.M_Consumerid

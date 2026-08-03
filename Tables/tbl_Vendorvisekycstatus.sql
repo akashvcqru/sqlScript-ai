@@ -38,6 +38,7 @@ CREATE TABLE [dbo].[tbl_Vendorvisekycstatus](
 	[bank_ekycStatus] [varchar](20) NULL,
 	[upi_ekycStatus] [varchar](20) NULL,
 	[Updated_date] [datetime] NULL,
+	[Block_Date] [datetime] NULL,
 PRIMARY KEY CLUSTERED 
 (
 	[Id] ASC
