@@ -104,6 +104,12 @@ BEGIN
         DROP TABLE IF EXISTS #ConfigPoints;
     END
 
+    DECLARE @LastCodeCheckDate DATETIME = NULL;
+    SELECT TOP 1 @LastCodeCheckDate = Enq_date 
+    FROM Pro_enq WITH (NOLOCK) 
+    WHERE mobileno = @MobileNo 
+    ORDER BY Enq_date DESC;
+
     -- Result Set 1: Overall Stats (Simplified)
     SELECT @TotalCodeCheck as TotalCode, 
            0 as ReedemPoints, 
@@ -111,6 +117,7 @@ BEGIN
            @TotalUnsuccessCheck as UnsuccessCode,
            @TotalInvalidCheck as InvalidCode,
            0 as TotalCash, 
-           0 as TransferredCash;
+           0 as TransferredCash,
+           @LastCodeCheckDate as LastCodeCheckDate;
 END
 GO
