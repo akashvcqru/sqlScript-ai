@@ -55,7 +55,7 @@ BEGIN
             Zone, D_State, DealerCode, DealerType, DealerLocation, City, DealerTechnicianId, D_Status, D_Name, Comp_id, Mobile_Num, Created_Date, Created_By, Updated_Date, Updated_By
         )
         SELECT 
-            src.Zone, src.D_State, src.DealerCode, 'SBU', src.DealerLocation, src.DealerLocation, src.DealerTechnicianId, 'Active', src.D_Name, @Comp_id, src.Mobile_Num, GETDATE(), @UpdatedBy, GETDATE(), @UpdatedBy
+            src.Zone, src.D_State, src.DealerCode, 'SBU', src.DealerLocation, src.DealerLocation, src.DealerTechnicianId, 'Active', src.D_Name, @Comp_id, src.Mobile_Num, GETDATE(), ISNULL(TRY_CAST(@UpdatedBy AS BIGINT), 1), GETDATE(), @UpdatedBy
         FROM @SBUTable src
         WHERE NOT EXISTS (
             SELECT 1 
