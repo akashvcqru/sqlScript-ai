@@ -236,7 +236,7 @@ BEGIN
     SELECT @ClaimsAmount = ISNULL(SUM(CASE WHEN ISNULL(Amount, 0) > 0 THEN Amount ELSE ISNULL(TRY_CONVERT(NUMERIC(18,2), PointsValue), 0) END), 0)
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
-    WHERE Isapproved = 1
+    WHERE Isapproved <> 2
       AND CD.Mobileno = @MobileNo;
 
     DECLARE @RedeemAmount DECIMAL(18,2) = 0;
