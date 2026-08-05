@@ -85,7 +85,7 @@ BEGIN
             @M_Consumer_id AS M_Consumerid,
             CASE 
                 WHEN pe.Is_Success = 1 AND ISNULL(sst.IsCash, 0) <> 0 
-                THEN CONCAT('+', CAST(CAST(sst.IsCash * 1.10 AS INT) AS VARCHAR(50))) 
+                THEN CONCAT('+', CAST(CAST(sst.IsCash * 1.10 AS DECIMAL(18,2)) AS VARCHAR(50))) 
                 ELSE '0' 
             END AS Points,  
             s.ServiceName,  

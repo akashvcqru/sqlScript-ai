@@ -279,7 +279,7 @@ BEGIN
         @SuccessCodeCount as SuccessCode,
         @UnsuccessCodeCount as UnsuccessCode,
         CASE 
-            WHEN @CompID = 'Comp-1274' THEN (SELECT ISNULL(SUM(cash), 0) FROM BLoyaltyPointsEarned WHERE M_Consumerid = @M_Consumerid AND compid LIKE '%' + @CompID + '%')
+            WHEN @CompID = 'Comp-1274' THEN @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(cash AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
             ELSE @TotalConfigCash + (SELECT RefCash FROM #ReferralStats)
         END as TotalCash,
