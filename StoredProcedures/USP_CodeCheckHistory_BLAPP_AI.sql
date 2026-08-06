@@ -13,6 +13,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]
     @Month INT = NULL
 AS  
 BEGIN  
+    SET NOCOUNT ON;
+
     IF @Comp_ID = 'comp-1152' OR @Comp_ID = 'Comp-1152'
     BEGIN
         SELECT   
