@@ -13,6 +13,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]
     @Month INT = NULL
 AS  
 BEGIN  
+    SET NOCOUNT ON;
+
     IF @Comp_ID = 'comp-1152' OR @Comp_ID = 'Comp-1152'
     BEGIN
         SELECT   
@@ -85,7 +87,7 @@ BEGIN
             @M_Consumer_id AS M_Consumerid,
             CASE 
                 WHEN pe.Is_Success = 1 AND ISNULL(sst.IsCash, 0) <> 0 
-                THEN CONCAT('+', CAST(CAST(sst.IsCash * 1.10 AS INT) AS VARCHAR(50))) 
+                THEN CONCAT('+', CAST(CAST(sst.IsCash * 1.10 AS DECIMAL(18,2)) AS VARCHAR(50))) 
                 ELSE '0' 
             END AS Points,  
             s.ServiceName,  
