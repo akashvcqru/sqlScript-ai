@@ -20,7 +20,7 @@ BEGIN
     DECLARE @Reffralcode INT, @Finalreffral nvarchar(100);   
 	DECLARE @IsKYCRequired BIT;
 
-    SELECT @IsKYCRequired = CASE WHEN JSON_VALUE(kyc_Details, '$.Iskycrequired') = 'True' THEN 1 ELSE 0 END
+    SELECT @IsKYCRequired = CASE WHEN COALESCE(JSON_VALUE(kyc_Details, '$.0.Iskycrequired'), JSON_VALUE(kyc_Details, '$.Iskycrequired')) = 'True' THEN 1 ELSE 0 END
     FROM BrandSettings_AI WHERE Comp_ID = @Comp_id;
          
     SET @Reffralcode = CAST((RAND(CHECKSUM(NEWID())) * 90000000 + 10000000) AS INT);    
