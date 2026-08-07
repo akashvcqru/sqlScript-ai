@@ -58,7 +58,7 @@ BEGIN
     );
 
     INSERT INTO #TempCodesActivity
-    EXEC [dbo].[SP_BL_GetCodesActivityReport_AI]
+    EXEC [dbo].[SP_BL_GetCodesActivityReport_Combined_AI]
         @Comp_Id    = @CompId,
         @datePreset = 'ALL',
         @IsExport   = 1,
