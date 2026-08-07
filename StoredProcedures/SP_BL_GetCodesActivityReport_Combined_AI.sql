@@ -165,7 +165,7 @@ BEGIN
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#MCode') IS NOT NULL DROP TABLE #MCode;
 
-    SELECT 
+    SELECT DISTINCT
         c.Code1,
         c.Code2,
         c.Pro_ID,
