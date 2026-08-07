@@ -14,6 +14,19 @@ AS
 BEGIN
   SET NOCOUNT ON;
 
+    ----------------------------------------------------
+    -- Drop Temp Tables if exist
+    ----------------------------------------------------
+    IF OBJECT_ID('tempdb..#Enq') IS NOT NULL DROP TABLE #Enq;
+    IF OBJECT_ID('tempdb..#Codes') IS NOT NULL DROP TABLE #Codes;
+    IF OBJECT_ID('tempdb..#MCode') IS NOT NULL DROP TABLE #MCode;
+    IF OBJECT_ID('tempdb..#Pro') IS NOT NULL DROP TABLE #Pro;
+    IF OBJECT_ID('tempdb..#Geo') IS NOT NULL DROP TABLE #Geo;
+    IF OBJECT_ID('tempdb..#Points') IS NOT NULL DROP TABLE #Points;
+    IF OBJECT_ID('tempdb..#ScanReferrals') IS NOT NULL DROP TABLE #ScanReferrals;
+    IF OBJECT_ID('tempdb..#CodeConfigPoints') IS NOT NULL DROP TABLE #CodeConfigPoints;
+    IF OBJECT_ID('tempdb..#FinalReport') IS NOT NULL DROP TABLE #FinalReport;
+
      ----------------------------------------------------
     -- Pagination Defaults
     ----------------------------------------------------
@@ -158,10 +171,9 @@ BEGIN
         c.Pro_ID,
         c.Series_Order,
         c.Series_Serial,
-        c.Row_ID AS M_Codeid
-    INTO #MCode from 
-     #Enq C
-         ;
+        c.Row_ID AS M_Codeid,
+        c.Row_ID AS Row_ID
+    INTO #MCode FROM #Enq C;
 
     CREATE INDEX IX_MCode ON #MCode(Code1, Code2);
 
