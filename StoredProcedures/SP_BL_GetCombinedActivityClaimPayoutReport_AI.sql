@@ -176,25 +176,27 @@ BEGIN
         ISNULL(Code1, '') + ISNULL(Code2, '') AS [UniqueCode],
         ''                          AS [Pro_Name],
         ISNULL(BankStatus, '')      AS [Result]
-    FROM #TempUPIPayout WHERE BankStatus = 'Success';
+    FROM #TempUPIPayout WHERE BankStatus = 'Success' and code1 >0;
 
     ---------------------------------------------------------
     -- 5. Final Output with Pagination & Running Balance
     ---------------------------------------------------------
-    ;WITH CTE_Result AS (
-        SELECT 
-            [Type],
-            [Points],
-            [Date],
-            [UniqueCode],
-            [Pro_Name],
-            [Result],
-            SUM([Points]) OVER (
-                ORDER BY [Date] ASC, [UniqueCode] ASC
-                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-            ) AS [RunningBalance]
-        FROM #CombinedResult
-    )
+    IF OBJECT_ID('tempdb..#FinalCalculatedResult') IS NOT NULL DROP TABLE #FinalCalculatedResult;
+
+    SELECT 
+        [Type],
+        [Points],
+        [Date],
+        [UniqueCode],
+        [Pro_Name],
+        [Result],
+        SUM([Points]) OVER (
+            ORDER BY [Date] ASC, [UniqueCode] ASC
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS [RunningBalance]
+    INTO #FinalCalculatedResult
+    FROM #CombinedResult;
+
     IF @IsExport = 1
     BEGIN
         SELECT 
@@ -205,7 +207,7 @@ BEGIN
             [Pro_Name],
             [Result],
             [RunningBalance]
-        FROM CTE_Result
+        FROM #FinalCalculatedResult
         ORDER BY [Date] DESC;
     END
     ELSE
@@ -219,7 +221,7 @@ BEGIN
             [Pro_Name],
             [Result],
             [RunningBalance]
-        FROM CTE_Result
+        FROM #FinalCalculatedResult
         ORDER BY [Date] DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
@@ -229,7 +231,7 @@ BEGIN
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM #CombinedResult;
+        FROM #FinalCalculatedResult;
     END
 END
 GO
