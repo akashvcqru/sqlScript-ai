@@ -87,7 +87,7 @@ BEGIN
         IFSC_Code        NVARCHAR(50),
         PaymentStatus    NVARCHAR(50),
         BankRefID        NVARCHAR(100),
-        TransactionDate  DATETIME,
+        TransactionDate  NVARCHAR(100),
         PaymentRemarks   NVARCHAR(MAX),
         Claim_Status     NVARCHAR(50),
         vendor_comment   NVARCHAR(MAX),
@@ -138,21 +138,23 @@ BEGIN
     -- 4. Combine Results into Fourth Temp Table
     ---------------------------------------------------------
     CREATE TABLE #CombinedResult (
-        [Type]     NVARCHAR(50),
-        [Points]   DECIMAL(18,2),
-        [Date]     DATETIME,
-        [Pro_Name] NVARCHAR(200),
-        [Result]   NVARCHAR(50)
+        [Type]       NVARCHAR(50),
+        [Points]     DECIMAL(18,2),
+        [Date]       DATETIME,
+        [UniqueCode] NVARCHAR(100),
+        [Pro_Name]   NVARCHAR(200),
+        [Result]     NVARCHAR(50)
     );
 
-    INSERT INTO #CombinedResult ([Type], [Points], [Date], [Pro_Name], [Result])
+    INSERT INTO #CombinedResult ([Type], [Points], [Date], [UniqueCode], [Pro_Name], [Result])
     SELECT 
         'Point Earned'              AS [Type],
         ABS(ISNULL(WornPoint, 0))   AS [Points],
         Enq_Date                    AS [Date],
+        ISNULL(UniqueCode, '')      AS [UniqueCode],
         ISNULL(Pro_Name, '')        AS [Pro_Name],
         ISNULL(Result, '')          AS [Result]
-    FROM #TempCodesActivity
+    FROM #TempCodesActivity WHERE [Result] = 'Verified'
 
     UNION ALL
 
@@ -160,9 +162,10 @@ BEGIN
         'Point Claimed'             AS [Type],
         -1 * ABS(ISNULL(Points, 0)) AS [Points],
         Claim_date                  AS [Date],
+        ''                          AS [UniqueCode],
         ''                          AS [Pro_Name],
         ISNULL(PaymentStatus, '')   AS [Result]
-    FROM #TempPaymentClaim
+    FROM #TempPaymentClaim where PaymentStatus = 'Success'
 
     UNION ALL
 
@@ -170,22 +173,39 @@ BEGIN
         'Point Paid'                AS [Type],
         -1 * ABS(ISNULL(Amount, 0)) AS [Points],
         ReqDate                     AS [Date],
+        ISNULL(Code1, '') + ISNULL(Code2, '') AS [UniqueCode],
         ''                          AS [Pro_Name],
         ISNULL(BankStatus, '')      AS [Result]
-    FROM #TempUPIPayout;
+    FROM #TempUPIPayout WHERE BankStatus = 'Success';
 
     ---------------------------------------------------------
-    -- 5. Final Output with Pagination (Default limit 3)
+    -- 5. Final Output with Pagination & Running Balance
     ---------------------------------------------------------
+    ;WITH CTE_Result AS (
+        SELECT 
+            [Type],
+            [Points],
+            [Date],
+            [UniqueCode],
+            [Pro_Name],
+            [Result],
+            SUM([Points]) OVER (
+                ORDER BY [Date] ASC, [UniqueCode] ASC
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ) AS [RunningBalance]
+        FROM #CombinedResult
+    )
     IF @IsExport = 1
     BEGIN
         SELECT 
             [Type],
             [Points],
             [Date],
+            [UniqueCode],
             [Pro_Name],
-            [Result]
-        FROM #CombinedResult
+            [Result],
+            [RunningBalance]
+        FROM CTE_Result
         ORDER BY [Date] DESC;
     END
     ELSE
@@ -195,9 +215,11 @@ BEGIN
             [Type],
             [Points],
             [Date],
+            [UniqueCode],
             [Pro_Name],
-            [Result]
-        FROM #CombinedResult
+            [Result],
+            [RunningBalance]
+        FROM CTE_Result
         ORDER BY [Date] DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
