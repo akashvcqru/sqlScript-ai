@@ -1,10 +1,3 @@
-USE [Vcqru]
-GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_Combined_AI]    Script Date: 8/7/2026 ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_Combined_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
@@ -117,13 +110,14 @@ BEGIN
     SELECT 
         Received_Code1,
         Received_Code2,
+		code1,code2,
         Enq_Date,
         Dial_Mode,
         Is_Success,
         MobileNo,
         Latitude,
         Longitude,
-        M.Row_ID AS M_Codeid,
+        M.Row_ID as M_Codeid, M.Row_ID as Row_ID ,M.Pro_ID,
         M.Series_Order,
         M.Series_Serial
     INTO #Enq
@@ -133,10 +127,9 @@ BEGIN
 	 AND Received_Code2 = CAST(Code2 AS VARCHAR(50))
    INNER JOIN Pro_Reg PR
    ON PR.Pro_ID=M.Pro_ID
-    WHERE PR.Comp_ID = @Comp_Id
-      AND Enq_Date >= @StartDate
-      AND Enq_Date <  @EndDate
-      AND (@DialModeFilter IS NULL OR Dial_Mode = @DialModeFilter);
+    WHERE PR.Comp_ID = @Comp_Id  and MobileNo = @Search
+       
+       ;
 
     CREATE INDEX IX_Enq_Code   ON #Enq(Received_Code1, Received_Code2);
     CREATE INDEX IX_Enq_Mobile ON #Enq(MobileNo);
@@ -160,17 +153,15 @@ BEGIN
     IF OBJECT_ID('tempdb..#MCode') IS NOT NULL DROP TABLE #MCode;
 
     SELECT 
-        MCd.Code1,
-        MCd.Code2,
-        MCd.Pro_ID,
-        MCd.Series_Order,
-        MCd.Series_Serial,
-        MCd.Row_ID AS M_Codeid
-    INTO #MCode
-    FROM M_Code MCd
-    INNER JOIN #Codes C
-        ON MCd.Code1 = C.Received_Code1
-       AND MCd.Code2 = C.Received_Code2;
+        c.Code1,
+        c.Code2,
+        c.Pro_ID,
+        c.Series_Order,
+        c.Series_Serial,
+        c.Row_ID AS M_Codeid
+    INTO #MCode from 
+     #Enq C
+         ;
 
     CREATE INDEX IX_MCode ON #MCode(Code1, Code2);
 
@@ -249,7 +240,7 @@ BEGIN
         FROM BuiltLoyaltyMCodeCheck
     ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
     INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-    INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
+    INNER JOIN #MCode M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
     INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID
     LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON BL.SST_id = sst.SST_Id
     LEFT JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
@@ -552,4 +543,3 @@ BEGIN
         );
     END
 END
-GO
