@@ -165,7 +165,7 @@ BEGIN
         ''                          AS [UniqueCode],
         ''                          AS [Pro_Name],
         ISNULL(PaymentStatus, '')   AS [Result]
-    FROM #TempPaymentClaim where PaymentStatus = 'Success'
+    FROM #TempPaymentClaim where Claim_Status = 'Success' or Claim_Status = 'Pending'
 
     UNION ALL
 
