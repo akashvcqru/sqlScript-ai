@@ -6,7 +6,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-ALTER   PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
 (
     @Comp_Id     NVARCHAR(50),  
     @datePreset  NVARCHAR(20) = NULL,   -- TODAY, WEEK, LASTWEEK, MONTH, QUARTER, ALL
@@ -238,7 +238,7 @@ BEGIN
     -- 2. Get Earned Points
     SELECT
         M_Codeid,
-        SUM(Points) AS Points
+        MAX(Points) AS Points
     INTO #EarnedPoints
     FROM (
         SELECT
@@ -250,14 +250,12 @@ BEGIN
                 END 
             AS DECIMAL(18,2)) AS Points
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        INNER JOIN (
-            SELECT BMC2.Pkid, BMC2.M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY BMC2.M_Consumer_MCOdeid ORDER BY BMC2.Createdate ASC) as rn
-            FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK)
-            INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid
-            WHERE MC2.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
-        ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
-        INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-        INNER JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
+        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
+            ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+        INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
+            ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN @CompanyList CL 
+            ON BL.compid = CL.Comp_Id
         WHERE MC.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
 
         UNION ALL
@@ -271,16 +269,16 @@ BEGIN
                 END 
             AS DECIMAL(18,2)) AS Points
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        INNER JOIN (
-            SELECT BMC2.Pkid, BMC2.M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY BMC2.M_Consumer_MCOdeid ORDER BY BMC2.Createdate ASC) as rn
-            FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK)
-            INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid
-            WHERE MC2.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
-        ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
-        INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-        INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
-        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID
-        INNER JOIN @CompanyList CL ON PR.Comp_ID = CL.Comp_Id
+        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
+            ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+        INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
+            ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN M_Code M WITH (NOLOCK) 
+            ON MC.M_Codeid = M.Row_ID
+        INNER JOIN Pro_Reg PR WITH (NOLOCK) 
+            ON M.Pro_ID = PR.Pro_ID
+        INNER JOIN @CompanyList CL 
+            ON PR.Comp_ID = CL.Comp_Id
         WHERE BL.compid IS NULL
           AND MC.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
     ) x
@@ -315,7 +313,7 @@ BEGIN
     -- 4. Aggregate into #Benefit
     SELECT
         MC.M_ConsumerId,
-        SUM(ISNULL(P.Points, ISNULL(CP.ConfigPoints, 0))) AS Benefit,
+        SUM(CASE WHEN ISNULL(P.Points, 0) > 0 THEN P.Points ELSE ISNULL(CP.ConfigPoints, 0) END) AS Benefit,
         MAX(E.Enq_Date) AS LastScan
     INTO #Benefit
     FROM #UniqueScans E

@@ -1,22 +1,25 @@
+-- Migration: Fix SP_BL_GetCodesActivityReport_AI Points calculation for multiple service entries
+-- Date: 2026-08-11
+
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 7/7/2026 5:33:35 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
-     @FromDate DATE  = NULL,                -- NEW
+    @FromDate DATE  = NULL,                -- NEW
     @ToDate DATE  = NULL,                  -- NEW
     @CodeStatusFilter NVARCHAR(20) = NULL,     -- NEW (Verified, Already Scanned, Invalid)
-     @StateFilter NVARCHAR(100) = NULL,       -- ✅ NEW
+    @StateFilter NVARCHAR(100) = NULL,       -- ✅ NEW
     @DialModeFilter NVARCHAR(50) = NULL,     -- ✅ NEW
     @Page INT = NULL,                        -- ✅ NEW
     @Limit INT = NULL,                      -- ✅ NEW
-     @IsExport BIT =NULL,
-       @Search nvarchar(30) = null
+    @IsExport BIT =NULL,
+    @Search nvarchar(30) = null
 AS
 BEGIN
   SET NOCOUNT ON;
@@ -563,3 +566,4 @@ BEGIN
         );
     END
 END
+GO
