@@ -9,6 +9,7 @@ CREATE TABLE [dbo].[tbl_KycBenefitSettings](
 	[UserType] [int] NULL,
 	[IsKYCBenefit] [bit] NULL,
 	[Points] [int] NULL,
+	[IsDelete] [bit] NULL DEFAULT 0,
 	[Entry_Date] [datetime] NULL,
 	[Updated_Date] [datetime] NULL,
 PRIMARY KEY CLUSTERED 
