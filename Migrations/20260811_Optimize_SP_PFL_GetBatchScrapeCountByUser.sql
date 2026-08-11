@@ -1,15 +1,7 @@
--- Migration: Optimize SP_PFL_GetBatchScrapeCountByUser and add supporting indexes
+-- Migration: Optimize SP_PFL_GetBatchScrapeCountByUser
 -- Date: 2026-08-11
 
--- 1. Create index on M_Code_PFL for Code1, Code2 and ScrapeFlag if not exists
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.M_Code_PFL') AND name = 'IDX_M_Code_PFL_Code1_Code2_ScrapeFlag')
-BEGIN
-    CREATE NONCLUSTERED INDEX [IDX_M_Code_PFL_Code1_Code2_ScrapeFlag]
-    ON [dbo].[M_Code_PFL] ([Code1], [Code2], [ScrapeFlag]);
-END
-GO
-
--- 2. Create index on PFL_Batchlist for From, To ranges if not exists
+-- 1. Create index on PFL_Batchlist for From, To ranges if not exists
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.PFL_Batchlist') AND name = 'IDX_PFL_Batchlist_From_To')
 BEGIN
     CREATE NONCLUSTERED INDEX [IDX_PFL_Batchlist_From_To]
