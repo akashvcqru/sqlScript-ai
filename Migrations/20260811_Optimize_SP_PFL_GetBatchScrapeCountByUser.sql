@@ -1,11 +1,24 @@
-USE [Vcqru]
-GO
-/****** Object:  StoredProcedure [dbo].[SP_PFL_GetBatchScrapeCountByUser]    Script Date: 3/2/2026 12:27:18 PM ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
+-- Migration: Optimize SP_PFL_GetBatchScrapeCountByUser and add supporting indexes
+-- Date: 2026-08-11
+
+-- 1. Create index on M_Code_PFL for Code1, Code2 and ScrapeFlag if not exists
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.M_Code_PFL') AND name = 'IDX_M_Code_PFL_Code1_Code2_ScrapeFlag')
+BEGIN
+    CREATE NONCLUSTERED INDEX [IDX_M_Code_PFL_Code1_Code2_ScrapeFlag]
+    ON [dbo].[M_Code_PFL] ([Code1], [Code2], [ScrapeFlag]);
+END
 GO
 
+-- 2. Create index on PFL_Batchlist for From, To ranges if not exists
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.PFL_Batchlist') AND name = 'IDX_PFL_Batchlist_From_To')
+BEGIN
+    CREATE NONCLUSTERED INDEX [IDX_PFL_Batchlist_From_To]
+    ON [dbo].[PFL_Batchlist] ([From], [To])
+    INCLUDE ([Batch No], [SKU]);
+END
+GO
+
+-- 3. Deploy optimized stored procedure SP_PFL_GetBatchScrapeCountByUser
 CREATE OR ALTER PROCEDURE [dbo].[SP_PFL_GetBatchScrapeCountByUser]
 (
     @FromDate   DATE = NULL,
