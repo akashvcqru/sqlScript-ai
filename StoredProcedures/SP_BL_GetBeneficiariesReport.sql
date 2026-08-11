@@ -129,9 +129,9 @@ BEGIN
     SELECT DISTINCT M_ConsumerId
     INTO #Candidates
     FROM (
-        SELECT M_consumerId AS M_ConsumerId FROM tbl_VendorViseKYCStatus WITH (NOLOCK) WHERE Comp_id = @Comp_Id OR Comp_Id = @Comp_Id
+        SELECT M_consumerId AS M_ConsumerId FROM tbl_VendorViseKYCStatus WITH (NOLOCK) WHERE Comp_id = @Comp_Id
         UNION
-        SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON CD.Mobileno = MC.MobileNo WHERE CD.Comp_id = @Comp_Id OR CD.Comp_Id = @Comp_Id
+        SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON CD.Mobileno = MC.MobileNo WHERE CD.Comp_id = @Comp_Id
         UNION
         SELECT MC.M_Consumerid AS M_ConsumerId
         FROM BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
@@ -140,7 +140,7 @@ BEGIN
         INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
         WHERE PR.Comp_Id = @Comp_Id
         UNION
-        SELECT M_Consumerid AS M_ConsumerId FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id OR Comp_Id = @Comp_Id
+        SELECT M_Consumerid AS M_ConsumerId FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id
     ) x;
 
     CREATE CLUSTERED INDEX IX_Candidates_ConsumerId ON #Candidates(M_ConsumerId);
@@ -167,7 +167,7 @@ BEGIN
     LEFT JOIN (
         SELECT M_consumerId AS M_ConsumerId, VRKbl_KYC_status, ROW_NUMBER() OVER (PARTITION BY M_consumerId ORDER BY Entry_date DESC) as rn
         FROM tbl_VendorViseKYCStatus WITH (NOLOCK)
-        WHERE Comp_id = @Comp_Id OR Comp_Id = @Comp_Id
+        WHERE Comp_id = @Comp_Id
     ) V ON V.M_ConsumerId = C.M_ConsumerId AND V.rn = 1
     WHERE MC.IsDelete = 0;
 
@@ -502,7 +502,7 @@ BEGIN
     -- OUTPUT
     ---------------------------------------------------------
     IF @IsExport = 1
-    BEGIN
+    BEGIN 
         SELECT 
             M_ConsumerId,
             ConsumerName,
