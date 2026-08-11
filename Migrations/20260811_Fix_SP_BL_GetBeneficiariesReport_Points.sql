@@ -504,7 +504,7 @@ BEGIN
     -- OUTPUT
     ---------------------------------------------------------
     IF @IsExport = 1
-    BEGIN
+    BEGIN 
         SELECT 
             M_ConsumerId,
             ConsumerName,
