@@ -32,6 +32,8 @@ BEGIN
     IF @Limit IS NULL OR @Limit <= 0 SET @Limit = 10;
     IF @IsExport IS NULL SET @IsExport = 0;
 
+    DECLARE @Offset INT = (@Page - 1) * @Limit;
+
     ---------------------------------------------------------
     -- COMPANY FILTER PREPARATION
     ---------------------------------------------------------
