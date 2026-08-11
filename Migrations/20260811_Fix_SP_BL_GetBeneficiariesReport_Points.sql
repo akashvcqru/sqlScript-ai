@@ -49,7 +49,7 @@ BEGIN
     -- DATE RANGE
     ---------------------------------------------------------
     DECLARE @CompanyStartDate DATETIME;
-    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND ([Status] = 1 OR [Status] IS NULL);
 
     DECLARE @StartDate DATETIME = NULL;
     DECLARE @EndDate   DATETIME = NULL;
@@ -131,18 +131,18 @@ BEGIN
     SELECT DISTINCT M_ConsumerId
     INTO #Candidates
     FROM (
-        SELECT M_ConsumerId FROM tbl_VendorViseKYCStatus WITH (NOLOCK) WHERE Comp_Id = @Comp_Id
+        SELECT M_consumerId AS M_ConsumerId FROM tbl_VendorViseKYCStatus WITH (NOLOCK) WHERE Comp_id = @Comp_Id OR Comp_Id = @Comp_Id
         UNION
-        SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON CD.Mobileno = MC.MobileNo WHERE CD.Comp_id = @Comp_Id
+        SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON CD.Mobileno = MC.MobileNo WHERE CD.Comp_id = @Comp_Id OR CD.Comp_Id = @Comp_Id
         UNION
-        SELECT MC.M_Consumerid 
+        SELECT MC.M_Consumerid AS M_ConsumerId
         FROM BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
         INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
         INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
         INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
         WHERE PR.Comp_Id = @Comp_Id
         UNION
-        SELECT M_Consumerid FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id
+        SELECT M_Consumerid AS M_ConsumerId FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id OR Comp_Id = @Comp_Id
     ) x;
 
     CREATE CLUSTERED INDEX IX_Candidates_ConsumerId ON #Candidates(M_ConsumerId);
@@ -167,9 +167,9 @@ BEGIN
     FROM #Candidates C
     INNER JOIN M_Consumer MC WITH (NOLOCK) ON C.M_ConsumerId = MC.M_ConsumerId
     LEFT JOIN (
-        SELECT M_ConsumerId, VRKbl_KYC_status, ROW_NUMBER() OVER (PARTITION BY M_ConsumerId ORDER BY Entry_date DESC) as rn
+        SELECT M_consumerId AS M_ConsumerId, VRKbl_KYC_status, ROW_NUMBER() OVER (PARTITION BY M_consumerId ORDER BY Entry_date DESC) as rn
         FROM tbl_VendorViseKYCStatus WITH (NOLOCK)
-        WHERE Comp_Id = @Comp_Id
+        WHERE Comp_id = @Comp_Id OR Comp_Id = @Comp_Id
     ) V ON V.M_ConsumerId = C.M_ConsumerId AND V.rn = 1
     WHERE MC.IsDelete = 0;
 
@@ -427,26 +427,22 @@ BEGIN
     CREATE CLUSTERED INDEX IX_UPI_ConsumerId ON #UPI(M_ConsumerId);
 
     ---------------------------------------------------------
+    ---------------------------------------------------------
     -- BPOINTS DEBITS (Gifts, Reversals, Manual Adjustments)
     ---------------------------------------------------------
     SELECT 
-        M_Consumerid,
-        SUM(CAST(
-            CASE 
-                WHEN Points IS NOT NULL AND Points > 0 THEN Points
-                ELSE ISNULL(TRY_CAST(Amount AS DECIMAL(18,2)), 0)
-            END 
-        AS DECIMAL(18,2))) AS BPointsDebited
+        BT.RedeemBy AS M_ConsumerId,
+        SUM(CAST(ISNULL(BT.RedeemPoints, 0) AS DECIMAL(18,2))) AS BPointsDebited
     INTO #BPoints
-    FROM BPointsTransaction WITH (NOLOCK)
-    WHERE compid = @Comp_Id
-      AND (bpstatus = 'Debit' OR Status = 'Debit')
-      AND M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
-      AND (@StartDate IS NULL OR Entry_Date >= @StartDate)
-      AND (@EndDate   IS NULL OR Entry_Date < @EndDate)
-    GROUP BY M_Consumerid;
+    FROM BPointsTransaction BT WITH (NOLOCK)
+    INNER JOIN @CompanyList CL ON BT.companyid = CL.Comp_Id
+    WHERE BT.bpstatus IN ('Accepted', 'SUCCESS', 'Debit')
+      AND BT.RedeemBy IN (SELECT M_ConsumerId FROM #Users)
+      AND (@StartDate IS NULL OR BT.Redeemdate >= @StartDate)
+      AND (@EndDate   IS NULL OR BT.Redeemdate < @EndDate)
+    GROUP BY BT.RedeemBy;
 
-    CREATE CLUSTERED INDEX IX_BPoints_ConsumerId ON #BPoints(M_Consumerid);
+    CREATE CLUSTERED INDEX IX_BPoints_ConsumerId ON #BPoints(M_ConsumerId);
 
     ---------------------------------------------------------
     -- REDEEMED / BALANCE MASTER
@@ -463,7 +459,7 @@ BEGIN
     LEFT JOIN #Claims C ON C.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #TDS T ON T.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #UPI UPI ON UPI.M_ConsumerId = U.M_ConsumerId
-    LEFT JOIN #BPoints BP ON BP.M_Consumerid = U.M_ConsumerId;
+    LEFT JOIN #BPoints BP ON BP.M_ConsumerId = U.M_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_Transactions_ConsumerId ON #Transactions(M_ConsumerId);
 
