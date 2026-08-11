@@ -6,16 +6,16 @@ SET QUOTED_IDENTIFIER ON
 GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport_Admin_AI]
 (
-    @Comp_Id     NVARCHAR(50),  
-    @datePreset  NVARCHAR(20) = NULL,   -- TODAY, WEEK, LASTWEEK, MONTH, QUARTER, ALL
-    @FromDate    DATE = NULL,
-    @ToDate      DATE = NULL,
-    @KYCStatusFilter NVARCHAR(20) = NULL, -- Approved / Rejected / Pending
-    @StateFilter NVARCHAR(100) = NULL,
-    @Page        INT = NULL,
-    @Limit       INT = NULL,
-    @IsExport BIT =NULL,
-    @Search      NVARCHAR(30) = NULL,
+    @Comp_Id         NVARCHAR(50),  
+    @datePreset      NVARCHAR(20) = NULL,   -- TODAY, WEEK, LASTWEEK, MONTH, QUARTER, ALL
+    @FromDate        DATE = NULL,
+    @ToDate          DATE = NULL,
+    @KYCStatusFilter NVARCHAR(20) = NULL,   -- Approved / Rejected / Pending
+    @StateFilter     NVARCHAR(100) = NULL,
+    @Page            INT = NULL,
+    @Limit           INT = NULL,
+    @IsExport        BIT = NULL,
+    @Search          NVARCHAR(30) = NULL,
     @BalanceLessThan DECIMAL(18,2) = NULL
 )
 AS
@@ -29,6 +29,8 @@ BEGIN
     IF @Limit IS NULL OR @Limit <= 0 SET @Limit = 10;
     IF @IsExport IS NULL SET @IsExport = 0;
 
+    DECLARE @Offset INT = (@Page - 1) * @Limit;
+
     ---------------------------------------------------------
     -- COMPANY FILTER PREPARATION
     ---------------------------------------------------------
@@ -40,14 +42,16 @@ BEGIN
 
     DECLARE @Multiplier DECIMAL(18,2) = 1.00;
     SELECT TOP 1 @Multiplier = 1.00 + (calculation_value / 100.0) 
-    FROM loyalty_calculation 
+    FROM loyalty_calculation WITH (NOLOCK)
     WHERE comp_id = @Comp_Id AND isactive = 1 AND isdelete = 0;
 
     ---------------------------------------------------------
     -- DATE RANGE
     ---------------------------------------------------------
     DECLARE @CompanyStartDate DATETIME;
-    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
+    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') 
+    FROM Comp_Reg WITH (NOLOCK) 
+    WHERE Comp_ID = @Comp_Id AND Status = 1;
 
     DECLARE @StartDate DATETIME = NULL;
     DECLARE @EndDate   DATETIME = NULL;
@@ -101,7 +105,6 @@ BEGIN
     END
     ELSE IF (@Win = 'LASTQUARTER')
     BEGIN
-        SET DATEFIRST 1;
         SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
         SET @EndDate = DATEADD(QUARTER, 1, @StartDate);
     END
@@ -112,7 +115,7 @@ BEGIN
     END
     ELSE IF (@Win = 'LASTYEAR')
     BEGIN
-        SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1) AS DATETIME);
+        SET @StartDate = DATEADD(YEAR, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME));
         SET @EndDate = DATEADD(YEAR, 1, @StartDate);
     END
     ELSE -- ALL / NULL
@@ -122,7 +125,7 @@ BEGIN
     END
 
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Candidates, #Users, #State, #Benefit, #Claims, #TDS, #UPI, #BPoints, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals, #OtherEarnedPoints;
+    DROP TABLE IF EXISTS #Candidates, #Users, #UserMobiles, #State, #Benefit, #Claims, #TDS, #UPI, #BPoints, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals, #OtherEarnedPoints;
 
     ---------------------------------------------------------
     -- CANDIDATE USERS FOR THIS COMPANY
@@ -132,17 +135,13 @@ BEGIN
     FROM (
         SELECT M_ConsumerId FROM tbl_VendorViseKYCStatus WITH (NOLOCK) WHERE Comp_Id = @Comp_Id
         UNION
-        SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON CD.Mobileno = MC.MobileNo WHERE CD.Comp_id = @Comp_Id AND CD.Service_ID IN ('SRV1001', 'SRV1029')
+        SELECT CD.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) WHERE CD.Comp_id = @Comp_Id AND CD.M_ConsumerId IS NOT NULL
         UNION
-        SELECT MC.M_Consumerid 
-        FROM BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
-        INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-        INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
-        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
-        WHERE PR.Comp_Id = @Comp_Id
+        SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON CD.Mobileno = MC.MobileNo WHERE CD.Comp_id = @Comp_Id AND CD.M_ConsumerId IS NULL
         UNION
         SELECT M_Consumerid FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id
-    ) x;
+    ) x
+    WHERE M_ConsumerId IS NOT NULL;
 
     CREATE CLUSTERED INDEX IX_Candidates_ConsumerId ON #Candidates(M_ConsumerId);
 
@@ -174,6 +173,19 @@ BEGIN
 
     CREATE CLUSTERED INDEX IX_Users_ConsumerId ON #Users(M_ConsumerId);
     CREATE INDEX IX_Users_MobileNo ON #Users(MobileNo);
+
+    -- Searchable Mobile Number Index for SARGable index seeks
+    CREATE TABLE #UserMobiles (MobileNo NVARCHAR(50) PRIMARY KEY, M_ConsumerId INT);
+    INSERT INTO #UserMobiles (MobileNo, M_ConsumerId)
+    SELECT DISTINCT MobileNo, M_ConsumerId FROM #Users WHERE MobileNo IS NOT NULL AND LTRIM(RTRIM(MobileNo)) <> ''
+    UNION
+    SELECT DISTINCT RIGHT(MobileNo, 10), M_ConsumerId FROM #Users WHERE LEN(MobileNo) >= 10
+    UNION
+    SELECT DISTINCT '+91' + RIGHT(MobileNo, 10), M_ConsumerId FROM #Users WHERE LEN(MobileNo) >= 10
+    UNION
+    SELECT DISTINCT '91' + RIGHT(MobileNo, 10), M_ConsumerId FROM #Users WHERE LEN(MobileNo) >= 10
+    UNION
+    SELECT DISTINCT '0' + RIGHT(MobileNo, 10), M_ConsumerId FROM #Users WHERE LEN(MobileNo) >= 10;
 
     ---------------------------------------------------------
     -- LATEST STATE / CITY (OPTIMIZED)
@@ -212,10 +224,10 @@ BEGIN
         rn INT
     );
 
-    -- 1. Get Enquiries (Source: Pro_Enq)
+    -- 1. Get Enquiries (Source: Pro_Enq using SARGable Index Seek)
     INSERT INTO #UniqueScans (MobileNo, M_Codeid, Enq_Date, Pro_ID, Series_Order, Series_Serial, rn)
     SELECT 
-        REPLACE(PE.MobileNo, '+', '') AS MobileNo,
+        U.MobileNo,
         M.Row_ID AS M_Codeid,
         PE.Enq_Date,
         M.Pro_ID,
@@ -223,6 +235,8 @@ BEGIN
         M.Series_Serial,
         ROW_NUMBER() OVER (PARTITION BY PE.Received_Code1, PE.Received_Code2, PE.Is_Success ORDER BY PE.Enq_Date) as rn
     FROM Pro_Enq PE WITH (NOLOCK)
+    INNER JOIN #UserMobiles UM ON PE.MobileNo = UM.MobileNo
+    INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
     INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
     INNER JOIN @CompanyList CL ON PR.Comp_Id = CL.Comp_Id
@@ -232,7 +246,6 @@ BEGIN
       AND SS.IsActive = 1 AND SS.IsDelete = 0
       AND (M.Series_Order > SS.start_order OR (M.Series_Order = SS.start_order AND M.Series_Serial >= SS.start_series))
       AND (M.Series_Order < SS.end_order OR (M.Series_Order = SS.end_order AND M.Series_Serial <= SS.end_series))
-      AND REPLACE(PE.MobileNo, '+', '') IN (SELECT MobileNo FROM #Users)
       AND (@StartDate IS NULL OR PE.Enq_Date >= @StartDate)
       AND (@EndDate   IS NULL OR PE.Enq_Date < @EndDate);
 
@@ -381,44 +394,48 @@ BEGIN
     -- TDS AMOUNT FROM ALL APPROVED CLAIMS
     ---------------------------------------------------------
     SELECT 
-        CD.Mobileno,
+        U.M_ConsumerId,
         SUM(ISNULL(CD.tdsAmount,0)) AS TDSAmount
     INTO #TDS
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
+    INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
+    INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     WHERE CD.Isapproved = 1
       AND CD.Service_ID IN ('SRV1001', 'SRV1029')
-      AND CD.Mobileno IN (SELECT MobileNo FROM #Users)
       AND (CD.action_date IS NULL OR ((@StartDate IS NULL OR CD.action_date >= @StartDate) AND (@EndDate IS NULL OR CD.action_date < @EndDate)))
-    GROUP BY CD.Mobileno;
+    GROUP BY U.M_ConsumerId;
 
-    CREATE CLUSTERED INDEX IX_TDS_MobileNo ON #TDS(Mobileno);
+    CREATE CLUSTERED INDEX IX_TDS_ConsumerId ON #TDS(M_ConsumerId);
 
     ---------------------------------------------------------
     -- CLAIMS (CALCULATED IN POINTS)
     ---------------------------------------------------------
     SELECT
-        CD.Mobileno,
+        U.M_ConsumerId,
         SUM(CD.Amount) AS ClaimsPoints
     INTO #Claims
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
+    INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
+    INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     WHERE CD.Isapproved = 1
       AND CD.Service_ID IN ('SRV1001', 'SRV1029')
-      AND CD.Mobileno IN (SELECT MobileNo FROM #Users)
       AND (CD.action_date IS NULL OR ((@StartDate IS NULL OR CD.action_date >= @StartDate) AND (@EndDate IS NULL OR CD.action_date < @EndDate)))
-    GROUP BY CD.Mobileno;
+    GROUP BY U.M_ConsumerId;
 
-    CREATE CLUSTERED INDEX IX_Claims_MobileNo ON #Claims(Mobileno);
+    CREATE CLUSTERED INDEX IX_Claims_ConsumerId ON #Claims(M_ConsumerId);
 
     ---------------------------------------------------------
     -- UPI
     ---------------------------------------------------------
     SELECT
-        UT.M_Consumerid,
+        U.M_ConsumerId,
         SUM(ISNULL(UT.Amount,0)) AS UPIAmount
     INTO #UPI
     FROM tblUPITransactionDetails UT WITH (NOLOCK)
+    INNER JOIN #UserMobiles UM ON UT.MobileNo = UM.MobileNo
+    INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     INNER JOIN M_Code M WITH (NOLOCK) ON UT.Code1 = M.Code1 AND UT.Code2 = M.Code2
     INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = M.Pro_ID
     WHERE UT.Comp_Id = @Comp_Id
@@ -426,18 +443,17 @@ BEGIN
       AND SS.Service_ID IN ('SRV1001', 'SRV1029')
       AND (M.Series_Order > SS.start_order OR (M.Series_Order = SS.start_order AND M.Series_Serial >= SS.start_series))
       AND (M.Series_Order < SS.end_order OR (M.Series_Order = SS.end_order AND M.Series_Serial <= SS.end_series))
-      AND UT.M_Consumerid IN (SELECT CAST(M_ConsumerId AS VARCHAR(50)) FROM #Users)
       AND (@StartDate IS NULL OR UT.ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR UT.ReqDate <  @EndDate)
-    GROUP BY UT.M_Consumerid;
+    GROUP BY U.M_ConsumerId;
 
-    CREATE CLUSTERED INDEX IX_UPI_ConsumerId ON #UPI(M_Consumerid);
+    CREATE CLUSTERED INDEX IX_UPI_ConsumerId ON #UPI(M_ConsumerId);
 
     ---------------------------------------------------------
     -- BPOINTS TRANSACTION
     ---------------------------------------------------------
     SELECT
-        BT.RedeemBy,
+        BT.RedeemBy AS M_ConsumerId,
         SUM(ISNULL(BT.RedeemPoints, 0)) AS BPointsAmount
     INTO #BPoints
     FROM BPointsTransaction BT WITH (NOLOCK)
@@ -450,7 +466,7 @@ BEGIN
       AND (@EndDate   IS NULL OR BT.Redeemdate <  @EndDate)
     GROUP BY BT.RedeemBy;
 
-    CREATE CLUSTERED INDEX IX_BPoints_RedeemBy ON #BPoints(RedeemBy);
+    CREATE CLUSTERED INDEX IX_BPoints_ConsumerId ON #BPoints(M_ConsumerId);
 
     ---------------------------------------------------------
     -- FINAL DATA
@@ -481,16 +497,16 @@ BEGIN
     LEFT JOIN #Benefit B  ON B.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #OtherEarnedPoints O ON O.M_Consumerid = U.M_ConsumerId
     LEFT JOIN #Referrals R ON R.M_Consumerid = U.M_ConsumerId
-    LEFT JOIN #Claims  C  ON C.Mobileno     = U.MobileNo
-    LEFT JOIN #TDS     TDS ON TDS.Mobileno   = U.MobileNo
-    LEFT JOIN #UPI     UU ON UU.M_Consumerid = CAST(U.M_ConsumerId AS VARCHAR(50))
-    LEFT JOIN #BPoints BP ON BP.RedeemBy    = U.M_ConsumerId
+    LEFT JOIN #Claims  C  ON C.M_ConsumerId = U.M_ConsumerId
+    LEFT JOIN #TDS     TDS ON TDS.M_ConsumerId = U.M_ConsumerId
+    LEFT JOIN #UPI     UU ON UU.M_ConsumerId = U.M_ConsumerId
+    LEFT JOIN #BPoints BP ON BP.M_ConsumerId = U.M_ConsumerId
     WHERE
         (
-            -- Admin view: show positive activity OR negative balance
+            -- Admin view: show positive activity OR non-zero balance
             (ISNULL(B.Benefit, 0) > 0 OR ISNULL(R.ReferralAmount, 0) > 0 OR ISNULL(O.OtherPoints, 0) > 0)
             OR
-            (ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralAmount, 0) - (ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0)) < 0)
+            (ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralAmount, 0) - (ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0)) <> 0)
         )
         AND
         (
@@ -529,7 +545,7 @@ BEGIN
             ConsumerName, MobileNo, State, City, PinCode, KYCStatus,
             PointsEarned, RefralAmount, RedeemAmount, BalanceAmount, TDSAmount, LastScan
         FROM #FinalData
-        WHERE RN BETWEEN ((@Page - 1) * @Limit) + 1 AND (@Page * @Limit)
+        WHERE RN BETWEEN @Offset + 1 AND (@Offset + @Limit)
         ORDER BY RN;
 
         SELECT
