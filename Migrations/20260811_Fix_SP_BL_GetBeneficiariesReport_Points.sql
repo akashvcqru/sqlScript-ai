@@ -382,10 +382,9 @@ BEGIN
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
     INNER JOIN #Users U ON CD.Mobileno = U.MobileNo
-    WHERE CD.IsPayment = 1
-      AND CD.Status = 'Paid'
-      AND (@StartDate IS NULL OR CD.ClaimDate >= @StartDate)
-      AND (@EndDate   IS NULL OR CD.ClaimDate < @EndDate)
+    WHERE (CD.Isapproved = 1 OR CD.IsPaid = 1 OR CD.PaymentStatus = 'Paid')
+      AND (@StartDate IS NULL OR CD.Claim_date >= @StartDate)
+      AND (@EndDate   IS NULL OR CD.Claim_date < @EndDate)
     GROUP BY U.M_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_Claims_ConsumerId ON #Claims(M_ConsumerId);
@@ -395,16 +394,15 @@ BEGIN
     ---------------------------------------------------------
     SELECT 
         U.M_ConsumerId,
-        SUM(CAST(CD.TdsAmount AS DECIMAL(18,2))) AS TDS
+        SUM(CAST(CD.tdsAmount AS DECIMAL(18,2))) AS TDS
     INTO #TDS
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
     INNER JOIN #Users U ON CD.Mobileno = U.MobileNo
-    WHERE CD.IsPayment = 1
-      AND CD.Status = 'Paid'
-      AND CD.TdsAmount IS NOT NULL
-      AND (@StartDate IS NULL OR CD.ClaimDate >= @StartDate)
-      AND (@EndDate   IS NULL OR CD.ClaimDate < @EndDate)
+    WHERE (CD.Isapproved = 1 OR CD.IsPaid = 1 OR CD.PaymentStatus = 'Paid')
+      AND CD.tdsAmount IS NOT NULL
+      AND (@StartDate IS NULL OR CD.Claim_date >= @StartDate)
+      AND (@EndDate   IS NULL OR CD.Claim_date < @EndDate)
     GROUP BY U.M_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_TDS_ConsumerId ON #TDS(M_ConsumerId);
@@ -416,12 +414,12 @@ BEGIN
         U.M_ConsumerId,
         SUM(TRY_CAST(t.Amount AS DECIMAL(18,2))) AS FailedCash
     INTO #UPI
-    FROM T_UPIPayoutReport t WITH (NOLOCK)
+    FROM tblUPITransactionDetails t WITH (NOLOCK)
     INNER JOIN #Users U ON t.MobileNo = U.MobileNo
     WHERE t.Status IN ('FAILED', 'Failure', 'Rejected')
-      AND t.CompanyId = @Comp_Id
-      AND (@StartDate IS NULL OR t.EntryDate >= @StartDate)
-      AND (@EndDate   IS NULL OR t.EntryDate < @EndDate)
+      AND t.Comp_Id = @Comp_Id
+      AND (@StartDate IS NULL OR t.ReqDate >= @StartDate)
+      AND (@EndDate   IS NULL OR t.ReqDate < @EndDate)
     GROUP BY U.M_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_UPI_ConsumerId ON #UPI(M_ConsumerId);
