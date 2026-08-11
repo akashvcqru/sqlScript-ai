@@ -215,10 +215,61 @@ BEGIN
         DECLARE @transDtFrom DATETIME = ISNULL(@subDateFrom, CAST(@MfdDate AS DATETIME));
         DECLARE @transDtTo DATETIME = ISNULL(@subDateTo, DATEADD(month, 6, @transDtFrom));
         
+        -- Resolve points if 0 passed and PointsData JSON is provided
+        IF (@PointsVal = 0 AND @PointsData IS NOT NULL AND ISJSON(@PointsData) = 1)
+        BEGIN
+            SELECT TOP 1 @PointsVal = TRY_CAST(Point AS INT)
+            FROM OPENJSON(@PointsData)
+            WITH (UserType VARCHAR(50) '$.UserType', Point VARCHAR(50) '$.Point')
+            WHERE LOWER(UserType) = 'user' AND TRY_CAST(Point AS INT) > 0;
+
+            IF (@PointsVal IS NULL OR @PointsVal = 0)
+            BEGIN
+                SELECT TOP 1 @PointsVal = TRY_CAST(Point AS INT)
+                FROM OPENJSON(@PointsData)
+                WITH (UserType VARCHAR(50) '$.UserType', Point VARCHAR(50) '$.Point')
+                WHERE TRY_CAST(Point AS INT) > 0;
+            END
+
+            SET @PointsVal = ISNULL(@PointsVal, 0);
+        END
+
+        -- Fetch existing trans configuration if available to inherit settings
+        DECLARE @existingIsCashConvert INT = 0;
+        DECLARE @existingIsCash DECIMAL(18,2) = 0;
+        DECLARE @existingAmtType VARCHAR(50) = 'Fixed';
+        DECLARE @existingMinval DECIMAL(18,2) = 0;
+        DECLARE @existingMaxval DECIMAL(18,2) = 0;
+        DECLARE @existingComments VARCHAR(MAX) = '';
+        DECLARE @existingPoints INT = 0;
+
+        SELECT TOP 1 
+            @existingIsCashConvert = ISNULL(sst.IsCashConvert, 0),
+            @existingIsCash = ISNULL(sst.IsCash, 0),
+            @existingAmtType = ISNULL(sst.AmtType, 'Fixed'),
+            @existingMinval = ISNULL(sst.Minval, 0),
+            @existingMaxval = ISNULL(sst.Maxval, 0),
+            @existingComments = ISNULL(sst.Comments, ''),
+            @existingPoints = ISNULL(sst.Points, 0)
+        FROM M_ServiceSubscriptionTrans sst WITH (NOLOCK)
+        INNER JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
+        WHERE ss.Pro_ID = @ProID AND ss.Comp_ID = @CompID
+        ORDER BY sst.SST_Id DESC;
+
+        IF (@PointsVal = 0 AND @existingPoints > 0)
+        BEGIN
+            SET @PointsVal = @existingPoints;
+        END
+
+        DECLARE @finalIsCash DECIMAL(18,2) = CASE 
+            WHEN @existingIsCashConvert = 1 AND @existingIsCash = 0 THEN @PointsVal 
+            ELSE @existingIsCash 
+        END;
+
         INSERT INTO M_ServiceSubscriptionTrans 
         (Subscribe_Id, Points, Frequency, DateFrom, DateTo, Entry_Date, IsActive, IsDelete, IsCashConvert, IsCash, AmtType, Minval, Maxval, Comments)
         VALUES 
-        (@currentSubId, @PointsVal, @Frequency, @transDtFrom, @transDtTo, GETDATE(), 1, 0, 0, 0, 'Fixed', 0, 0, '');
+        (@currentSubId, @PointsVal, @Frequency, @transDtFrom, @transDtTo, GETDATE(), 1, 0, @existingIsCashConvert, @finalIsCash, @existingAmtType, @existingMinval, @existingMaxval, @existingComments);
 
         -- 6. Insert into T_Pro
         DECLARE @seriesLimitStr VARCHAR(100) = 'From ' + RIGHT('0000' + CAST(@startOrderVal AS VARCHAR(4)), 4) + '-' + RIGHT('0000' + CAST(@startSeriesVal AS VARCHAR(4)), 4) + ' To ' + RIGHT('0000' + CAST(@endOrderVal AS VARCHAR(4)), 4) + '-' + RIGHT('0000' + CAST(@endSeriesVal AS VARCHAR(4)), 4);
