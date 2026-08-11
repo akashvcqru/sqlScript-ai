@@ -6,6 +6,7 @@ GO
 CREATE TABLE [dbo].[tbl_KycBenefitSettings](
 	[Id] [int] IDENTITY(1,1) NOT NULL,
 	[Comp_id] [nvarchar](50) NULL,
+	[UserType] [int] NULL,
 	[IsKYCBenefit] [bit] NULL,
 	[Points] [int] NULL,
 	[Entry_Date] [datetime] NULL,
