@@ -128,7 +128,7 @@ BEGIN
     ---------------------------------------------------------
     -- CANDIDATE USERS FOR THIS COMPANY (FAST DISCOVERY)
     ---------------------------------------------------------
-    SELECT DISTINCT M_ConsumerId
+     SELECT DISTINCT M_ConsumerId
     INTO #Candidates
     FROM (
         SELECT M_consumerId AS M_ConsumerId FROM tbl_VendorViseKYCStatus WITH (NOLOCK) WHERE Comp_id = @Comp_Id
