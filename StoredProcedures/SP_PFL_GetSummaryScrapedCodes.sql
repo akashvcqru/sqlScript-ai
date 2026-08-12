@@ -6,7 +6,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- Exec SP_PFL_GetSummaryScrapedCodes 'AM29-4599-6913', 'AM29-4600-6912', 1, 10, 0
+-- Exec SP_PFL_GetSummaryScrapedCodes 'AM29-4599-6913', 'AM29-4600-6912', 'NCDF260057', 1, 10, 0
 
 CREATE OR ALTER PROCEDURE [dbo].[SP_PFL_GetSummaryScrapedCodes]
 (
@@ -23,8 +23,12 @@ BEGIN
     SET NOCOUNT ON;
     SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
-    DROP TABLE IF EXISTS #ScrapFiltered;
-    DROP TABLE IF EXISTS #FinalData;
+    -------------------------------------------------
+    -- Sanitize inputs
+    -------------------------------------------------
+    IF LTRIM(RTRIM(@FromSerial)) = '' SET @FromSerial = NULL;
+    IF LTRIM(RTRIM(@ToSerial)) = '' SET @ToSerial = NULL;
+    IF LTRIM(RTRIM(@BatchNo)) = '' SET @BatchNo = NULL;
 
     -------------------------------------------------
     -- Pagination defaults
@@ -34,6 +38,9 @@ BEGIN
     IF @IsExport IS NULL SET @IsExport = 0;
 
     DECLARE @Offset INT = (@Page - 1) * @Limit;
+
+    DROP TABLE IF EXISTS #ScrapFiltered;
+    DROP TABLE IF EXISTS #FinalData;
 
     -------------------------------------------------
     -- STEP 1: Filter scrap records matching M_code_PFL ScrapeFlag = 1
@@ -71,6 +78,8 @@ BEGIN
     LEFT JOIN PFL_Batchlist b WITH (NOLOCK)
         ON sf.SerialCode >= b.[From]
        AND sf.SerialCode <= b.[To]
+       AND ISNULL(b.[From], '') <> ''
+       AND (@BatchNo IS NULL OR b.[Batch No] = @BatchNo)
     LEFT JOIN tbl_pflUsers u WITH (NOLOCK)
         ON u.UserMobile = sf.MobileNo
     WHERE (@BatchNo IS NULL OR b.[Batch No] = @BatchNo);
