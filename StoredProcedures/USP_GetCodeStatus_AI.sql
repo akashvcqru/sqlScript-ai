@@ -321,6 +321,7 @@ BEGIN
             SELECT TOP 1
                 ISNULL(PE.Code1V, '') + ISNULL(PE.Code2V, '') AS ThirteenDigitCode,
                 MS.ServiceName,
+                ss.Service_ID AS Service_ID,
                 ss.DateFrom AS ServiceAssignDate,
                 @ExpireCodeDate AS CodeExpiryDate,
                 PE.Pro_Name AS Pro_Name,
@@ -363,6 +364,7 @@ BEGIN
             SELECT TOP 1
                 ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS ThirteenDigitCode,
                 MS.ServiceName,
+                ss.Service_ID AS Service_ID,
                 ss.DateFrom AS ServiceAssignDate,
                 @ExpireCodeDate AS CodeExpiryDate,
                 pr.Pro_Name AS Pro_Name,
