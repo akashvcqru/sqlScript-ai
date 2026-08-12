@@ -125,7 +125,7 @@ BEGIN
     END
 
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Candidates, #Users, #UserMobiles, #State, #Benefit, #Claims, #TDS, #UPI, #BPoints, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals, #OtherEarnedPoints;
+    DROP TABLE IF EXISTS #Candidates, #Users, #UserMobiles, #State, #Benefit, #Claims, #TDS, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals, #OtherEarnedPoints;
 
     ---------------------------------------------------------
     -- CANDIDATE USERS FOR THIS COMPANY
@@ -138,6 +138,8 @@ BEGIN
         SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON CD.Mobileno = MC.MobileNo WHERE CD.Comp_id = @Comp_Id
         UNION
         SELECT M_Consumerid FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id
+        UNION
+        SELECT TRY_CAST(t.M_CounserID AS INT) AS M_ConsumerId FROM Transactions t WITH (NOLOCK) INNER JOIN @CompanyList CL ON (t.CompId = REPLACE(CL.Comp_Id, 'Comp-', '') OR t.CompId = CL.Comp_Id) WHERE t.Issuccess = 1
     ) x
     WHERE M_ConsumerId IS NOT NULL;
 
@@ -467,6 +469,23 @@ BEGIN
     CREATE CLUSTERED INDEX IX_BPoints_ConsumerId ON #BPoints(M_ConsumerId);
 
     ---------------------------------------------------------
+    -- TRANSACTIONS (Wallet / Direct Cash Payouts)
+    ---------------------------------------------------------
+    SELECT 
+        TRY_CAST(t.M_CounserID AS INT) AS M_ConsumerId,
+        SUM(CAST(ISNULL(t.Amount, 0) AS DECIMAL(18,2))) AS TransactionsAmount
+    INTO #Transactions
+    FROM Transactions t WITH (NOLOCK)
+    INNER JOIN @CompanyList CL ON (t.CompId = REPLACE(CL.Comp_Id, 'Comp-', '') OR t.CompId = CL.Comp_Id)
+    WHERE t.Issuccess = 1
+      AND (@StartDate IS NULL OR t.TransactionDate >= @StartDate)
+      AND (@EndDate   IS NULL OR t.TransactionDate <  @EndDate)
+      AND TRY_CAST(t.M_CounserID AS INT) IN (SELECT M_ConsumerId FROM #Users)
+    GROUP BY TRY_CAST(t.M_CounserID AS INT);
+
+    CREATE CLUSTERED INDEX IX_Transactions_ConsumerId ON #Transactions(M_ConsumerId);
+
+    ---------------------------------------------------------
     -- FINAL DATA
     ---------------------------------------------------------
     IF LTRIM(RTRIM(ISNULL(@KYCStatusFilter, ''))) = '' OR @KYCStatusFilter = 'null' SET @KYCStatusFilter = NULL;
@@ -482,9 +501,9 @@ BEGIN
         U.KYCStatus,
         ISNULL(B.Benefit,0) + ISNULL(O.OtherPoints, 0) AS PointsEarned,
         ISNULL(R.ReferralAmount,0) AS RefralAmount,
-        ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0) AS RedeemAmount,
+        ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0) AS RedeemAmount,
         ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralAmount, 0) - (
-            ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0)
+            ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0)
         ) AS BalanceAmount,
         ISNULL(TDS.TDSAmount, 0) AS TDSAmount,
         B.LastScan,
@@ -499,17 +518,18 @@ BEGIN
     LEFT JOIN #TDS     TDS ON TDS.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #UPI     UU ON UU.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #BPoints BP ON BP.M_ConsumerId = U.M_ConsumerId
+    LEFT JOIN #Transactions T ON T.M_ConsumerId = U.M_ConsumerId
     WHERE
         (
             -- Admin view: show positive activity OR non-zero balance
             (ISNULL(B.Benefit, 0) > 0 OR ISNULL(R.ReferralAmount, 0) > 0 OR ISNULL(O.OtherPoints, 0) > 0)
             OR
-            (ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralAmount, 0) - (ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0)) <> 0)
+            (ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralAmount, 0) - (ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0)) <> 0)
         )
         AND
         (
             @BalanceLessThan IS NULL OR 
-            (ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralAmount, 0) - (ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0)) < @BalanceLessThan)
+            (ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralAmount, 0) - (ISNULL(BP.BPointsAmount, 0) + ISNULL(C.ClaimsPoints, 0) + ISNULL(UU.UPIAmount, 0) + ISNULL(T.TransactionsAmount, 0)) < @BalanceLessThan)
         )
         AND (@StateFilter IS NULL OR ISNULL(S.State, U.State) = @StateFilter)
         AND (

@@ -123,7 +123,7 @@ BEGIN
     END
 
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Candidates, #Users, #UserMobiles, #State, #Benefit, #Claims, #UPI, #BPoints, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals, #OtherEarnedPoints;
+    DROP TABLE IF EXISTS #Candidates, #Users, #UserMobiles, #State, #Benefit, #Claims, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals, #OtherEarnedPoints;
 
     ---------------------------------------------------------
     -- CANDIDATE USERS FOR THIS COMPANY (FAST DISCOVERY)
@@ -136,6 +136,8 @@ BEGIN
         SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON CD.Mobileno = MC.MobileNo WHERE CD.Comp_id = @Comp_Id
         UNION
         SELECT M_Consumerid AS M_ConsumerId FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id
+        UNION
+        SELECT TRY_CAST(M_CounserID AS INT) AS M_ConsumerId FROM Transactions WITH (NOLOCK) WHERE (CompId = REPLACE(@Comp_Id, 'Comp-', '') OR CompId = @Comp_Id) AND Issuccess = 1
     ) x
     WHERE M_ConsumerId IS NOT NULL;
 
@@ -431,6 +433,23 @@ BEGIN
     CREATE CLUSTERED INDEX IX_BPoints_ConsumerId ON #BPoints(M_ConsumerId);
 
     ---------------------------------------------------------
+    -- TRANSACTIONS (Wallet / Direct Cash Payouts)
+    ---------------------------------------------------------
+    SELECT 
+        TRY_CAST(t.M_CounserID AS INT) AS M_ConsumerId,
+        SUM(CAST(ISNULL(t.Amount, 0) AS DECIMAL(18,2))) AS TransactionsAmount
+    INTO #Transactions
+    FROM Transactions t WITH (NOLOCK)
+    WHERE (t.CompId = REPLACE(@Comp_Id, 'Comp-', '') OR t.CompId = @Comp_Id)
+      AND t.Issuccess = 1
+      AND (@StartDate IS NULL OR t.TransactionDate >= @StartDate)
+      AND (@EndDate   IS NULL OR t.TransactionDate <  @EndDate)
+      AND TRY_CAST(t.M_CounserID AS INT) IN (SELECT M_ConsumerId FROM #Users)
+    GROUP BY TRY_CAST(t.M_CounserID AS INT);
+
+    CREATE CLUSTERED INDEX IX_Transactions_ConsumerId ON #Transactions(M_ConsumerId);
+
+    ---------------------------------------------------------
     -- FINAL DATASET PREPARATION (Matching BeneficiariesReportModel DTO)
     ---------------------------------------------------------
     IF LTRIM(RTRIM(ISNULL(@KYCStatusFilter, ''))) = '' OR @KYCStatusFilter = 'null' SET @KYCStatusFilter = NULL;
@@ -446,8 +465,8 @@ BEGIN
         U.KYCStatus,
         (ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0)) AS PointsEarned,
         ISNULL(R.ReferralPoints, 0) AS RefralAmount,
-        (ISNULL(C.Transferred, 0) + ISNULL(BP.BPointsDebited, 0) - ISNULL(UPI.FailedCash, 0)) AS RedeemAmount,
-        ((ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralPoints, 0)) - (ISNULL(C.Transferred, 0) + ISNULL(BP.BPointsDebited, 0) - ISNULL(UPI.FailedCash, 0))) AS BalanceAmount,
+        (ISNULL(C.Transferred, 0) + ISNULL(BP.BPointsDebited, 0) + ISNULL(T.TransactionsAmount, 0) - ISNULL(UPI.FailedCash, 0)) AS RedeemAmount,
+        ((ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralPoints, 0)) - (ISNULL(C.Transferred, 0) + ISNULL(BP.BPointsDebited, 0) + ISNULL(T.TransactionsAmount, 0) - ISNULL(UPI.FailedCash, 0))) AS BalanceAmount,
         ISNULL(C.TDS, 0) AS TDSAmount,
         B.LastScan,
         ROW_NUMBER() OVER (ORDER BY (ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0)) DESC, U.M_ConsumerId) AS RN
@@ -460,10 +479,11 @@ BEGIN
     LEFT JOIN #Claims C ON C.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #UPI UPI ON UPI.M_ConsumerId = U.M_ConsumerId
     LEFT JOIN #BPoints BP ON BP.M_ConsumerId = U.M_ConsumerId
+    LEFT JOIN #Transactions T ON T.M_ConsumerId = U.M_ConsumerId
     WHERE (
             (ISNULL(B.Benefit, 0) > 0 OR ISNULL(R.ReferralPoints, 0) > 0 OR ISNULL(O.OtherPoints, 0) > 0)
             OR
-            ((ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralPoints, 0)) - (ISNULL(C.Transferred, 0) + ISNULL(BP.BPointsDebited, 0) - ISNULL(UPI.FailedCash, 0)) <> 0)
+            ((ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralPoints, 0)) - (ISNULL(C.Transferred, 0) + ISNULL(BP.BPointsDebited, 0) + ISNULL(T.TransactionsAmount, 0) - ISNULL(UPI.FailedCash, 0)) <> 0)
           )
       AND (@KYCStatusFilter IS NULL OR U.KYCStatus = @KYCStatusFilter)
       AND (@StateFilter IS NULL OR S.State = @StateFilter OR (S.State IS NULL AND U.State = @StateFilter))
