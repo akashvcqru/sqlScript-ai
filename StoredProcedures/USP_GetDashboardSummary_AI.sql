@@ -70,61 +70,31 @@ BEGIN
 
     -- Get Earned Points
     SELECT
-        M_Codeid,
-        ISNULL(Service_ID, 'SRV1001') AS Service_ID,
-        SUM(Points) AS Points
+        MC.M_Codeid,
+        ISNULL(SS.Service_ID, 'SRV1001') AS Service_ID,
+        MAX(CAST(
+            CASE 
+                WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
+                ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
+            END 
+        AS DECIMAL(18,2))) AS Points
     INTO #EarnedPoints
-    FROM (
-        SELECT
-            MC.M_Codeid,
-            ISNULL(SS.Service_ID, 'SRV1001') AS Service_ID,
-            CAST(
-                CASE 
-                    WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
-                    ELSE ISNULL(BL.Points, 0)
-                END 
-            AS DECIMAL(18,2)) AS Points
-        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        INNER JOIN (
-            SELECT BMC2.Pkid, BMC2.M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY BMC2.M_Consumer_MCOdeid ORDER BY BMC2.Createdate ASC) as rn
-            FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK)
-            INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid
-            WHERE MC2.M_Codeid IN (SELECT M_Codeid FROM #UserScans)
-        ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
-        INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-        LEFT JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON BL.SST_id = SST.SST_Id
-        LEFT JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
-        INNER JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
-        WHERE MC.M_Codeid IN (SELECT M_Codeid FROM #UserScans)
-
-        UNION ALL
-
-        SELECT
-            MC.M_Codeid,
-            ISNULL(SS.Service_ID, 'SRV1001') AS Service_ID,
-            CAST(
-                CASE 
-                    WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
-                    ELSE ISNULL(BL.Points, 0)
-                END 
-            AS DECIMAL(18,2)) AS Points
-        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        INNER JOIN (
-            SELECT BMC2.Pkid, BMC2.M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY BMC2.M_Consumer_MCOdeid ORDER BY BMC2.Createdate ASC) as rn
-            FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK)
-            INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid
-            WHERE MC2.M_Codeid IN (SELECT M_Codeid FROM #UserScans)
-        ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
-        INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-        INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
-        INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID
-        INNER JOIN @CompanyList CL ON PR.Comp_ID = CL.Comp_Id
-        LEFT JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON BL.SST_id = SST.SST_Id
-        LEFT JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
-        WHERE BL.compid IS NULL
-          AND MC.M_Codeid IN (SELECT M_Codeid FROM #UserScans)
-    ) x
-    GROUP BY M_Codeid, ISNULL(Service_ID, 'SRV1001');
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
+        ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
+        ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    INNER JOIN #UserScans US WITH (NOLOCK) 
+        ON MC.M_Codeid = US.M_Codeid
+    INNER JOIN Pro_Reg PR WITH (NOLOCK) 
+        ON US.Pro_ID = PR.Pro_ID
+    INNER JOIN @CompanyList CL 
+        ON (BL.compid = CL.Comp_Id OR (ISNULL(BL.compid, '') = '' AND PR.Comp_ID = CL.Comp_Id))
+    LEFT JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) 
+        ON BL.SST_id = SST.SST_Id
+    LEFT JOIN M_ServiceSubscription SS WITH (NOLOCK) 
+        ON SST.Subscribe_Id = SS.Subscribe_Id
+    GROUP BY MC.M_Codeid, ISNULL(SS.Service_ID, 'SRV1001');
 
     CREATE CLUSTERED INDEX IX_EarnedPoints_MCodeid ON #EarnedPoints(M_Codeid);
 
