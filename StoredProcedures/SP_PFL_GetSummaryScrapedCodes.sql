@@ -6,7 +6,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- Exec SP_PFL_GetSummaryScrapedCodes 'AM29-2732-5989', 'AM29-2751-5990', 1, 10, 0
+-- Exec SP_PFL_GetSummaryScrapedCodes 'AM29-4599-6913', 'AM29-4600-6912', 1, 10, 0
 
 CREATE OR ALTER PROCEDURE [dbo].[SP_PFL_GetSummaryScrapedCodes]
 (
@@ -45,12 +45,14 @@ BEGIN
         s.ScrapedDate,
         s.scrapeCodeDate
     INTO #ScrapFiltered
-    FROM tblScrapdatapfl s
-    INNER JOIN M_code_PFL m
+    FROM tblScrapdatapfl s WITH (NOLOCK)
+    INNER JOIN M_code_PFL m WITH (NOLOCK)
         ON m.code1 = s.code1
        AND m.code2 = s.code2
        AND m.ScrapeFlag = 1
-    WHERE s.CompanyId = 'Comp-1693';
+    WHERE s.CompanyId = 'Comp-1693'
+      AND (@FromSerial IS NULL OR s.SerialCode >= @FromSerial)
+      AND (@ToSerial IS NULL OR s.SerialCode <= @ToSerial);
 
     -------------------------------------------------
     -- STEP 2: Join with Batch List and User info
@@ -64,14 +66,12 @@ BEGIN
         b.[Batch No] AS BatchNo,
         b.SKU
     INTO #FinalData
-    FROM PFL_Batchlist b
-    INNER JOIN #ScrapFiltered sf
+    FROM #ScrapFiltered sf
+    LEFT JOIN PFL_Batchlist b WITH (NOLOCK)
         ON sf.SerialCode >= b.[From]
        AND sf.SerialCode <= b.[To]
-    LEFT JOIN tbl_pflUsers u
-        ON u.UserMobile = sf.MobileNo
-    WHERE (@FromSerial IS NULL OR b.[From] = @FromSerial OR sf.SerialCode >= @FromSerial)
-      AND (@ToSerial IS NULL OR b.[To] = @ToSerial OR sf.SerialCode <= @ToSerial);
+    LEFT JOIN tbl_pflUsers u WITH (NOLOCK)
+        ON u.UserMobile = sf.MobileNo;
 
     -------------------------------------------------
     -- OUTPUT
@@ -87,7 +87,7 @@ BEGIN
             BatchNo,
             SKU
         FROM #FinalData
-        ORDER BY ScrapedDate DESC;
+        ORDER BY SerialCode ASC;
     END
     ELSE
     BEGIN
@@ -100,7 +100,7 @@ BEGIN
             BatchNo,
             SKU
         FROM #FinalData
-        ORDER BY ScrapedDate DESC
+        ORDER BY SerialCode ASC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
         SELECT
