@@ -12,6 +12,7 @@ CREATE OR ALTER PROCEDURE [dbo].[SP_PFL_GetSummaryScrapedCodes]
 (
     @FromSerial   NVARCHAR(50) = NULL,
     @ToSerial     NVARCHAR(50) = NULL,
+    @BatchNo      NVARCHAR(100) = NULL,
 
     @Page         INT = 1,
     @Limit        INT = 10,
@@ -71,7 +72,8 @@ BEGIN
         ON sf.SerialCode >= b.[From]
        AND sf.SerialCode <= b.[To]
     LEFT JOIN tbl_pflUsers u WITH (NOLOCK)
-        ON u.UserMobile = sf.MobileNo;
+        ON u.UserMobile = sf.MobileNo
+    WHERE (@BatchNo IS NULL OR b.[Batch No] = @BatchNo);
 
     -------------------------------------------------
     -- OUTPUT
