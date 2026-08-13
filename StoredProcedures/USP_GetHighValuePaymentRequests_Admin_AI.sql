@@ -32,6 +32,7 @@ BEGIN
         ClaimId INT NOT NULL,
         ClaimDate DATETIME NOT NULL,
         MobileNo VARCHAR(15) NULL,
+        UserName NVARCHAR(150) NULL,
         Amount DECIMAL(18, 2) NULL,
         CompName NVARCHAR(150) NULL,
         CompId VARCHAR(50) NULL,
@@ -92,11 +93,12 @@ BEGIN
     END
 
     -- Fetch high value claims prioritizing company threshold or falling back to default threshold
-    INSERT INTO #FinalData (ClaimId, ClaimDate, MobileNo, Amount, CompName, CompId, IsApproved, VendorComment, [UpiId/AC], PaymentRemarks, PaymentStatus, ClaimMode, VendorWalletBalance, TotalEarnedPoints, TotalRedeemedPoints, BalancePoints, IFSCCode, AccountNumber, BankName)
+    INSERT INTO #FinalData (ClaimId, ClaimDate, MobileNo, UserName, Amount, CompName, CompId, IsApproved, VendorComment, [UpiId/AC], PaymentRemarks, PaymentStatus, ClaimMode, VendorWalletBalance, TotalEarnedPoints, TotalRedeemedPoints, BalancePoints, IFSCCode, AccountNumber, BankName)
     SELECT
         cd.Row_id AS ClaimId,
         cd.Claim_date AS ClaimDate,
         cd.Mobileno AS MobileNo,
+        mc.ConsumerName AS UserName,
         CAST(cd.RequestAmmount AS DECIMAL(18,2)) AS Amount,
         ISNULL(c.Comp_Name, 'Unknown') AS CompName,
         cd.Comp_id AS CompId,
@@ -115,6 +117,12 @@ BEGIN
         NULL AS BankName
     FROM ClaimDetails cd WITH (NOLOCK)
     LEFT JOIN Comp_Reg c WITH (NOLOCK) ON c.Comp_ID = cd.Comp_id
+    OUTER APPLY (
+        SELECT TOP 1 ConsumerName
+        FROM M_Consumer WITH (NOLOCK)
+        WHERE RIGHT(MobileNo, 10) = RIGHT(cd.Mobileno, 10) AND IsDelete = 0
+        ORDER BY M_Consumerid DESC
+    ) mc
     WHERE cd.Claim_date >= @StartDate
       AND cd.Claim_date < @EndDate
       AND (@Compid IS NULL OR cd.Comp_id = @Compid)
@@ -123,6 +131,7 @@ BEGIN
       AND (
           @Search IS NULL 
           OR cd.Mobileno LIKE '%' + @Search + '%' 
+          OR mc.ConsumerName LIKE '%' + @Search + '%'
           OR CAST(cd.Row_id AS VARCHAR(20)) = @Search 
           OR cd.UPIID LIKE '%' + @Search + '%'
           OR cd.BankRefID LIKE '%' + @Search + '%'
