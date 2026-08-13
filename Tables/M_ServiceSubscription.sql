@@ -1,4 +1,4 @@
-﻿/****** Object:  Table [dbo].[M_ServiceSubscription]    Script Date: 3/2/2026 12:27:10 PM ******/
+/****** Object:  Table [dbo].[M_ServiceSubscription]    Script Date: 3/2/2026 12:27:10 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -17,7 +17,7 @@ CREATE TABLE [dbo].[M_ServiceSubscription](
 	[DateFrom] [datetime] NULL,
 	[DateTo] [datetime] NULL,
 	[EntryDate] [datetime] NULL,
-	[IsActive] [int] NULL,
+	[IsActive] [int] NULL CONSTRAINT [DF_M_ServiceSubscription_IsActive] DEFAULT ((1)),
 	[IsDelete] [int] NULL,
 	[IsAdminVerify] [int] NULL,
 	[TransType] [nvarchar](50) NULL,

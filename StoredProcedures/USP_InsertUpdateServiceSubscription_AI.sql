@@ -24,7 +24,8 @@ CREATE OR ALTER PROCEDURE USP_InsertUpdateServiceSubscription_AI
     @EndOrder         INT            = NULL,
     @EndSeries        INT            = NULL,
     @BatchSize        INT            = NULL,
-    @DML              NCHAR(1)       -- 'I' = Insert, 'U' = Update
+    @DML              NCHAR(1),      -- 'I' = Insert, 'U' = Update
+    @IsActive         INT            = 1
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -32,7 +33,7 @@ BEGIN
     -- Local variables for fixed/derived values
     DECLARE @PlanMasterPrice  NUMERIC(18, 0) = 0;
     DECLARE @PlanSalePrice    NUMERIC(18, 0) = 0;
-    DECLARE @IsActive         INT = 0;
+    DECLARE @IsActiveVal      INT = ISNULL(@IsActive, 1);
     DECLARE @IsDelete         INT = 0;
     DECLARE @IsAdminVerify    INT = 1;
 
@@ -90,7 +91,7 @@ BEGIN
         (
             @Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, ISNULL(@Plan_ID, 'PLAN_DEFAULT'), ISNULL(@PlanName, 'Manual Subscription'), 
             ISNULL(@PlanMasterPeriod, 12), ISNULL(@PlanSalePeriod, 12), @PlanMasterPrice, @PlanSalePrice, 
-            ISNULL(@DateFrom, GETDATE()), ISNULL(@DateTo, DATEADD(YEAR, 1, GETDATE())), ISNULL(@EntryDate, GETDATE()), @IsActive, @IsDelete, @IsAdminVerify,
+            ISNULL(@DateFrom, GETDATE()), ISNULL(@DateTo, DATEADD(YEAR, 1, GETDATE())), ISNULL(@EntryDate, GETDATE()), @IsActiveVal, @IsDelete, @IsAdminVerify,
             'Service', @StartOrder, @StartSeries, @EndOrder, @EndSeries
         );
 
