@@ -100,6 +100,41 @@ BEGIN
         DECLARE @subDateFrom DATETIME = NULL;
         DECLARE @subDateTo DATETIME = NULL;
 
+        -- Resolve Service_ID from M_ServiceSubscription if default or not explicitly set
+        IF @ServiceID IS NULL OR @ServiceID = '' OR @ServiceID = 'SRV1001'
+        BEGIN
+            DECLARE @subSrvId VARCHAR(50) = NULL;
+            SELECT TOP 1 @subSrvId = Service_ID
+            FROM M_ServiceSubscription WITH (NOLOCK)
+            WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND (IsDelete IS NULL OR IsDelete = 0)
+            ORDER BY EntryDate DESC;
+
+            IF @subSrvId IS NOT NULL AND @subSrvId <> ''
+            BEGIN
+                SET @ServiceID = @subSrvId;
+            END
+        END
+
+        -- Resolve PlanMasterPeriod (in months). Check existing subscription or request history for this product/service.
+        DECLARE @planPeriod INT = NULL;
+        SELECT TOP 1 @planPeriod = TRY_CAST(PlanMasterPeriod AS INT)
+        FROM M_ServiceSubscription WITH (NOLOCK)
+        WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND Service_ID = @ServiceID AND PlanMasterPeriod IS NOT NULL AND PlanMasterPeriod > 0
+        ORDER BY EntryDate DESC;
+
+        IF @planPeriod IS NULL
+        BEGIN
+            SELECT TOP 1 @planPeriod = TRY_CAST(PlanMasterPeriod AS INT)
+            FROM M_ServiceSubscription WITH (NOLOCK)
+            WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND PlanMasterPeriod IS NOT NULL AND PlanMasterPeriod > 0
+            ORDER BY EntryDate DESC;
+        END
+
+        SET @planPeriod = ISNULL(@planPeriod, 6);
+
+        DECLARE @calcDateFrom DATETIME = CAST(@MfdDate AS DATETIME);
+        DECLARE @calcDateTo DATETIME = DATEADD(month, @planPeriod, @calcDateFrom);
+
         SELECT TOP 1 @subExists = 1, @currentSubId = Subscribe_Id, @currentServiceId = Service_ID, @subDateFrom = DateFrom, @subDateTo = DateTo
         FROM M_ServiceSubscription
         WHERE Pro_ID = @ProID 
@@ -110,7 +145,18 @@ BEGIN
           AND end_order = @endOrderVal 
           AND end_series = @endSeriesVal;
 
-        IF @subExists = 0
+        IF @subExists = 1
+        BEGIN
+            UPDATE M_ServiceSubscription 
+            SET DateFrom = @calcDateFrom, 
+                DateTo = @calcDateTo,
+                PlanMasterPeriod = ISNULL(PlanMasterPeriod, @planPeriod)
+            WHERE Subscribe_Id = @currentSubId;
+
+            SET @subDateFrom = @calcDateFrom;
+            SET @subDateTo = @calcDateTo;
+        END
+        ELSE
         BEGIN
             -- Generate new subscription ID
             DECLARE @newSubId VARCHAR(50) = 'SUB10001';
@@ -140,8 +186,9 @@ BEGIN
                             WHEN COLUMN_NAME = 'EntryDate' THEN 'GETDATE(),'
                             WHEN COLUMN_NAME = 'IsActive' THEN '1,'
                             WHEN COLUMN_NAME = 'IsAdminVerify' THEN '1,'
-                            WHEN COLUMN_NAME = 'DateFrom' THEN 'ISNULL(DateFrom, ' + N'''' + @MfdDate + N'''' + '),'
-                            WHEN COLUMN_NAME = 'DateTo' THEN 'ISNULL(DateTo, DATEADD(month, ISNULL(PlanMasterPeriod, 6), ' + N'''' + @MfdDate + N'''' + ')),'
+                            WHEN COLUMN_NAME = 'PlanMasterPeriod' THEN CAST(@planPeriod AS VARCHAR(50)) + ','
+                            WHEN COLUMN_NAME = 'DateFrom' THEN '''' + CONVERT(VARCHAR(50), @calcDateFrom, 120) + ''','
+                            WHEN COLUMN_NAME = 'DateTo' THEN '''' + CONVERT(VARCHAR(50), @calcDateTo, 120) + ''','
                             ELSE '[' + COLUMN_NAME + '],'
                         END
                 FROM INFORMATION_SCHEMA.COLUMNS
@@ -176,8 +223,9 @@ BEGIN
                                 WHEN COLUMN_NAME = 'EntryDate' THEN 'GETDATE(),'
                                 WHEN COLUMN_NAME = 'IsActive' THEN '1,'
                                 WHEN COLUMN_NAME = 'IsAdminVerify' THEN '1,'
-                                WHEN COLUMN_NAME = 'DateFrom' THEN 'ISNULL(DateFrom, ' + N'''' + @MfdDate + N'''' + '),'
-                                WHEN COLUMN_NAME = 'DateTo' THEN 'ISNULL(DateTo, DATEADD(month, ISNULL(PlanMasterPeriod, 6), ' + N'''' + @MfdDate + N'''' + ')),'
+                                WHEN COLUMN_NAME = 'PlanMasterPeriod' THEN CAST(@planPeriod AS VARCHAR(50)) + ','
+                                WHEN COLUMN_NAME = 'DateFrom' THEN '''' + CONVERT(VARCHAR(50), @calcDateFrom, 120) + ''','
+                                WHEN COLUMN_NAME = 'DateTo' THEN '''' + CONVERT(VARCHAR(50), @calcDateTo, 120) + ''','
                                 ELSE '[' + COLUMN_NAME + '],'
                             END
                     FROM INFORMATION_SCHEMA.COLUMNS
@@ -196,7 +244,7 @@ BEGIN
                     INSERT INTO M_ServiceSubscription 
                     (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, PlanMasterPeriod, PlanSalePeriod, PlanMasterPrice, PlanSalePrice, start_order, start_series, end_order, end_series, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType)
                     VALUES 
-                    (@newSubId, @ServiceID, @CompID, @ProID, 'PLN1002', 'SILVER PLAN', 6, 0, 0, 0, @startOrderVal, @startSeriesVal, @endOrderVal, @endSeriesVal, CAST(@MfdDate AS DATETIME), DATEADD(month, 6, CAST(@MfdDate AS DATETIME)), GETDATE(), 1, 0, 1, 'Service');
+                    (@newSubId, @ServiceID, @CompID, @ProID, 'PLN1002', 'SILVER PLAN', @planPeriod, 0, 0, 0, @startOrderVal, @startSeriesVal, @endOrderVal, @endSeriesVal, @calcDateFrom, @calcDateTo, GETDATE(), 1, 0, 1, 'Service');
                 END
             END
 
@@ -205,15 +253,13 @@ BEGIN
 
             SET @currentSubId = @newSubId;
             SET @currentServiceId = @ServiceID;
-            
-            SELECT TOP 1 @subDateFrom = DateFrom, @subDateTo = DateTo 
-            FROM M_ServiceSubscription 
-            WHERE Subscribe_Id = @newSubId;
+            SET @subDateFrom = @calcDateFrom;
+            SET @subDateTo = @calcDateTo;
         END
 
         -- 5. Insert M_ServiceSubscriptionTrans record
-        DECLARE @transDtFrom DATETIME = ISNULL(@subDateFrom, CAST(@MfdDate AS DATETIME));
-        DECLARE @transDtTo DATETIME = ISNULL(@subDateTo, DATEADD(month, 6, @transDtFrom));
+        DECLARE @transDtFrom DATETIME = @calcDateFrom;
+        DECLARE @transDtTo DATETIME = @calcDateTo;
         
         -- Resolve points if 0 passed and PointsData JSON is provided
         IF (@PointsVal = 0 AND @PointsData IS NOT NULL AND ISJSON(@PointsData) = 1)

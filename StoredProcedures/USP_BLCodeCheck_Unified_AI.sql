@@ -171,13 +171,20 @@ BEGIN
                     END
                 END
 
-                -- Check if already scanned
+                -- Check if already scanned based on Frequency limit
                 DECLARE @ExistingEnqCount INT;
                 SELECT @ExistingEnqCount = COUNT(*) FROM Pro_Enq WHERE Received_Code1 = CAST(@Code1 AS VARCHAR(5)) AND Received_Code2 = CAST(@Code2 AS VARCHAR(8)) AND Is_Success = '1';
 
+                DECLARE @CodeFrequencyLimit INT = 1;
+                SELECT TOP 1 @CodeFrequencyLimit = ISNULL(sst.Frequency, 1)
+                FROM M_ServiceSubscriptionTrans sst WITH (NOLOCK)
+                INNER JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
+                WHERE ss.Pro_ID = @Pro_ID AND ss.IsActive = 1 AND sst.IsActive = 1 AND sst.Frequency IS NOT NULL AND sst.Frequency > 0
+                ORDER BY sst.SST_Id DESC;
+
                 -- A. Insert Scan History
                 DECLARE @Is_Success_Val VARCHAR(5) = '1';
-                IF @ExistingEnqCount > 0 AND @Comp_ID <> 'Comp-1693'
+                IF @ExistingEnqCount >= @CodeFrequencyLimit AND @Comp_ID <> 'Comp-1693'
                     SET @Is_Success_Val = '2';
 
                 INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, City, State, PinCode)
