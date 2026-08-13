@@ -96,8 +96,15 @@ BEGIN
         RETURN;
     END
 
-    -- 3. Check if already used
-    IF @UseCount > 0
+    -- 3. Check if already used based on Frequency limit
+    DECLARE @Frequency INT = 1;
+    SELECT TOP 1 @Frequency = ISNULL(mst.Frequency, 1)
+    FROM M_ServiceSubscription ms WITH (NOLOCK)
+    INNER JOIN M_ServiceSubscriptionTrans mst WITH (NOLOCK) ON ms.Subscribe_Id = mst.Subscribe_Id
+    WHERE ms.Pro_ID = @ProID AND ms.IsActive = 1 AND mst.IsActive = 1 AND mst.Frequency IS NOT NULL AND mst.Frequency > 0
+    ORDER BY mst.SST_Id DESC;
+
+    IF ISNULL(@UseCount, 0) >= @Frequency
     BEGIN
         SET @ResultCode = 2;
         -- Message will be overridden by individualized message if available
