@@ -100,6 +100,21 @@ BEGIN
         DECLARE @subDateFrom DATETIME = NULL;
         DECLARE @subDateTo DATETIME = NULL;
 
+        -- Resolve Service_ID from M_ServiceSubscription if default or not explicitly set
+        IF @ServiceID IS NULL OR @ServiceID = '' OR @ServiceID = 'SRV1001'
+        BEGIN
+            DECLARE @subSrvId VARCHAR(50) = NULL;
+            SELECT TOP 1 @subSrvId = Service_ID
+            FROM M_ServiceSubscription WITH (NOLOCK)
+            WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND (IsDelete IS NULL OR IsDelete = 0)
+            ORDER BY EntryDate DESC;
+
+            IF @subSrvId IS NOT NULL AND @subSrvId <> ''
+            BEGIN
+                SET @ServiceID = @subSrvId;
+            END
+        END
+
         -- Resolve PlanMasterPeriod (in months). Check existing subscription or request history for this product/service.
         DECLARE @planPeriod INT = NULL;
         SELECT TOP 1 @planPeriod = TRY_CAST(PlanMasterPeriod AS INT)
