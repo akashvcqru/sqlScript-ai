@@ -158,6 +158,22 @@ BEGIN
         ORDER BY Id DESC
     ) audit;
 
+    -- Populate Vendor Wallet Balance
+    UPDATE f
+    SET f.VendorWalletBalance = ISNULL(pb.Amount, ISNULL(cb.Balance, 0.00))
+    FROM #FinalData f
+    OUTER APPLY (
+        SELECT SUM(Amount) AS Amount 
+        FROM Paytm_balance WITH (NOLOCK) 
+        WHERE Comp_ID = f.CompId
+    ) pb
+    OUTER APPLY (
+        SELECT TOP 1 ISNULL(NewBal, Amount) AS Balance 
+        FROM tblCashWalletBalance WITH (NOLOCK) 
+        WHERE Comp_ID = f.CompId 
+        ORDER BY Id DESC
+    ) cb;
+
     -- Aggregate Points for Consumers in #FinalData
     DROP TABLE IF EXISTS #ReqConsumers, #ConsumerPoints;
 
