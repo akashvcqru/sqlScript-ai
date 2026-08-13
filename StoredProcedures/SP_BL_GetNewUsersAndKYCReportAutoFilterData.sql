@@ -190,7 +190,7 @@ BEGIN
         -- KYC channel-wise statuses
         CASE WHEN MC.panekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.panekycStatus, '''') END AS panekycStatus,
         CASE WHEN MC.aadharkycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.aadharkycStatus, '''') END AS aadharkycStatus,
-        CASE WHEN (MC.bankekycStatus IN (''1'', ''Online'') OR EXISTS (SELECT 1 FROM M_BankAccount MB2 WHERE MB2.M_Consumerid = MC.M_Consumerid)) THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
+        CASE WHEN MC.bankekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
         MC.pancard_number,
         VKS.kycremark, -- Keep original name too
