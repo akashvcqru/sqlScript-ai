@@ -409,6 +409,17 @@ BEGIN
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     WHERE t.Status IN ('FAILED', 'Failure', 'Rejected')
       AND t.Comp_Id = @Comp_Id
+      AND LEN(t.Code1) = 5 AND LEN(t.Code2) = 8
+      AND NOT EXISTS (
+          SELECT 1 FROM tblUPITransactionDetails ts WITH (NOLOCK)
+          WHERE ts.MobileNo = t.MobileNo
+            AND ts.Comp_Id = t.Comp_Id
+            AND ts.Amount = t.Amount
+            AND ts.Status = 'Success'
+            AND ts.Code1 = t.Code1
+            AND ts.Code2 = t.Code2
+            AND ts.ReqDate >= t.ReqDate
+      )
       AND (@StartDate IS NULL OR t.ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR t.ReqDate < @EndDate)
     GROUP BY U.M_ConsumerId;
