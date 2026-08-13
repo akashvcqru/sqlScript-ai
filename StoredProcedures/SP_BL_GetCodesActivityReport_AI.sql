@@ -445,14 +445,14 @@ BEGIN
     SELECT 
         '' AS UniqueCode,
         BL.UpdateDate AS Enq_Date,
-        'Referral' AS Dial_Mode,
+        '' AS Dial_Mode,
         MC.ConsumerName,
         MC.MobileNo,
         MC.State,
         MC.City,
         'Referral Bonus' AS Pro_Name,
         0 AS Points,
-        'Referral' AS Result,
+        'Referral Point' AS Result,
         '' AS Latitude,
         '' AS Longitude,
         0 AS AssignPoint,
@@ -463,15 +463,56 @@ BEGIN
     WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
       AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
       AND BL.Code1 IS NULL
-      AND (
-          (@Comp_Id IN ('Comp-1567','Comp-1650') AND BL.compid IN ('Comp-1567','Comp-1650'))
-          OR
-          (@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND BL.compid = @Comp_Id)
-      )
+      AND BL.compid = @Comp_Id
       AND BL.UpdateDate >= @StartDate
       AND BL.UpdateDate < @EndDate
       AND (@StateFilter IS NULL OR MC.State = @StateFilter)
     GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, BL.UpdateDate;
+
+    -- 3. Insert other/extra earn point entries (virtual rows)
+    INSERT INTO #FinalReport
+    SELECT 
+        '' AS UniqueCode,
+        BL.UpdateDate AS Enq_Date,
+        '' AS Dial_Mode,
+        MC.ConsumerName,
+        MC.MobileNo,
+        MC.State,
+        MC.City,
+        ISNULL(NULLIF(BL.ServiceName, ''), 'Bonus Point') AS Pro_Name,
+        SUM(CAST(
+            CASE 
+                WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
+                ELSE ISNULL(BL.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS Points,
+        CASE 
+            WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%kyc%' THEN 'KYC Point'
+            WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%invoice%' THEN 'Invoice Point'
+            WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%refral%' OR LOWER(ISNULL(BL.ServiceName, '')) LIKE '%referral%' THEN 'Referral Point'
+            WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%bonus%' THEN 'Bonus Point'
+            WHEN LTRIM(RTRIM(ISNULL(BL.ServiceName, ''))) <> '' THEN BL.ServiceName + ' Point'
+            ELSE 'Bonus Point'
+        END AS Result,
+        '' AS Latitude,
+        '' AS Longitude,
+        0 AS AssignPoint,
+        SUM(CAST(
+            CASE 
+                WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
+                ELSE ISNULL(BL.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS WornPoint,
+        0 AS ReferralPoints
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
+    WHERE BL.compid = @Comp_Id
+      AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+      AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
+      AND BL.UpdateDate >= @StartDate
+      AND BL.UpdateDate < @EndDate
+      AND (@StateFilter IS NULL OR MC.State = @StateFilter)
+    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, BL.UpdateDate, BL.ServiceName;
 
     ----------------------------------------------------
     -- RESULT SET 1
