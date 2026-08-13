@@ -86,7 +86,8 @@ BEGIN
         Batch_No NVARCHAR(100),
         ImageVerified INT,
         AssignPoint DECIMAL(18,2) NULL,
-        WornPoint DECIMAL(18,2) NULL
+        WornPoint DECIMAL(18,2) NULL,
+        Result VARCHAR(50) NULL
     );
 
     IF @ActualCompId = 'Comp-1693'
@@ -317,7 +318,7 @@ BEGIN
         SELECT M_Codeid, Frequency, ConfigPoints, AssignPoint INTO #CodeConfigPoints FROM FinalRankedConfig WHERE rn_final = 1;
 
         -- Insert Scan Enquiries
-        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint)
+        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint, Result)
         SELECT 
             CASE 
                 WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Success'
@@ -339,7 +340,12 @@ BEGIN
             CASE WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(CP.AssignPoint, 0) ELSE 0 END AS AssignPoint,
             CASE WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 
                 CASE WHEN ISNULL(P.WornPoint, 0) > 0 THEN P.WornPoint ELSE ISNULL(CP.ConfigPoints, 0) END
-            ELSE 0 END AS WornPoint
+            ELSE 0 END AS WornPoint,
+            CASE 
+                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Verified'
+                WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Already Scanned'
+                ELSE 'Invalid'
+            END AS Result
         FROM
         (
             SELECT *,
@@ -356,7 +362,7 @@ BEGIN
         WHERE (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1));
 
         -- Insert Referrals
-        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint)
+        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint, Result)
         SELECT 
             'Success' AS CodeStatus,
             0 AS Points,
@@ -369,7 +375,8 @@ BEGIN
             '' AS Batch_No,
             0 AS ImageVerified,
             0 AS AssignPoint,
-            0 AS WornPoint
+            0 AS WornPoint,
+            'Referral Point' AS Result
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
         INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
         WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
@@ -379,7 +386,7 @@ BEGIN
           AND RIGHT(MC.MobileNo, 10) = @NormalizedMobile;
 
         -- Insert Other Earn Points
-        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint)
+        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint, Result)
         SELECT 
             'Success' AS CodeStatus,
             SUM(CAST(CASE WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier ELSE ISNULL(BL.Points, 0) END AS DECIMAL(18,2))) AS Points,
@@ -392,7 +399,15 @@ BEGIN
             '' AS Batch_No,
             0 AS ImageVerified,
             0 AS AssignPoint,
-            SUM(CAST(CASE WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier ELSE ISNULL(BL.Points, 0) END AS DECIMAL(18,2))) AS WornPoint
+            SUM(CAST(CASE WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier ELSE ISNULL(BL.Points, 0) END AS DECIMAL(18,2))) AS WornPoint,
+            CASE 
+                WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%kyc%' THEN 'KYC Point'
+                WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%invoice%' THEN 'Invoice Point'
+                WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%refral%' OR LOWER(ISNULL(BL.ServiceName, '')) LIKE '%referral%' THEN 'Referral Point'
+                WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%bonus%' THEN 'Bonus Point'
+                WHEN LTRIM(RTRIM(ISNULL(BL.ServiceName, ''))) <> '' THEN BL.ServiceName + ' Point'
+                ELSE 'Bonus Point'
+            END AS Result
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
         INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
         WHERE (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
@@ -406,8 +421,8 @@ BEGIN
     -- Calculate Summary Counts
     ---------------------------------------------------------
     DECLARE @TotalScans BIGINT = (SELECT COUNT(*) FROM #FinalData);
-    DECLARE @SuccessScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE CodeStatus = 'Success');
-    DECLARE @FailedScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE CodeStatus = 'Unsuccess');
+    DECLARE @SuccessScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE Result = 'Verified' OR (CodeStatus = 'Success' AND UniqueCode <> ''));
+    DECLARE @FailedScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE CodeStatus = 'Unsuccess' OR Result IN ('Already Scanned', 'Invalid'));
 
     ---------------------------------------------------------
     -- DETAILS RESULT
