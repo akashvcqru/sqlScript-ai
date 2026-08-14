@@ -95,7 +95,7 @@ BEGIN
             'Service', @StartOrder, @StartSeries, @EndOrder, @EndSeries
         );
 
-        SELECT 1 AS success, 'Subscription added successfully.' AS message, @StartOrder AS StartOrder, @StartSeries AS StartSeries, @EndOrder AS EndOrder, @EndSeries AS EndSeries;
+        SELECT 1 AS success, 'Subscription added successfully!' AS message, @StartOrder AS StartOrder, @StartSeries AS StartSeries, @EndOrder AS EndOrder, @EndSeries AS EndSeries;
     END
     ELSE IF @DML = 'U'
     BEGIN
