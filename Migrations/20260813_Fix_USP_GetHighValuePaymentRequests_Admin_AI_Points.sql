@@ -1,3 +1,7 @@
+-- Migration: Align USP_GetHighValuePaymentRequests_Admin_AI points calculation with SP_BL_GetBeneficiariesReport
+-- Date: 2026-08-13
+-- Fixes mismatch between HighValuePaymentRequestList and GetBeneficiariesReport caused by double-counting scan points in BLoyaltyPointsEarned and Pro_Enq.
+
 USE [vcqru]
 GO
 
@@ -6,11 +10,6 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- =============================================
--- Author:      Antigravity
--- Create date: 2026-07-03
--- Description: Retrieves high value payment requests from ClaimDetails with fallback to DEFAULT limit.
--- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetHighValuePaymentRequests_Admin_AI]
 (
       @Compid           NVARCHAR(50) = NULL,   -- Optional company filter
@@ -48,8 +47,7 @@ BEGIN
         BalancePoints DECIMAL(18, 2) NULL,
         IFSCCode NVARCHAR(50) NULL,
         AccountNumber NVARCHAR(50) NULL,
-        BankName NVARCHAR(100) NULL,
-        KycStatus NVARCHAR(50) NULL
+        BankName NVARCHAR(100) NULL
     );
 
     -- Date window resolution
@@ -94,7 +92,7 @@ BEGIN
     END
 
     -- Fetch high value claims prioritizing company threshold or falling back to default threshold
-    INSERT INTO #FinalData (ClaimId, ClaimDate, MobileNo, UserName, Amount, CompName, CompId, IsApproved, VendorComment, [UpiId/AC], PaymentRemarks, PaymentStatus, ClaimMode, VendorWalletBalance, TotalEarnedPoints, TotalRedeemedPoints, BalancePoints, IFSCCode, AccountNumber, BankName, KycStatus)
+    INSERT INTO #FinalData (ClaimId, ClaimDate, MobileNo, UserName, Amount, CompName, CompId, IsApproved, VendorComment, [UpiId/AC], PaymentRemarks, PaymentStatus, ClaimMode, VendorWalletBalance, TotalEarnedPoints, TotalRedeemedPoints, BalancePoints, IFSCCode, AccountNumber, BankName)
     SELECT
         cd.Row_id AS ClaimId,
         cd.Claim_date AS ClaimDate,
@@ -115,27 +113,15 @@ BEGIN
         0.00 AS BalancePoints,
         NULL AS IFSCCode,
         NULL AS AccountNumber,
-        NULL AS BankName,
-        CASE 
-            WHEN kyc.VRKbl_KYC_status = 1 THEN 'Approved' 
-            WHEN kyc.VRKbl_KYC_status = 2 THEN 'Rejected' 
-            ELSE 'Pending' 
-        END AS KycStatus
+        NULL AS BankName
     FROM ClaimDetails cd WITH (NOLOCK)
     LEFT JOIN Comp_Reg c WITH (NOLOCK) ON c.Comp_ID = cd.Comp_id
     OUTER APPLY (
-        SELECT TOP 1 M_Consumerid, ConsumerName
+        SELECT TOP 1 ConsumerName
         FROM M_Consumer WITH (NOLOCK)
         WHERE RIGHT(MobileNo, 10) = RIGHT(cd.Mobileno, 10) AND IsDelete = 0
         ORDER BY M_Consumerid DESC
     ) mc
-    OUTER APPLY (
-        SELECT TOP 1 VRKbl_KYC_status
-        FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
-        WHERE Comp_id = cd.Comp_id 
-          AND M_consumerId = mc.M_Consumerid
-        ORDER BY Entry_date DESC
-    ) kyc
     WHERE cd.Claim_date >= @StartDate
       AND cd.Claim_date < @EndDate
       AND (@Compid IS NULL OR cd.Comp_id = @Compid)

@@ -1,3 +1,6 @@
+-- Migration: Add KycStatus column to USP_GetHighValuePaymentRequests_Admin_AI fetched from tbl_Vendorvisekycstatus
+-- Date: 2026-08-14
+
 USE [vcqru]
 GO
 
@@ -6,11 +9,6 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- =============================================
--- Author:      Antigravity
--- Create date: 2026-07-03
--- Description: Retrieves high value payment requests from ClaimDetails with fallback to DEFAULT limit.
--- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetHighValuePaymentRequests_Admin_AI]
 (
       @Compid           NVARCHAR(50) = NULL,   -- Optional company filter

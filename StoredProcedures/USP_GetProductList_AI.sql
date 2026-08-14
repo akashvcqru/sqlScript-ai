@@ -112,7 +112,10 @@ BEGIN
         ISNULL(CONVERT(VARCHAR, latest_batch.Exp_Date, 105), '') AS Exp_Date,
         sub.Subscribe_Id,
         sub.Service_ID,
-        sub.IsActive
+        sub.IsActive,
+        sub.DateFrom,
+        sub.DateTo,
+        sub.PlanPeriod
     FROM   Pro_Reg pr
     LEFT JOIN M_Label ml ON pr.Label_Code = ml.Label_Code
     OUTER APPLY (
@@ -122,15 +125,26 @@ BEGIN
         ORDER BY t.Entry_Date DESC
     ) AS latest_batch
     OUTER APPLY (
-        SELECT TOP 1 ss.Subscribe_Id, ss.Service_ID, ss.IsActive
+        SELECT TOP 1 
+            ss.Subscribe_Id, 
+            ss.Service_ID, 
+            ss.IsActive,
+            ss.DateFrom,
+            ss.DateTo,
+            ss.PlanMasterPeriod AS PlanPeriod
         FROM M_ServiceSubscription ss
         WHERE ss.Pro_ID = pr.Pro_ID
           AND (ss.IsDelete = 0 OR ss.IsDelete IS NULL)
-        ORDER BY ss.EntryDate DESC
+        ORDER BY ss.EntryDate ASC
     ) AS sub
     WHERE
         ('' = @Comp_ID OR pr.Comp_ID = @Comp_ID)
-        AND (@SearchQuery = '' OR pr.Pro_Name LIKE '%' + @SearchQuery + '%' OR pr.Pro_ID = @SearchQuery)
+        AND (
+            @SearchQuery = '' 
+            OR pr.Pro_Name LIKE '%' + @SearchQuery + '%' 
+            OR pr.Pro_ID LIKE '%' + @SearchQuery + '%'
+            OR pr.Pro_Desc LIKE '%' + @SearchQuery + '%'
+        )
         AND (
             @CalculatedFromDate IS NULL 
             OR pr.Pro_Entry_Date >= @CalculatedFromDate
