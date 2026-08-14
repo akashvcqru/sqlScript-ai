@@ -47,6 +47,7 @@ BEGIN
                 SD.MRP,
                 SD.Frequency,
                 SD.pointsdata,
+                ISNULL(SD.Isdefault, 0) AS FormFillStatus,
                 B.Pro_Name,
                 B.Display_Series,
                 B.pro_desc,
@@ -89,7 +90,8 @@ BEGIN
             PB.TotalRecords,
             PB.MRP,
             PB.Frequency,
-            PB.pointsdata
+            PB.pointsdata,
+            PB.FormFillStatus
         FROM PaginatedBatches PB
         OUTER APPLY (
             SELECT 
@@ -114,6 +116,7 @@ BEGIN
                 SD.MRP,
                 SD.Frequency,
                 SD.pointsdata,
+                ISNULL(SD.Isdefault, 0) AS FormFillStatus,
                 B.Pro_Name,
                 B.Display_Series,
                 B.pro_desc,
@@ -156,7 +159,8 @@ BEGIN
             PB.TotalRecords,
             PB.MRP,
             PB.Frequency,
-            PB.pointsdata
+            PB.pointsdata,
+            PB.FormFillStatus
         FROM PaginatedBatches PB
         OUTER APPLY (
             SELECT 
