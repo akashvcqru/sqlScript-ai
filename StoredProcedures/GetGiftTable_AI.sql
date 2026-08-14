@@ -35,7 +35,7 @@ begin
     into #temp    
     from Claim_gift AS a 
     LEFT JOIN gifttable_images AS b ON a.gift_id = b.gift_id AND (b.IsDelete IS NULL OR b.IsDelete = 0)     
-    left join tbl_Service aa on aa.Service_ID = a.Service_id
+    left join M_Service aa on aa.Service_ID = a.Service_id
     where a.CompID = @companyid  
       AND (a.IsDelete IS NULL OR a.IsDelete = 0)
     order by a.gift_id desc;
