@@ -49,6 +49,7 @@ BEGIN
                 SD.pointsdata,
                 B.Pro_Name,
                 B.Display_Series,
+                B.pro_desc,
                 LR.PrintType,
                 COUNT(*) OVER() AS TotalRecords
             FROM tbl_SoftCodegenrate_Details SD WITH (NOLOCK)
@@ -58,7 +59,7 @@ BEGIN
               AND (SD.Isdelete IS NULL OR SD.Isdelete = 0)
               AND (@DateFrom IS NULL OR SD.Entry_date >= @DateFrom)
               AND (@DateTo IS NULL OR SD.Entry_date <= @DateTo)
-              AND (@SearchPattern IS NULL OR SD.TrackingId LIKE @SearchPattern OR B.Pro_Name LIKE @SearchPattern OR SD.Pro_id LIKE @SearchPattern OR B.Display_Series LIKE @SearchPattern)
+              AND (@SearchPattern IS NULL OR SD.TrackingId LIKE @SearchPattern OR B.Pro_Name LIKE @SearchPattern OR SD.Pro_id LIKE @SearchPattern OR B.Display_Series LIKE @SearchPattern OR B.pro_desc LIKE @SearchPattern)
         ),
         PaginatedBatches AS (
             SELECT *
@@ -78,7 +79,8 @@ BEGIN
                 CONVERT(NVARCHAR, PB.Pro_id) + '-0000-0000'
             ) AS SerTo,
             ISNULL(S.Codes, ISNULL(PB.NOOfLabelRequest, 0)) AS Codes,
-            ISNULL(PB.Display_Series, PB.Pro_id) AS pro_id,
+            PB.Pro_id AS pro_id,
+            PB.pro_desc,
             PB.Pro_id + '*' + CONVERT(NVARCHAR, PB.Entry_date, 105) + '*' + ISNULL(PB.TrackingId, '') AS DownFl,
             PB.Pro_Name,
             CAST(PB.Entry_date AS DATE) AS print_date,
@@ -114,6 +116,7 @@ BEGIN
                 SD.pointsdata,
                 B.Pro_Name,
                 B.Display_Series,
+                B.pro_desc,
                 LR.PrintType,
                 COUNT(*) OVER() AS TotalRecords
             FROM tbl_SoftCodegenrate_Details SD WITH (NOLOCK)
@@ -123,7 +126,7 @@ BEGIN
               AND (SD.Isdelete IS NULL OR SD.Isdelete = 0)
               AND (@DateFrom IS NULL OR SD.Entry_date >= @DateFrom)
               AND (@DateTo IS NULL OR SD.Entry_date <= @DateTo)
-              AND (@SearchPattern IS NULL OR SD.TrackingId LIKE @SearchPattern OR B.Pro_Name LIKE @SearchPattern OR SD.Pro_id LIKE @SearchPattern OR B.Display_Series LIKE @SearchPattern)
+              AND (@SearchPattern IS NULL OR SD.TrackingId LIKE @SearchPattern OR B.Pro_Name LIKE @SearchPattern OR SD.Pro_id LIKE @SearchPattern OR B.Display_Series LIKE @SearchPattern OR B.pro_desc LIKE @SearchPattern)
         ),
         PaginatedBatches AS (
             SELECT *
@@ -143,7 +146,8 @@ BEGIN
                 CONVERT(NVARCHAR, PB.Pro_id) + '-0000-0000'
             ) AS SerTo,
             ISNULL(S.Codes, ISNULL(PB.NOOfLabelRequest, 0)) AS Codes,
-            ISNULL(PB.Display_Series, PB.Pro_id) AS pro_id,
+            PB.Pro_id AS pro_id,
+            PB.pro_desc,
             PB.Pro_id + '*' + CONVERT(NVARCHAR, PB.Entry_date, 105) + '*' + ISNULL(PB.TrackingId, '') AS DownFl,
             PB.Pro_Name,
             CAST(PB.Entry_date AS DATE) AS print_date,
