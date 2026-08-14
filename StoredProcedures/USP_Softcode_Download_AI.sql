@@ -403,10 +403,7 @@ BEGIN
         EXEC InsertUserFrequency @XmlData = @xmlStr;
 
         -- 10. Update tbl_SoftCodegenrate_Details
-        IF @IsDefault = 1
-        BEGIN
-            UPDATE tbl_SoftCodegenrate_Details SET Isdefault = 0 WHERE Pro_id = @ProID AND Comp_id = @CompID;
-        END
+        UPDATE tbl_SoftCodegenrate_Details SET Isdefault = 0 WHERE Pro_id = @ProID AND Comp_id = @CompID;
 
         INSERT INTO tbl_SoftCodegenrate_Details 
         (Pro_id, Comp_id, NOOfLabelRequest, Frequency, ProductRange, ProductQTY, Manufacture_date, TrackingId, chkdiffrentpoint, pointsdata, datefrom, dateto, MRP, Isdefault)
