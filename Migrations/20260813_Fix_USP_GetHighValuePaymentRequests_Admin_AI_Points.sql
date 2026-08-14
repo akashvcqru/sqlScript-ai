@@ -1,3 +1,7 @@
+-- Migration: Align USP_GetHighValuePaymentRequests_Admin_AI points calculation with SP_BL_GetBeneficiariesReport
+-- Date: 2026-08-13
+-- Fixes mismatch between HighValuePaymentRequestList and GetBeneficiariesReport caused by double-counting scan points in BLoyaltyPointsEarned and Pro_Enq.
+
 USE [vcqru]
 GO
 
@@ -6,11 +10,6 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- =============================================
--- Author:      Antigravity
--- Create date: 2026-07-03
--- Description: Retrieves high value payment requests from ClaimDetails with fallback to DEFAULT limit.
--- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetHighValuePaymentRequests_Admin_AI]
 (
       @Compid           NVARCHAR(50) = NULL,   -- Optional company filter
