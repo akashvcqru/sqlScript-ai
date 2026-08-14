@@ -130,7 +130,12 @@ BEGIN
     ) AS sub
     WHERE
         ('' = @Comp_ID OR pr.Comp_ID = @Comp_ID)
-        AND (@SearchQuery = '' OR pr.Pro_Name LIKE '%' + @SearchQuery + '%' OR pr.Pro_ID = @SearchQuery)
+        AND (
+            @SearchQuery = '' 
+            OR pr.Pro_Name LIKE '%' + @SearchQuery + '%' 
+            OR pr.Pro_ID LIKE '%' + @SearchQuery + '%'
+            OR pr.Pro_Desc LIKE '%' + @SearchQuery + '%'
+        )
         AND (
             @CalculatedFromDate IS NULL 
             OR pr.Pro_Entry_Date >= @CalculatedFromDate
