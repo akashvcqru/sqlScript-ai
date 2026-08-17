@@ -13,6 +13,8 @@ BEGIN
         Description NVARCHAR(500) NULL,
         IsActive BIT NOT NULL DEFAULT 1,
         IsDelete BIT NOT NULL DEFAULT 0,
+        ReportPermission NVARCHAR(MAX) NULL,
+        AppSettingPermission NVARCHAR(MAX) NULL,
         CreatedDate DATETIME NOT NULL DEFAULT GETDATE(),
         UpdatedDate DATETIME NULL
     );
@@ -26,6 +28,14 @@ BEGIN
     IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'IsDelete')
     BEGIN
         ALTER TABLE tbl_VendorDashboardRoles ADD IsDelete BIT NOT NULL DEFAULT 0;
+    END
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'ReportPermission')
+    BEGIN
+        ALTER TABLE tbl_VendorDashboardRoles ADD ReportPermission NVARCHAR(MAX) NULL;
+    END
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'AppSettingPermission')
+    BEGIN
+        ALTER TABLE tbl_VendorDashboardRoles ADD AppSettingPermission NVARCHAR(MAX) NULL;
     END
 END
 GO
