@@ -167,10 +167,7 @@ BEGIN
         CD.Claim_date,
         CD.Mobileno,
         CD.Amount AS Points,
-        CAST(
-            (ISNULL(CD.Amount, 0) / @ConvPointValue * @ConvCashValue)
-            - ISNULL(CD.tdsAmount, 0)
-        AS DECIMAL(18, 2)) AS PointsValue,
+        CAST(ISNULL(CD.RequestAmmount, 0) - ISNULL(CD.tdsAmount, 0) AS DECIMAL(18, 2)) AS PointsValue,
         ISNULL(CD.tdsAmount, 0) AS tdsAmount,
         ISNULL(CD.tdsper, 0) AS tdsper,
         MC.ConsumerName,
