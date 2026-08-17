@@ -90,6 +90,7 @@ BEGIN
             SET 
                 PageName = @PageName,
                 BrandName = @BrandName,
+                Service_Id = CASE WHEN @Service_Id IS NOT NULL AND @Service_Id <> '' THEN @Service_Id ELSE Service_Id END,
                 ServiceType = @ServiceType,
                 LogoUrl = @LogoUrl,
                 BackgroundImageUrl = @BackgroundImageUrl,
