@@ -12,6 +12,7 @@ BEGIN
         RoleName NVARCHAR(100) NOT NULL,
         Description NVARCHAR(500) NULL,
         IsActive BIT NOT NULL DEFAULT 1,
+        IsDelete BIT NOT NULL DEFAULT 0,
         CreatedDate DATETIME NOT NULL DEFAULT GETDATE(),
         UpdatedDate DATETIME NULL
     );
@@ -21,6 +22,10 @@ BEGIN
     IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'CompanyId')
     BEGIN
         EXEC sp_rename 'tbl_VendorDashboardRoles.CompanyId', 'Comp_id', 'COLUMN';
+    END
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'IsDelete')
+    BEGIN
+        ALTER TABLE tbl_VendorDashboardRoles ADD IsDelete BIT NOT NULL DEFAULT 0;
     END
 END
 GO
