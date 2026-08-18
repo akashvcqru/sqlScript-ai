@@ -128,7 +128,7 @@ BEGIN
     ---------------------------------------------------------
     -- CANDIDATE USERS FOR THIS COMPANY (FAST DISCOVERY)
     ---------------------------------------------------------
-     SELECT DISTINCT M_ConsumerId
+    SELECT DISTINCT M_ConsumerId
     INTO #Candidates
     FROM (
         SELECT M_consumerId AS M_ConsumerId FROM tbl_VendorViseKYCStatus WITH (NOLOCK) WHERE Comp_id = @Comp_Id
@@ -138,6 +138,8 @@ BEGIN
         SELECT M_Consumerid AS M_ConsumerId FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id
         UNION
         SELECT TRY_CAST(M_CounserID AS INT) AS M_ConsumerId FROM Transactions WITH (NOLOCK) WHERE (CompId = REPLACE(@Comp_Id, 'Comp-', '') OR CompId = @Comp_Id) AND Issuccess = 1
+        UNION
+        SELECT TRY_CAST(t.M_Consumerid AS INT) AS M_ConsumerId FROM tblUPITransactionDetails t WITH (NOLOCK) WHERE t.Comp_Id = @Comp_Id AND t.Status = 'Success'
     ) x
     WHERE M_ConsumerId IS NOT NULL;
 
@@ -383,8 +385,8 @@ BEGIN
     ---------------------------------------------------------
     SELECT 
         U.M_ConsumerId,
-        SUM(CAST(CD.Amount AS DECIMAL(18,2))) AS Transferred,
-        SUM(CAST(ISNULL(CD.tdsAmount, 0) AS DECIMAL(18,2))) AS TDS
+        SUM(TRY_CAST(CD.Amount AS DECIMAL(18,2))) AS Transferred,
+        SUM(TRY_CAST(ISNULL(CD.tdsAmount, 0) AS DECIMAL(18,2))) AS TDS
     INTO #Claims
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
@@ -398,28 +400,18 @@ BEGIN
     CREATE CLUSTERED INDEX IX_Claims_ConsumerId ON #Claims(M_ConsumerId);
 
     ---------------------------------------------------------
-    -- FAILED CASH TRANSFERS (UPI/IMPS Payout Failure)
+    -- INSTANT CASH TRANSFERS (UPI Payouts with Codes)
     ---------------------------------------------------------
     SELECT 
         U.M_ConsumerId,
-        SUM(TRY_CAST(t.Amount AS DECIMAL(18,2))) AS FailedCash
+        SUM(TRY_CAST(t.Amount AS DECIMAL(18,2))) AS UPIAmount
     INTO #UPI
     FROM tblUPITransactionDetails t WITH (NOLOCK)
     INNER JOIN #UserMobiles UM ON t.MobileNo = UM.MobileNo
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
-    WHERE t.Status IN ('FAILED', 'Failure', 'Rejected')
+    WHERE t.Status = 'Success'
       AND t.Comp_Id = @Comp_Id
-      AND LEN(t.Code1) = 5 AND LEN(t.Code2) = 8
-      AND NOT EXISTS (
-          SELECT 1 FROM tblUPITransactionDetails ts WITH (NOLOCK)
-          WHERE ts.MobileNo = t.MobileNo
-            AND ts.Comp_Id = t.Comp_Id
-            AND ts.Amount = t.Amount
-            AND ts.Status = 'Success'
-            AND ts.Code1 = t.Code1
-            AND ts.Code2 = t.Code2
-            AND ts.ReqDate >= t.ReqDate
-      )
+      AND LEN(ISNULL(t.Code1, '')) > 0
       AND (@StartDate IS NULL OR t.ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR t.ReqDate < @EndDate)
     GROUP BY U.M_ConsumerId;
@@ -431,7 +423,7 @@ BEGIN
     ---------------------------------------------------------
     SELECT 
         BT.RedeemBy AS M_ConsumerId,
-        SUM(CAST(ISNULL(BT.RedeemPoints, 0) AS DECIMAL(18,2))) AS BPointsDebited
+        SUM(TRY_CAST(ISNULL(BT.RedeemPoints, 0) AS DECIMAL(18,2))) AS BPointsDebited
     INTO #BPoints
     FROM BPointsTransaction BT WITH (NOLOCK)
     WHERE BT.companyid = @Comp_Id
@@ -448,7 +440,7 @@ BEGIN
     ---------------------------------------------------------
     SELECT 
         TRY_CAST(t.M_CounserID AS INT) AS M_ConsumerId,
-        SUM(CAST(ISNULL(t.Amount, 0) AS DECIMAL(18,2))) AS TransactionsAmount
+        SUM(TRY_CAST(ISNULL(t.Amount, 0) AS DECIMAL(18,2))) AS TransactionsAmount
     INTO #Transactions
     FROM Transactions t WITH (NOLOCK)
     WHERE (t.CompId = REPLACE(@Comp_Id, 'Comp-', '') OR t.CompId = @Comp_Id)
@@ -476,8 +468,8 @@ BEGIN
         U.KYCStatus,
         (ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0)) AS PointsEarned,
         ISNULL(R.ReferralPoints, 0) AS RefralAmount,
-        (ISNULL(C.Transferred, 0) + ISNULL(BP.BPointsDebited, 0) + ISNULL(T.TransactionsAmount, 0) - ISNULL(UPI.FailedCash, 0)) AS RedeemAmount,
-        ((ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralPoints, 0)) - (ISNULL(C.Transferred, 0) + ISNULL(BP.BPointsDebited, 0) + ISNULL(T.TransactionsAmount, 0) - ISNULL(UPI.FailedCash, 0))) AS BalanceAmount,
+        (ISNULL(C.Transferred, 0) + ISNULL(UPI.UPIAmount, 0) + ISNULL(BP.BPointsDebited, 0) + ISNULL(T.TransactionsAmount, 0)) AS RedeemAmount,
+        ((ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralPoints, 0)) - (ISNULL(C.Transferred, 0) + ISNULL(UPI.UPIAmount, 0) + ISNULL(BP.BPointsDebited, 0) + ISNULL(T.TransactionsAmount, 0))) AS BalanceAmount,
         ISNULL(C.TDS, 0) AS TDSAmount,
         B.LastScan,
         ROW_NUMBER() OVER (ORDER BY (ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0)) DESC, U.M_ConsumerId) AS RN
@@ -494,7 +486,7 @@ BEGIN
     WHERE (
             (ISNULL(B.Benefit, 0) > 0 OR ISNULL(R.ReferralPoints, 0) > 0 OR ISNULL(O.OtherPoints, 0) > 0)
             OR
-            ((ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralPoints, 0)) - (ISNULL(C.Transferred, 0) + ISNULL(BP.BPointsDebited, 0) + ISNULL(T.TransactionsAmount, 0) - ISNULL(UPI.FailedCash, 0)) <> 0)
+            ((ISNULL(B.Benefit, 0) + ISNULL(O.OtherPoints, 0) + ISNULL(R.ReferralPoints, 0)) - (ISNULL(C.Transferred, 0) + ISNULL(UPI.UPIAmount, 0) + ISNULL(BP.BPointsDebited, 0) + ISNULL(T.TransactionsAmount, 0)) <> 0)
           )
       AND (@KYCStatusFilter IS NULL OR U.KYCStatus = @KYCStatusFilter)
       AND (@StateFilter IS NULL OR S.State = @StateFilter OR (S.State IS NULL AND U.State = @StateFilter))

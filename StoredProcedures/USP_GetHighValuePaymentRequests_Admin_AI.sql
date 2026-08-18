@@ -375,32 +375,22 @@ BEGIN
       AND TRY_CAST(t.M_CounserID AS INT) IN (SELECT M_Consumerid FROM #ReqConsumers WHERE M_Consumerid IS NOT NULL)
     GROUP BY TRY_CAST(t.M_CounserID AS INT), t.CompId;
 
-    -- 10. Failed UPI Reversals
+    -- 10. Instant UPI Cash Transfers
     SELECT 
         rc.MobileNo,
         rc.CompId,
-        SUM(TRY_CAST(t.Amount AS DECIMAL(18,2))) AS FailedCash
+        SUM(TRY_CAST(t.Amount AS DECIMAL(18,2))) AS UPIAmount
     INTO #UPI
     FROM #ReqConsumers rc
     INNER JOIN tblUPITransactionDetails t WITH (NOLOCK) ON RIGHT(t.MobileNo, 10) = RIGHT(rc.MobileNo, 10) AND t.Comp_Id = rc.CompId
-    WHERE t.Status IN ('FAILED', 'Failure', 'Rejected')
-      AND LEN(t.Code1) = 5 AND LEN(t.Code2) = 8
-      AND NOT EXISTS (
-          SELECT 1 FROM tblUPITransactionDetails ts WITH (NOLOCK)
-          WHERE ts.MobileNo = t.MobileNo
-            AND ts.Comp_Id = t.Comp_Id
-            AND ts.Amount = t.Amount
-            AND ts.Status = 'Success'
-            AND ts.Code1 = t.Code1
-            AND ts.Code2 = t.Code2
-            AND ts.ReqDate >= t.ReqDate
-      )
+    WHERE t.Status = 'Success'
+      AND LEN(ISNULL(t.Code1, '')) > 0
     GROUP BY rc.MobileNo, rc.CompId;
 
     -- Combine into #ConsumerPoints
     SELECT rc.MobileNo, rc.CompId,
         (ISNULL(b.Benefit, 0) + ISNULL(o.OtherPoints, 0) + ISNULL(r.ReferralPoints, 0)) AS TotalEarnedPoints,
-        (ISNULL(c.Transferred, 0) + ISNULL(bp.BPointsDebited, 0) + ISNULL(t.TransactionsAmount, 0) - ISNULL(upi.FailedCash, 0)) AS TotalRedeemedPoints
+        (ISNULL(c.Transferred, 0) + ISNULL(upi.UPIAmount, 0) + ISNULL(bp.BPointsDebited, 0) + ISNULL(t.TransactionsAmount, 0)) AS TotalRedeemedPoints
     INTO #ConsumerPoints
     FROM #ReqConsumers rc
     LEFT JOIN #Benefit b ON b.M_Consumerid = rc.M_Consumerid AND b.CompId = rc.CompId

@@ -140,6 +140,8 @@ BEGIN
         SELECT M_Consumerid FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid = @Comp_Id
         UNION
         SELECT TRY_CAST(t.M_CounserID AS INT) AS M_ConsumerId FROM Transactions t WITH (NOLOCK) INNER JOIN @CompanyList CL ON (t.CompId = REPLACE(CL.Comp_Id, 'Comp-', '') OR t.CompId = CL.Comp_Id) WHERE t.Issuccess = 1
+        UNION
+        SELECT TRY_CAST(t.M_Consumerid AS INT) AS M_ConsumerId FROM tblUPITransactionDetails t WITH (NOLOCK) INNER JOIN @CompanyList CL ON t.Comp_Id = CL.Comp_Id WHERE t.Status = 'Success'
     ) x
     WHERE M_ConsumerId IS NOT NULL;
 
@@ -395,14 +397,13 @@ BEGIN
     ---------------------------------------------------------
     SELECT 
         U.M_ConsumerId,
-        SUM(ISNULL(CD.tdsAmount,0)) AS TDSAmount
+        SUM(TRY_CAST(ISNULL(CD.tdsAmount,0) AS DECIMAL(18,2))) AS TDSAmount
     INTO #TDS
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
     INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
-    WHERE CD.Isapproved = 1
-      AND CD.Service_ID IN ('SRV1001', 'SRV1029')
+    WHERE (CD.Isapproved = 1 OR CD.IsPaid = 1 OR CD.PaymentStatus = 'Paid')
       AND (CD.action_date IS NULL OR ((@StartDate IS NULL OR CD.action_date >= @StartDate) AND (@EndDate IS NULL OR CD.action_date < @EndDate)))
     GROUP BY U.M_ConsumerId;
 
@@ -413,36 +414,31 @@ BEGIN
     ---------------------------------------------------------
     SELECT
         U.M_ConsumerId,
-        SUM(CD.Amount) AS ClaimsPoints
+        SUM(TRY_CAST(CD.Amount AS DECIMAL(18,2))) AS ClaimsPoints
     INTO #Claims
     FROM ClaimDetails CD WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
     INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
-    WHERE CD.Isapproved = 1
-      AND CD.Service_ID IN ('SRV1001', 'SRV1029')
+    WHERE (CD.Isapproved = 1 OR CD.IsPaid = 1 OR CD.PaymentStatus = 'Paid')
       AND (CD.action_date IS NULL OR ((@StartDate IS NULL OR CD.action_date >= @StartDate) AND (@EndDate IS NULL OR CD.action_date < @EndDate)))
     GROUP BY U.M_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_Claims_ConsumerId ON #Claims(M_ConsumerId);
 
     ---------------------------------------------------------
-    -- UPI
+    -- UPI (INSTANT CASH TRANSFERS WITH CODES)
     ---------------------------------------------------------
     SELECT
         U.M_ConsumerId,
-        SUM(ISNULL(UT.Amount,0)) AS UPIAmount
+        SUM(TRY_CAST(UT.Amount AS DECIMAL(18,2))) AS UPIAmount
     INTO #UPI
     FROM tblUPITransactionDetails UT WITH (NOLOCK)
+    INNER JOIN @CompanyList CL ON UT.Comp_Id = CL.Comp_Id
     INNER JOIN #UserMobiles UM ON UT.MobileNo = UM.MobileNo
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
-    INNER JOIN M_Code M WITH (NOLOCK) ON UT.Code1 = M.Code1 AND UT.Code2 = M.Code2
-    INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = M.Pro_ID
-    WHERE UT.Comp_Id = @Comp_Id
-      AND UT.Status = 'Success'
-      AND SS.Service_ID IN ('SRV1001', 'SRV1029')
-      AND (M.Series_Order > SS.start_order OR (M.Series_Order = SS.start_order AND M.Series_Serial >= SS.start_series))
-      AND (M.Series_Order < SS.end_order OR (M.Series_Order = SS.end_order AND M.Series_Serial <= SS.end_series))
+    WHERE UT.Status = 'Success'
+      AND LEN(ISNULL(UT.Code1, '')) > 0
       AND (@StartDate IS NULL OR UT.ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR UT.ReqDate <  @EndDate)
     GROUP BY U.M_ConsumerId;
@@ -454,13 +450,11 @@ BEGIN
     ---------------------------------------------------------
     SELECT
         BT.RedeemBy AS M_ConsumerId,
-        SUM(ISNULL(BT.RedeemPoints, 0)) AS BPointsAmount
+        SUM(TRY_CAST(ISNULL(BT.RedeemPoints, 0) AS DECIMAL(18,2))) AS BPointsAmount
     INTO #BPoints
     FROM BPointsTransaction BT WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON BT.companyid = CL.Comp_Id
-    LEFT JOIN ClaimDetails CD WITH (NOLOCK) ON BT.Transsctionid = CD.Row_id
-    WHERE BT.bpstatus IN ('Accepted', 'SUCCESS')
-      AND (CD.Service_ID IS NULL OR CD.Service_ID IN ('SRV1001', 'SRV1029'))
+    WHERE BT.bpstatus IN ('Accepted', 'SUCCESS', 'Debit')
       AND BT.RedeemBy IN (SELECT M_ConsumerId FROM #Users)
       AND (@StartDate IS NULL OR BT.Redeemdate >= @StartDate)
       AND (@EndDate   IS NULL OR BT.Redeemdate <  @EndDate)
@@ -473,7 +467,7 @@ BEGIN
     ---------------------------------------------------------
     SELECT 
         TRY_CAST(t.M_CounserID AS INT) AS M_ConsumerId,
-        SUM(CAST(ISNULL(t.Amount, 0) AS DECIMAL(18,2))) AS TransactionsAmount
+        SUM(TRY_CAST(ISNULL(t.Amount, 0) AS DECIMAL(18,2))) AS TransactionsAmount
     INTO #Transactions
     FROM Transactions t WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON (t.CompId = REPLACE(CL.Comp_Id, 'Comp-', '') OR t.CompId = CL.Comp_Id)
