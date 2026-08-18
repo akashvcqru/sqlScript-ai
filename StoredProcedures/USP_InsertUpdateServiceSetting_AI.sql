@@ -68,30 +68,22 @@ BEGIN
 
         IF @DML = 'I'
         BEGIN
-            -- Logic to INSERT into M_ServiceSubscriptionTrans or related table
-            -- Assuming the main table is M_ServiceSubscriptionTrans as seen in comments
-            
+            -- Logic to INSERT into M_ServiceSubscriptionTrans
             INSERT INTO M_ServiceSubscriptionTrans (
-                Subscribe_Id, Comp_ID, Pro_ID, Service_ID,
-                WarrantyPeriod, ReferralLimit, DateFrom, DateTo, DueDate,
-                IsCashConvert, Frequency, Points, AmtType, TotalLoyalty,
-                Multiple, Minval, Maxval, IsCash, Comments,
-                ServiceType, Rules, MasterCodes, WinningCodes, WinCodes, Nth, RewardsDistribution,
-                IsReferral, RefGiftReferral, RefGiftUsers, RefPointsReferral, RefPointsUsers,
-                RefIsCashConvert, RefIsCashReferral, RefIsCashUsers,
-                StartOrder, StartSeries, EndOrder, EndSeries,
-                EntryDate
+                Subscribe_Id,
+                WarrantyPeriod, DateFrom, DateTo,
+                IsCashConvert, Frequency, Points, AmtType, totalamont,
+                Minval, Maxval, IsCash, Comments,
+                IsReferral,
+                Entry_Date, IsActive, IsDelete
             )
             VALUES (
-                @Subscribe_Id, @Comp_ID, @Pro_ID, @Service_ID,
-                @WarrantyPeriod, @ReferralLimit, @DateFrom, @DateTo, @DueDate,
+                @Subscribe_Id,
+                @WarrantyPeriod, @DateFrom, @DateTo,
                 @IsCashConvert, @Frequency, @Points, @AmtType, @TotalLoyalty,
-                @Multiple, @Minval, @Maxval, @IsCash, @Comments,
-                @ServiceType, @Rules, @MasterCodes, @WinningCodes, @WinCodes, @Nth, @RewardsDistribution,
-                @IsReferral, @RefGiftReferral, @RefGiftUsers, @RefPointsReferral, @RefPointsUsers,
-                @RefIsCashConvert, @RefIsCashReferral, @RefIsCashUsers,
-                @StartOrder, @StartSeries, @EndOrder, @EndSeries,
-                ISNULL(@EntryDate, GETDATE())
+                @Minval, @Maxval, @IsCash, @Comments,
+                @IsReferral,
+                ISNULL(@EntryDate, GETDATE()), 1, 0
             );
 
             SET @NewSST_Id = SCOPE_IDENTITY();
@@ -130,36 +122,22 @@ BEGIN
         END
         ELSE IF @DML = 'U'
         BEGIN
-            -- Update Logic (Simplified for demonstration as legacy relies on SST_Id or similar PK)
-            -- This assumes we are updating based on Subscribe_Id/Comp_ID/Pro_ID/Service_ID
-            -- A proper Update might need an explicit SST_Id.
+            -- Update Logic
             UPDATE M_ServiceSubscriptionTrans
             SET WarrantyPeriod = ISNULL(@WarrantyPeriod, WarrantyPeriod),
-                ReferralLimit = ISNULL(@ReferralLimit, ReferralLimit),
                 DateFrom = ISNULL(@DateFrom, DateFrom),
                 DateTo = ISNULL(@DateTo, DateTo),
-                DueDate = ISNULL(@DueDate, DueDate),
                 IsCashConvert = ISNULL(@IsCashConvert, IsCashConvert),
                 Frequency = ISNULL(@Frequency, Frequency),
                 Points = ISNULL(@Points, Points),
                 AmtType = ISNULL(@AmtType, AmtType),
-                TotalLoyalty = ISNULL(@TotalLoyalty, TotalLoyalty),
-                Multiple = ISNULL(@Multiple, Multiple),
+                totalamont = ISNULL(@TotalLoyalty, totalamont),
                 Minval = ISNULL(@Minval, Minval),
                 Maxval = ISNULL(@Maxval, Maxval),
                 IsCash = ISNULL(@IsCash, IsCash),
                 Comments = ISNULL(@Comments, Comments),
-                ServiceType = ISNULL(@ServiceType, ServiceType),
-                Rules = ISNULL(@Rules, Rules),
-                MasterCodes = ISNULL(@MasterCodes, MasterCodes),
-                WinningCodes = ISNULL(@WinningCodes, WinningCodes),
-                RewardsDistribution = ISNULL(@RewardsDistribution, RewardsDistribution),
-                IsReferral = ISNULL(@IsReferral, IsReferral),
-                StartOrder = ISNULL(@StartOrder, StartOrder),
-                StartSeries = ISNULL(@StartSeries, StartSeries),
-                EndOrder = ISNULL(@EndOrder, EndOrder),
-                EndSeries = ISNULL(@EndSeries, EndSeries)
-            WHERE Subscribe_Id = @Subscribe_Id AND Comp_ID = @Comp_ID;
+                IsReferral = ISNULL(@IsReferral, IsReferral)
+            WHERE Subscribe_Id = @Subscribe_Id;
 
             SELECT 1 AS success, 'Service Setting updated successfully.' AS message;
         END

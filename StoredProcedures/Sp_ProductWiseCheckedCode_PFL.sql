@@ -130,7 +130,3 @@ BEGIN
     DROP TABLE IF EXISTS #MergedData;
     DROP TABLE IF EXISTS #Temp1;
 END
-
-
-
-(1 rows affected)

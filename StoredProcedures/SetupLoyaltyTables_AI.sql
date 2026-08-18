@@ -183,6 +183,12 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID(N'[dbo].[LandingPage_CodeCheckMessages]', N'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[LandingPage_CodeCheckMessages]') AND name = 'CreatedBy')
+BEGIN
+    ALTER TABLE [dbo].[LandingPage_CodeCheckMessages] ADD [CreatedBy] [NVARCHAR](100) NULL;
+END
+GO
+
 -- =============================================
 -- SEED DATA: Default Code Check Messages for Comp-2299
 -- =============================================
@@ -203,7 +209,7 @@ GO
 -- =============================================
 -- SAMPLE DATA: Insert test consumer for mobile 9315742109
 -- =============================================
-DECLARE @TestConsumerId INT = (SELECT M_Consumerid FROM M_Consumer WHERE RIGHT(MobileNo, 10) = '9315742109' LIMIT 1)
+DECLARE @TestConsumerId INT = (SELECT TOP 1 M_Consumerid FROM M_Consumer WHERE RIGHT(MobileNo, 10) = '9315742109')
 
 IF @TestConsumerId IS NOT NULL
 BEGIN

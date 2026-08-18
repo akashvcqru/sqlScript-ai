@@ -18,7 +18,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingCashTransfer_AI]
     @Frequency     INT           = NULL,
 
     @Comments      NVARCHAR(1000) = NULL,
-    @EntryDate     DATETIME       = NULL
+    @EntryDate     DATETIME       = NULL,
+    @DML           VARCHAR(10)    = 'I'
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -42,17 +43,17 @@ BEGIN
 
         INSERT INTO M_ServiceSubscriptionTrans
         (
-            Subscribe_Id, Comp_ID, Pro_ID, Service_ID,
+            Subscribe_Id,
             DateFrom, DateTo,
             Points, IsCashConvert, IsCash, Frequency,
-            Comments, EntryDate
+            Comments, Entry_Date, IsActive, IsDelete
         )
         VALUES
         (
-            @Subscribe_Id, @Comp_ID, @Pro_ID, @Service_ID,
+            @Subscribe_Id,
             @DateFrom, @DateTo,
             @Points, @IsCashConvert, @IsCash, @Frequency,
-            @Comments, ISNULL(@EntryDate, GETDATE())
+            @Comments, ISNULL(@EntryDate, GETDATE()), 1, 0
         );
 
         DECLARE @NewSST_Id BIGINT = SCOPE_IDENTITY();
