@@ -57,8 +57,8 @@ BEGIN
         -- Sound Paths (derived from Row_ID)
         CASE WHEN REG.IsSound = 1 THEN '../Data/Sound/' + SUBSTRING(REG.Comp_ID, 6, 4) + '/' + REG.Pro_ID + '/Loyalty/'+ CONVERT(VARCHAR,REG.Row_ID) +'/' + CONVERT(VARCHAR,REG.Row_ID) + '_H.wav' ELSE '' END AS SoundPath_H,
         CASE WHEN REG.IsSound = 1 THEN '../Data/Sound/' + SUBSTRING(REG.Comp_ID, 6, 4) + '/' + REG.Pro_ID + '/Loyalty/'+ CONVERT(VARCHAR,REG.Row_ID) +'/' + CONVERT(VARCHAR,REG.Row_ID) + '_E.wav' ELSE '' END AS SoundPath_E,
-        -- Check if the service is currently active via Date check.
-        CAST(CASE WHEN (GETDATE() BETWEEN REG.DateFrom AND REG.DateTo) THEN 1 ELSE 0 END AS BIT) AS IsCounterFittingServiceActive,
+        -- Service is active only when both M_ServiceSubscription (ss) and M_ServiceSubscriptionTrans (sst) have IsActive = 1
+        CAST(CASE WHEN ISNULL(REG.SS_IsActive, 0) = 1 AND ISNULL(REG.SST_IsActive, 0) = 1 THEN 1 ELSE 0 END AS BIT) AS IsCounterFittingServiceActive,
         @TotalRecords AS TotalRecords
     FROM (
         SELECT 
@@ -72,6 +72,8 @@ BEGIN
             ISNULL(sst.DateTo, ss.DateTo) AS DateTo, 
             ISNULL(sst.Entry_Date, ss.EntryDate) AS Pasted_Date, 
             ISNULL(sst.Comments, ss.PlanName) AS Comments, 
+            ss.IsActive AS SS_IsActive,
+            sst.IsActive AS SST_IsActive,
             ISNULL(sst.IsActive, ss.IsActive) AS IsActive, 
             ISNULL(sst.IsDelete, ss.IsDelete) AS IsDelete, 
             ms.ServiceName, 
