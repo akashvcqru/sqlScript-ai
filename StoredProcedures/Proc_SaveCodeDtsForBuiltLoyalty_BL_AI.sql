@@ -54,9 +54,11 @@ BEGIN
         -- Get Consumer's UserType and UserTypeId
         DECLARE @CurrentUserType NVARCHAR(100) = 'User';
         DECLARE @CurrentUserTypeId INT = NULL;
+        DECLARE @OtherRole NVARCHAR(100) = NULL;
 
         SELECT TOP 1 
             @CurrentUserType = COALESCE(ut.User_Type, mc.Other_Role, 'User'),
+            @OtherRole = mc.Other_Role,
             @CurrentUserTypeId = COALESCE(vk.Vrkabel_User_Type, mc.Vrkabel_User_Type)
         FROM dbo.M_Consumer mc WITH (NOLOCK)
         LEFT JOIN dbo.tbl_Vendorvisekycstatus vk WITH (NOLOCK) 
@@ -120,37 +122,44 @@ BEGIN
 
                 DECLARE @SoftPoint NVARCHAR(50) = NULL;
 
-                IF @PointsData IS NOT NULL AND LEN(@PointsData) > 0
+                IF @PointsData IS NOT NULL AND LEN(TRIM(@PointsData)) > 0
                 BEGIN
                     IF ISJSON(@PointsData) = 1
                     BEGIN
-                        -- Match specific UserType or usertype
+                        -- Match specific UserType, usertype, UserTypeId, OtherRole, 'all', or unassigned UserType
                         SELECT TOP 1 @SoftPoint = COALESCE(JSON_VALUE(val.value, '$.Point'), JSON_VALUE(val.value, '$.point'), JSON_VALUE(val.value, '$.Points'))
                         FROM OPENJSON(@PointsData) val
                         WHERE LOWER(TRIM(JSON_VALUE(val.value, '$.UserType'))) = LOWER(TRIM(@CurrentUserType))
                            OR LOWER(TRIM(JSON_VALUE(val.value, '$.usertype'))) = LOWER(TRIM(@CurrentUserType))
-                           OR CAST(JSON_VALUE(val.value, '$.UserType') AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR)
-                           OR CAST(JSON_VALUE(val.value, '$.usertype') AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR);
+                           OR (@OtherRole IS NOT NULL AND (LOWER(TRIM(JSON_VALUE(val.value, '$.UserType'))) = LOWER(TRIM(@OtherRole)) OR LOWER(TRIM(JSON_VALUE(val.value, '$.usertype'))) = LOWER(TRIM(@OtherRole))))
+                           OR (@CurrentUserTypeId IS NOT NULL AND (CAST(JSON_VALUE(val.value, '$.UserType') AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR) OR CAST(JSON_VALUE(val.value, '$.usertype') AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR)))
+                           OR LOWER(TRIM(JSON_VALUE(val.value, '$.UserType'))) = 'all'
+                           OR LOWER(TRIM(JSON_VALUE(val.value, '$.usertype'))) = 'all'
+                           OR JSON_VALUE(val.value, '$.UserType') IS NULL
+                           OR JSON_VALUE(val.value, '$.usertype') IS NULL
+                           OR TRIM(JSON_VALUE(val.value, '$.UserType')) = ''
+                           OR TRIM(JSON_VALUE(val.value, '$.usertype')) = '';
                     END
                     ELSE IF ISNUMERIC(@PointsData) = 1
                     BEGIN
                         SET @SoftPoint = @PointsData;
                     END
-                END
 
-                IF @SoftPoint IS NOT NULL AND ISNUMERIC(@SoftPoint) = 1
-                BEGIN
-                    SET @Points = CAST(@SoftPoint AS INT);
-                    SET @IsCash = CAST(@SoftPoint AS INT);
+                    IF @SoftPoint IS NOT NULL AND ISNUMERIC(@SoftPoint) = 1
+                    BEGIN
+                        SET @Points = CAST(@SoftPoint AS INT);
+                        SET @IsCash = CAST(@SoftPoint AS INT);
+                    END
+                    ELSE
+                    BEGIN
+                        -- Record exists in tbl_SoftCodegenrate_Details but pointsdata restricts to specific usertypes which this consumer does NOT match -> 0 points
+                        SET @Points = 0;
+                        SET @IsCash = 0;
+                    END
                 END
-                ELSE
-                BEGIN
-                    -- Record exists in tbl_SoftCodegenrate_Details but TrackingId/pointsdata does not have that usertype -> 0 points
-                    SET @Points = 0;
-                    SET @IsCash = 0;
-                END
+                -- If @PointsData is NULL or empty in tbl_SoftCodegenrate_Details, keep default @Points from M_ServiceSubscriptionTrans / m_code_loyalty
             END
-            -- If @IsSoftCodePresent = 0 (Data not found in tbl_SoftCodegenrate_Details), old flow remains intact (default @Points from subscription/m_code_loyalty)
+            -- If @IsSoftCodePresent = 0 (Data not found in tbl_SoftCodegenrate_Details), old flow remains intact
         END
   
         SELECT @countFrequncy = COUNT(pkid) FROM BuiltLoyaltyMCodeCheck (NOLOCK)   
