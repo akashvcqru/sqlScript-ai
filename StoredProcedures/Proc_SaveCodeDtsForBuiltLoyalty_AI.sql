@@ -112,10 +112,12 @@ BEGIN
             -- 2. Check tbl_SoftCodegenrate_Details via LabelRequestId
             DECLARE @PointsData NVARCHAR(500) = NULL;
             DECLARE @SoftFrequency INT = NULL;
+            DECLARE @IsSoftCodePresent BIT = 0;
 
             SELECT TOP 1 
                 @PointsData = s.pointsdata,
-                @SoftFrequency = s.Frequency
+                @SoftFrequency = s.Frequency,
+                @IsSoftCodePresent = 1
             FROM dbo.M_Code mc WITH (NOLOCK)
             INNER JOIN dbo.tbl_SoftCodegenrate_Details s WITH (NOLOCK) 
                 ON CAST(s.TrackingId AS NVARCHAR(50)) = CAST(mc.LabelRequestId AS NVARCHAR(50))
@@ -123,21 +125,33 @@ BEGIN
               AND mc.Code2 = TRY_CAST(@code2 AS NUMERIC(18,0))
               AND ISNULL(s.Isdelete, 0) = 0;
 
-            IF @SoftFrequency IS NOT NULL AND @SoftFrequency > 0
+            -- If data found in tbl_SoftCodegenrate_Details for M_Code.LabelRequestId = s.TrackingId
+            IF @IsSoftCodePresent = 1
             BEGIN
-                SET @Frequency = @SoftFrequency;
-            END
+                IF @SoftFrequency IS NOT NULL AND @SoftFrequency > 0
+                BEGIN
+                    SET @Frequency = @SoftFrequency;
+                END
 
-            IF @PointsData IS NOT NULL AND LEN(@PointsData) > 0
-            BEGIN
-                -- Find matching UserType in pointsdata JSON array
                 DECLARE @SoftPoint NVARCHAR(50) = NULL;
-                SELECT TOP 1 @SoftPoint = JSON_VALUE(val.value, '$.Point')
-                FROM OPENJSON(@PointsData) val
-                WHERE LOWER(TRIM(JSON_VALUE(val.value, '$.UserType'))) = LOWER(TRIM(@CurrentUserType))
-                   OR LOWER(TRIM(JSON_VALUE(val.value, '$.usertype'))) = LOWER(TRIM(@CurrentUserType))
-                   OR CAST(JSON_VALUE(val.value, '$.UserType') AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR)
-                   OR CAST(JSON_VALUE(val.value, '$.usertype') AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR);
+
+                IF @PointsData IS NOT NULL AND LEN(@PointsData) > 0
+                BEGIN
+                    IF ISJSON(@PointsData) = 1
+                    BEGIN
+                        -- Match specific UserType or usertype
+                        SELECT TOP 1 @SoftPoint = COALESCE(JSON_VALUE(val.value, '$.Point'), JSON_VALUE(val.value, '$.point'), JSON_VALUE(val.value, '$.Points'))
+                        FROM OPENJSON(@PointsData) val
+                        WHERE LOWER(TRIM(JSON_VALUE(val.value, '$.UserType'))) = LOWER(TRIM(@CurrentUserType))
+                           OR LOWER(TRIM(JSON_VALUE(val.value, '$.usertype'))) = LOWER(TRIM(@CurrentUserType))
+                           OR CAST(JSON_VALUE(val.value, '$.UserType') AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR)
+                           OR CAST(JSON_VALUE(val.value, '$.usertype') AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR);
+                    END
+                    ELSE IF ISNUMERIC(@PointsData) = 1
+                    BEGIN
+                        SET @SoftPoint = @PointsData;
+                    END
+                END
 
                 IF @SoftPoint IS NOT NULL AND ISNUMERIC(@SoftPoint) = 1
                 BEGIN
@@ -146,11 +160,12 @@ BEGIN
                 END
                 ELSE
                 BEGIN
-                    -- If user type not present in pointsdata, default assigned points = 0
+                    -- Record exists in tbl_SoftCodegenrate_Details but TrackingId/pointsdata does not have that usertype -> 0 points
                     SET @Points = 0;
                     SET @IsCash = 0;
                 END
             END
+            -- If @IsSoftCodePresent = 0 (Data not found in tbl_SoftCodegenrate_Details), old flow remains intact (default @Points from subscription/m_code_loyalty)
         END
 
         IF @assignpoint IS NOT NULL
