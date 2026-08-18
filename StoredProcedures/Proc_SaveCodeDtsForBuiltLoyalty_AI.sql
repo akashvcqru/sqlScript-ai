@@ -9,7 +9,8 @@ CREATE OR ALTER PROCEDURE [dbo].[Proc_SaveCodeDtsForBuiltLoyalty_AI]
     @code2 NVARCHAR(50) = '',        
     @SST_Id INT,        
     @intM_Consumer_MCode BIGINT,
-    @assignpoint INT = NULL  
+    @assignpoint INT = NULL,
+    @MobileNo NVARCHAR(50) = ''
 )        
 AS        
 BEGIN  
@@ -40,13 +41,32 @@ BEGIN
           AND mc.Code1 = TRY_CAST(@code1 AS NUMERIC(18,0))
           AND mc.Code2 = TRY_CAST(@code2 AS NUMERIC(18,0));  
   
-        IF @M_Consumerid IS NULL
+        IF @M_Consumerid IS NULL AND ISNULL(@intM_Consumer_MCode, 0) > 0
         BEGIN
             SELECT TOP 1 @M_Consumerid = mc.M_Consumerid
             FROM Pro_Enq pe (NOLOCK)
             INNER JOIN m_consumer mc (NOLOCK) ON RIGHT(pe.MobileNo, 10) = RIGHT(mc.MobileNo, 10)
             WHERE pe.Row_id = @intM_Consumer_MCode AND mc.IsDelete = 0
             ORDER BY mc.Entry_Date DESC;
+        END
+
+        IF @M_Consumerid IS NULL OR @M_Consumerid = 0
+        BEGIN
+            SELECT TOP 1 @M_Consumerid = mc.M_Consumerid
+            FROM Pro_Enq pe (NOLOCK)
+            INNER JOIN m_consumer mc (NOLOCK) ON RIGHT(pe.MobileNo, 10) = RIGHT(mc.MobileNo, 10)
+            WHERE pe.Received_Code1 = @code1
+              AND pe.Received_Code2 = @code2
+              AND mc.IsDelete = 0
+            ORDER BY pe.Enq_Date DESC, mc.Entry_Date DESC;
+        END
+
+        IF (@M_Consumerid IS NULL OR @M_Consumerid = 0) AND LEN(ISNULL(@MobileNo, '')) >= 10
+        BEGIN
+            SELECT TOP 1 @M_Consumerid = M_Consumerid
+            FROM M_Consumer (NOLOCK)
+            WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0
+            ORDER BY Entry_Date DESC;
         END
         IF @ccompid IS NULL OR @Pro_ID IS NULL
             SELECT TOP 1 @ccompid = p.Comp_ID, @Pro_ID = c.Pro_ID 
@@ -117,7 +137,7 @@ BEGIN
         END
 
         SELECT @countFrequncy = COUNT(pkid) FROM BuiltLoyaltyMCodeCheck (NOLOCK)   
-        WHERE sst_id = @SST_Id AND M_Cunsumerid = @M_Consumerid;  
+        WHERE sst_id = @SST_Id AND M_Cunsumerid = @M_Consumerid AND @M_Consumerid IS NOT NULL AND @M_Consumerid > 0;  
   
         IF (@countFrequncy <= @Frequency)  
         BEGIN  

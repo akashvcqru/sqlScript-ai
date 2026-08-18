@@ -37,6 +37,26 @@ BEGIN
   
         SELECT @M_Consumerid = m_consumerid, @ccompid = Compid, @Pro_ID = Pro_id   
         FROM M_Consumer_M_Code (NOLOCK) WHERE M_Consumer_MCodeid = @intM_Consumer_MCode;  
+
+        IF @M_Consumerid IS NULL AND ISNULL(@intM_Consumer_MCode, 0) > 0
+        BEGIN
+            SELECT TOP 1 @M_Consumerid = mc.M_Consumerid
+            FROM Pro_Enq pe (NOLOCK)
+            INNER JOIN m_consumer mc (NOLOCK) ON RIGHT(pe.MobileNo, 10) = RIGHT(mc.MobileNo, 10)
+            WHERE pe.Row_id = @intM_Consumer_MCode AND mc.IsDelete = 0
+            ORDER BY mc.Entry_Date DESC;
+        END
+
+        IF @M_Consumerid IS NULL OR @M_Consumerid = 0
+        BEGIN
+            SELECT TOP 1 @M_Consumerid = mc.M_Consumerid
+            FROM Pro_Enq pe (NOLOCK)
+            INNER JOIN m_consumer mc (NOLOCK) ON RIGHT(pe.MobileNo, 10) = RIGHT(mc.MobileNo, 10)
+            WHERE pe.Received_Code1 = @code1
+              AND pe.Received_Code2 = @code2
+              AND mc.IsDelete = 0
+            ORDER BY pe.Enq_Date DESC, mc.Entry_Date DESC;
+        END
   
         INSERT INTO BuiltLoyaltyMCodeCheck (sst_id, M_Consumer_MCOdeid, M_Cunsumerid, Createdate)  
         VALUES (@SST_Id, @intM_Consumer_MCode, @M_Consumerid, GETDATE());  
@@ -96,7 +116,7 @@ BEGIN
         END
   
         SELECT @countFrequncy = COUNT(pkid) FROM BuiltLoyaltyMCodeCheck (NOLOCK)   
-        WHERE sst_id = @SST_Id AND M_Cunsumerid = @M_Consumerid;  
+        WHERE sst_id = @SST_Id AND M_Cunsumerid = @M_Consumerid AND @M_Consumerid IS NOT NULL AND @M_Consumerid > 0;  
   
         IF (@countFrequncy <= @Frequency)  
         BEGIN  
