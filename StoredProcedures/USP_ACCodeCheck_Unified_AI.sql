@@ -28,6 +28,7 @@ BEGIN
     DECLARE @CurrentCompID NVARCHAR(20);
     DECLARE @IsSuccess NVARCHAR(50) = '1';
     DECLARE @ProID VARCHAR(50);
+    DECLARE @Batch_No NVARCHAR(100) = NULL;
 
     -- 1. Normalize Mobile (add 91 if 10 digits)
     IF @MobileNo IS NOT NULL AND LEN(@MobileNo) = 10
@@ -40,7 +41,8 @@ BEGIN
         @RowID = mc.Row_ID, 
         @UseCount = mc.Use_Count, 
         @CurrentCompID = pr.Comp_ID,
-        @ProID = mc.Pro_ID
+        @ProID = mc.Pro_ID,
+        @Batch_No = mc.Batch_No
     FROM M_Code mc
     INNER JOIN Pro_Reg pr ON mc.Pro_ID = pr.Pro_ID
     WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0));
@@ -52,7 +54,8 @@ BEGIN
             @RowID = mc.Row_ID, 
             @UseCount = mc.Use_Count, 
             @CurrentCompID = pr.Comp_ID,
-            @ProID = mc.Pro_ID
+            @ProID = mc.Pro_ID,
+            @Batch_No = mc.Batch_No
         FROM M_Code_PFL mc
         INNER JOIN Pro_Reg pr ON mc.Pro_ID = pr.Pro_ID
         WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0));
@@ -94,6 +97,24 @@ BEGIN
         SET @Message = 'The code is deactivate';
         SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
         RETURN;
+    END
+
+    -- Check if Batch_No is null or empty for active subscriptions
+    IF NULLIF(RTRIM(LTRIM(@Batch_No)), '') IS NULL
+    BEGIN
+        IF EXISTS (
+            SELECT 1 
+            FROM M_ServiceSubscription ms WITH (NOLOCK)
+            INNER JOIN M_ServiceSubscriptionTrans mst WITH (NOLOCK) ON ms.Subscribe_Id = mst.Subscribe_Id
+            WHERE ms.Pro_ID = @ProID AND ms.IsActive = 1 AND mst.IsActive = 1 AND mst.IsDelete = 0
+              AND ms.Service_ID IN ('SRV1018', 'SRV1001', 'SRV1005', 'SRV1029')
+        )
+        BEGIN
+            SET @ResultCode = 0;
+            SET @Message = 'This code is currently inactive. Please contact the service provider for assistance.';
+            SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
+            RETURN;
+        END
     END
 
     -- 3. Check if already used based on Frequency limit

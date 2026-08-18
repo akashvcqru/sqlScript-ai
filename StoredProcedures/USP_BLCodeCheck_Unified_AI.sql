@@ -143,7 +143,7 @@ BEGIN
 
             IF @M_Codeid > 0
             BEGIN
-                -- Deactivation check for specific services
+                -- Inactive check: if Batch_No is null/empty for active subscriptions
                 IF NULLIF(RTRIM(LTRIM(@Batch_No)), '') IS NULL
                 BEGIN
                     IF EXISTS (
@@ -156,7 +156,7 @@ BEGIN
                     )
                     BEGIN
                         SET @ResultCode = 0;
-                        SET @Message = 'Sorry, the code ' + RIGHT('00000' + CAST(@Code1 AS VARCHAR(20)), 5) + RIGHT('00000000' + CAST(@Code2 AS VARCHAR(20)), 8) + ' has been deactivated. For more information, please contact our support team.';
+                        SET @Message = 'This code is currently inactive. Please contact the service provider for assistance.';
                         ROLLBACK TRANSACTION;
                         SELECT 
                             @ResultCode AS ResultCode,

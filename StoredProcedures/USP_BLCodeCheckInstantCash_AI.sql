@@ -153,7 +153,7 @@ BEGIN
             RETURN;
         END
 
-        -- Deactivation check for specific services
+        -- Inactive check: if Batch_No is null/empty for active subscriptions
         IF NULLIF(RTRIM(LTRIM(@Batch_No)), '') IS NULL
         BEGIN
             IF EXISTS (
@@ -166,7 +166,7 @@ BEGIN
             )
             BEGIN
                 ROLLBACK TRANSACTION;
-                DECLARE @DeactivatedMessage NVARCHAR(250) = 'Sorry, the code ' + RIGHT('00000' + CAST(@dCode1 AS VARCHAR(20)), 5) + RIGHT('00000000' + CAST(@dCode2 AS VARCHAR(20)), 8) + ' has been deactivated. For more information, please contact our support team.';
+                DECLARE @DeactivatedMessage NVARCHAR(250) = 'This code is currently inactive. Please contact the service provider for assistance.';
                 SELECT 0 AS ResultCode, @DeactivatedMessage AS Message;
                 RETURN;
             END
