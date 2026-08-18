@@ -20,7 +20,6 @@ BEGIN
     BEGIN
         SELECT 
             ID AS Id,
-            Comp_ID AS CompId,
             tds_status AS TdsStatus,
             CASE 
                 WHEN tds_status = 0 THEN 'Not Applicable' 
