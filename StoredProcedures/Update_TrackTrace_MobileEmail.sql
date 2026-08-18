@@ -1,11 +1,11 @@
 -- 1. Add Mobile and Email columns to codeassign_tractrac table if they don't exist
-IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[codeassign_tractrac]') AND name = 'Mobile')
+IF OBJECT_ID(N'[dbo].[codeassign_tractrac]', N'U') IS NOT NULL AND NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[codeassign_tractrac]') AND name = 'Mobile')
 BEGIN
     ALTER TABLE [dbo].[codeassign_tractrac] ADD [Mobile] NVARCHAR(150) NULL;
 END
 GO
 
-IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[codeassign_tractrac]') AND name = 'Email')
+IF OBJECT_ID(N'[dbo].[codeassign_tractrac]', N'U') IS NOT NULL AND NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[codeassign_tractrac]') AND name = 'Email')
 BEGIN
     ALTER TABLE [dbo].[codeassign_tractrac] ADD [Email] NVARCHAR(150) NULL;
 END

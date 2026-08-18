@@ -65,6 +65,9 @@ if (Test-Path $spDir) {
     $spFiles = Get-ChildItem -Path $spDir -Filter "*.sql"
 
     foreach ($file in $spFiles) {
+        # Skip full DB dump files
+        if ($file.Name -eq "SQLQuery_Script.sql") { continue }
+
         Write-Host "Deploying SP: $($file.Name)..." -NoNewline
         try {
             $sqlContent = Get-Content -Raw -Path $file.FullName

@@ -1,8 +1,12 @@
-IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[USP_GetAssignLabelToProductACList_AI]') AND type in (N'P', N'PC'))
-    DROP PROCEDURE [dbo].[USP_GetAssignLabelToProductACList_AI]
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetAssignLabelToProductACList_AI]    Script Date: 18-08-2026 20:30:13 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE PROCEDURE [dbo].[USP_GetAssignLabelToProductACList_AI]
+ALTER   PROCEDURE [dbo].[USP_GetAssignLabelToProductACList_AI]
     @Comp_ID NVARCHAR(50),
     @Pro_Name NVARCHAR(MAX) = NULL,
     @FromDate DATETIME = NULL,
@@ -22,7 +26,7 @@ BEGIN
                ISNULL(sst.IsDelete, ss.IsDelete) AS IsDelete
         FROM M_ServiceSubscription AS ss
         INNER JOIN Pro_Reg AS p ON ss.Pro_ID = p.Pro_ID
-        LEFT JOIN M_ServiceSubscriptionTrans AS sst ON ss.Subscribe_Id = sst.Subscribe_Id 
+        INNER JOIN M_ServiceSubscriptionTrans AS sst ON ss.Subscribe_Id = sst.Subscribe_Id 
         WHERE (ss.Comp_ID = @Comp_ID) 
           AND (ss.Service_ID = 'SRV1018') 
           AND (@Pro_Name IS NULL OR p.Pro_Name LIKE '%' + @Pro_Name + '%')
@@ -94,7 +98,7 @@ BEGIN
         INNER JOIN M_Service AS ms ON mf.Service_ID = ms.Service_ID 
         INNER JOIN M_ServiceSubscription AS ss ON ms.Service_ID = ss.Service_ID 
         INNER JOIN Pro_Reg AS p ON ss.Pro_ID = p.Pro_ID
-        LEFT JOIN M_ServiceSubscriptionTrans AS sst ON ss.Subscribe_Id = sst.Subscribe_Id 
+        INNER JOIN M_ServiceSubscriptionTrans AS sst ON ss.Subscribe_Id = sst.Subscribe_Id 
         LEFT JOIN T_ReassignCode AS tr ON tr.ReassignCodeProId = ss.Pro_ID 
             AND tr.Comp_Id = ss.Comp_ID 
             AND tr.ServiceId = ss.Service_ID
@@ -119,4 +123,3 @@ BEGIN
     OFFSET (@PageIndex - 1) * @PageSize ROWS
     FETCH NEXT @PageSize ROWS ONLY;
 END
-GO

@@ -19,7 +19,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingTracTrace_AI]
     @TrackTraceJson NVARCHAR(MAX)  = NULL,
 
     @Comments       NVARCHAR(1000) = NULL,
-    @EntryDate      DATETIME       = NULL
+    @EntryDate      DATETIME       = NULL,
+    @DML            VARCHAR(10)    = 'I'
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -44,15 +45,15 @@ BEGIN
         -- Insert header row
         INSERT INTO M_ServiceSubscriptionTrans
         (
-            Subscribe_Id, Comp_ID, Pro_ID, Service_ID,
+            Subscribe_Id,
             DateFrom, DateTo,
-            Comments, EntryDate
+            Comments, Entry_Date, IsActive, IsDelete
         )
         VALUES
         (
-            @Subscribe_Id, @Comp_ID, @Pro_ID, @Service_ID,
+            @Subscribe_Id,
             @DateFrom, @DateTo,
-            @Comments, ISNULL(@EntryDate, GETDATE())
+            @Comments, ISNULL(@EntryDate, GETDATE()), 1, 0
         );
 
         DECLARE @NewSST_Id BIGINT = SCOPE_IDENTITY();
