@@ -119,6 +119,17 @@ BEGIN
         BEGIN
             ROLLBACK TRANSACTION;
             
+            INSERT INTO Pro_Enq (
+                Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, 
+                Is_Success, Comp_ID, Latitude, Longitude, City, state, PinCode,
+                IsActive, IsDelete, Created_Date
+            )
+            VALUES (
+                @Mode, GETDATE(), 'InstantCashAPI', @MobileNo, @Code1, @Code2, 
+                '0', @Comp_ID, @Latitude, @Longitude, @City, @State, @PinCode,
+                1, 0, GETDATE()
+            );
+
             DECLARE @InvalidMessage NVARCHAR(MAX) = NULL;
 
             -- Try specific company first
@@ -316,8 +327,16 @@ BEGIN
         IF @UseCount > 0
             SET @Is_Success = '2';
 
-        INSERT INTO Pro_Enq (Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, Is_Success, Comp_ID)
-        VALUES (@Mode, GETDATE(), 'InstantCashAPI', @MobileNo, @Code1, @Code2, @Is_Success, @ActualComp_ID);
+        INSERT INTO Pro_Enq (
+            Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, 
+            Is_Success, Comp_ID, Latitude, Longitude, City, state, PinCode,
+            IsActive, IsDelete, Created_Date
+        )
+        VALUES (
+            @Mode, GETDATE(), 'InstantCashAPI', @MobileNo, @Code1, @Code2, 
+            @Is_Success, @ActualComp_ID, @Latitude, @Longitude, @City, @State, @PinCode,
+            1, 0, GETDATE()
+        );
 
         IF @UseCount > 0
         BEGIN
