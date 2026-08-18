@@ -51,8 +51,95 @@ BEGIN
             @IsCash = CASE WHEN @chkloyalty IS NULL OR @chkloyalty = 0 THEN ISNULL(IsCash, 0) ELSE @Points END  
         FROM M_ServiceSubscriptionTrans (NOLOCK) WHERE SST_Id = @SST_Id;  
   
+        -- Get Consumer's UserType and UserTypeId
+        DECLARE @CurrentUserType NVARCHAR(100) = 'User';
+        DECLARE @CurrentUserTypeId INT = NULL;
+
+        SELECT TOP 1 
+            @CurrentUserType = COALESCE(ut.User_Type, mc.Other_Role, 'User'),
+            @CurrentUserTypeId = COALESCE(vk.Vrkabel_User_Type, mc.Vrkabel_User_Type)
+        FROM dbo.M_Consumer mc WITH (NOLOCK)
+        LEFT JOIN dbo.tbl_Vendorvisekycstatus vk WITH (NOLOCK) 
+            ON mc.M_Consumerid = vk.M_consumerid AND vk.Comp_id = @ccompid
+        LEFT JOIN dbo.User_Type ut WITH (NOLOCK) 
+            ON CAST(COALESCE(vk.Vrkabel_User_Type, mc.Vrkabel_User_Type) AS VARCHAR) = CAST(ut.Row_ID AS VARCHAR) 
+            AND ut.Comp_ID = @ccompid
+        WHERE mc.M_Consumerid = @M_Consumerid AND mc.IsDelete = 0;
+
+        -- 1. Check tbl_M_Code_USERFrequency first for role-specific points and frequency
+        DECLARE @UserFreqPoints INT = NULL;
+        DECLARE @UserFreqCount INT = NULL;
+
+        SELECT TOP 1 
+            @UserFreqPoints = AssignPoint,
+            @UserFreqCount = Frequency
+        FROM dbo.tbl_M_Code_USERFrequency WITH (NOLOCK)
+        WHERE Code1 = TRY_CAST(@code1 AS INT) 
+          AND Code2 = TRY_CAST(@code2 AS INT)
+          AND (Comp_id = @ccompid OR Comp_id IS NULL OR @ccompid IS NULL)
+          AND (
+              LOWER(TRIM(UserTypeRole)) = LOWER(TRIM(@CurrentUserType))
+              OR CAST(UserTypeRole AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR)
+          )
+          AND ISNULL(Isdelete, 0) = 0;
+
+        IF @UserFreqPoints IS NOT NULL
+        BEGIN
+            SET @Points = @UserFreqPoints;
+            SET @IsCash = @UserFreqPoints;
+            IF @UserFreqCount IS NOT NULL AND @UserFreqCount > 0
+            BEGIN
+                SET @Frequency = @UserFreqCount;
+            END
+        END
+        ELSE
+        BEGIN
+            -- 2. Check tbl_SoftCodegenrate_Details via LabelRequestId
+            DECLARE @PointsData NVARCHAR(500) = NULL;
+            DECLARE @SoftFrequency INT = NULL;
+
+            SELECT TOP 1 
+                @PointsData = s.pointsdata,
+                @SoftFrequency = s.Frequency
+            FROM dbo.M_Code mc WITH (NOLOCK)
+            INNER JOIN dbo.tbl_SoftCodegenrate_Details s WITH (NOLOCK) 
+                ON CAST(s.TrackingId AS NVARCHAR(50)) = CAST(mc.LabelRequestId AS NVARCHAR(50))
+            WHERE mc.Code1 = TRY_CAST(@code1 AS NUMERIC(18,0)) 
+              AND mc.Code2 = TRY_CAST(@code2 AS NUMERIC(18,0))
+              AND ISNULL(s.Isdelete, 0) = 0;
+
+            IF @SoftFrequency IS NOT NULL AND @SoftFrequency > 0
+            BEGIN
+                SET @Frequency = @SoftFrequency;
+            END
+
+            IF @PointsData IS NOT NULL AND LEN(@PointsData) > 0
+            BEGIN
+                -- Find matching UserType in pointsdata JSON array
+                DECLARE @SoftPoint NVARCHAR(50) = NULL;
+                SELECT TOP 1 @SoftPoint = JSON_VALUE(val.value, '$.Point')
+                FROM OPENJSON(@PointsData) val
+                WHERE LOWER(TRIM(JSON_VALUE(val.value, '$.UserType'))) = LOWER(TRIM(@CurrentUserType))
+                   OR LOWER(TRIM(JSON_VALUE(val.value, '$.usertype'))) = LOWER(TRIM(@CurrentUserType))
+                   OR CAST(JSON_VALUE(val.value, '$.UserType') AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR)
+                   OR CAST(JSON_VALUE(val.value, '$.usertype') AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR);
+
+                IF @SoftPoint IS NOT NULL AND ISNUMERIC(@SoftPoint) = 1
+                BEGIN
+                    SET @Points = CAST(@SoftPoint AS INT);
+                    SET @IsCash = CAST(@SoftPoint AS INT);
+                END
+                ELSE
+                BEGIN
+                    -- If user type not present in pointsdata, default assigned points = 0
+                    SET @Points = 0;
+                    SET @IsCash = 0;
+                END
+            END
+        END
+  
         SELECT @countFrequncy = COUNT(pkid) FROM BuiltLoyaltyMCodeCheck (NOLOCK)   
-        WHERE sst_id = @SST_Id AND M_Cunsumerid = @M_Consumerid AND ISNULL(IsPointsAssigned, 0) = 0;  
+        WHERE sst_id = @SST_Id AND M_Cunsumerid = @M_Consumerid;  
   
         IF (@countFrequncy <= @Frequency)  
         BEGIN  
@@ -97,7 +184,16 @@ BEGIN
                 UPDATE BLoyaltyPointsEarned SET Cash = ISNULL(Cash, 0) + @IsCash, ServiceName = 'cash' WHERE BLoyalty_PointEarnedID = @BLoyalty_PointEarnedID;  
             END  
   
-            UPDATE BuiltLoyaltyMCodeCheck SET IsPointsAssigned = 1 WHERE sst_id = @SST_Id AND M_Cunsumerid = @M_Consumerid;  
+            UPDATE BuiltLoyaltyMCodeCheck SET IsPointsAssigned = 1 WHERE pkid = @Pkid;
+
+            UPDATE tbl_M_Code_USERFrequency
+            SET Use_count = ISNULL(Use_count, 0) + 1
+            WHERE Code1 = TRY_CAST(@code1 AS INT)
+              AND Code2 = TRY_CAST(@code2 AS INT)
+              AND (
+                  LOWER(TRIM(UserTypeRole)) = LOWER(TRIM(@CurrentUserType))
+                  OR CAST(UserTypeRole AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR)
+              );  
             COMMIT TRANSACTION;  
             SELECT @t AS ReachedFrequency, @IsCashConvert AS IsCashConvert, @Points AS Points2, @Points AS Points, @IsCash AS Iscash, @AwardNameBL AS AwardNameBL, * FROM BLoyaltyPointsEarned (NOLOCK) WHERE BLoyalty_PointEarnedID = @BLoyalty_PointEarnedID;  
         END  
