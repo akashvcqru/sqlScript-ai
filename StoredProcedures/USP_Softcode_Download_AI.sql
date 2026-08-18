@@ -135,87 +135,69 @@ BEGIN
         DECLARE @calcDateFrom DATETIME = CAST(@MfdDate AS DATETIME);
         DECLARE @calcDateTo DATETIME = DATEADD(month, @planPeriod, @calcDateFrom);
 
-        SELECT TOP 1 @subExists = 1, @currentSubId = Subscribe_Id, @currentServiceId = Service_ID, @subDateFrom = DateFrom, @subDateTo = DateTo
-        FROM M_ServiceSubscription
-        WHERE Pro_ID = @ProID 
-          AND Comp_ID = @CompID 
-          AND Service_ID = @ServiceID
-          AND start_order = @startOrderVal 
-          AND start_series = @startSeriesVal 
-          AND end_order = @endOrderVal 
-          AND end_series = @endSeriesVal;
-
-        IF @subExists = 1
+        IF @ServiceID = 'SRV1018'
         BEGIN
-            UPDATE M_ServiceSubscription 
-            SET DateFrom = @calcDateFrom, 
-                DateTo = @calcDateTo,
-                PlanMasterPeriod = ISNULL(PlanMasterPeriod, @planPeriod)
-            WHERE Subscribe_Id = @currentSubId;
+            -- For Service ID SRV1018: M_ServiceSubscription was already created during product subscription.
+            -- Do not insert any new record into M_ServiceSubscription.
+            SELECT TOP 1 @currentSubId = Subscribe_Id, @currentServiceId = Service_ID, @subDateFrom = DateFrom, @subDateTo = DateTo
+            FROM M_ServiceSubscription WITH (NOLOCK)
+            WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND Service_ID = 'SRV1018' AND (IsDelete IS NULL OR IsDelete = 0)
+            ORDER BY EntryDate DESC;
 
-            SET @subDateFrom = @calcDateFrom;
-            SET @subDateTo = @calcDateTo;
+            IF @currentSubId IS NULL OR @currentSubId = ''
+            BEGIN
+                SELECT TOP 1 @currentSubId = Subscribe_Id, @currentServiceId = Service_ID, @subDateFrom = DateFrom, @subDateTo = DateTo
+                FROM M_ServiceSubscription WITH (NOLOCK)
+                WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND (IsDelete IS NULL OR IsDelete = 0)
+                ORDER BY EntryDate DESC;
+            END
         END
         ELSE
         BEGIN
-            -- Generate new subscription ID
-            DECLARE @newSubId VARCHAR(50) = 'SUB10001';
-            DECLARE @pfx VARCHAR(50) = 'SUB', @st BIGINT = 10001;
-            SELECT TOP 1 @pfx = PrPrefix, @st = TRY_CAST(PrStart AS BIGINT) FROM Code_Gen WHERE Prfor = 'Subscription';
-            SET @newSubId = @pfx + CAST(@st AS VARCHAR(50));
+            SELECT TOP 1 @subExists = 1, @currentSubId = Subscribe_Id, @currentServiceId = Service_ID, @subDateFrom = DateFrom, @subDateTo = DateTo
+            FROM M_ServiceSubscription
+            WHERE Pro_ID = @ProID 
+              AND Comp_ID = @CompID 
+              AND Service_ID = @ServiceID
+              AND start_order = @startOrderVal 
+              AND start_series = @startSeriesVal 
+              AND end_order = @endOrderVal 
+              AND end_series = @endSeriesVal;
 
-            -- Try to get template subscription row
-            DECLARE @templateExists INT = 0;
-            SELECT TOP 1 @templateExists = 1 FROM M_ServiceSubscription WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND Service_ID = @ServiceID;
-            
-            IF @templateExists = 1
+            IF @subExists = 1
             BEGIN
-                -- Insert by cloning the template row
-                DECLARE @columnsList NVARCHAR(MAX) = '';
-                DECLARE @selectList NVARCHAR(MAX) = '';
-                
-                SELECT 
-                    @columnsList = @columnsList + '[' + COLUMN_NAME + '],',
-                    @selectList = @selectList + 
-                        CASE 
-                            WHEN COLUMN_NAME = 'Subscribe_Id' THEN '''' + @newSubId + ''','
-                            WHEN COLUMN_NAME = 'start_order' THEN CAST(@startOrderVal AS VARCHAR(50)) + ','
-                            WHEN COLUMN_NAME = 'end_order' THEN CAST(@endOrderVal AS VARCHAR(50)) + ','
-                            WHEN COLUMN_NAME = 'start_series' THEN CAST(@startSeriesVal AS VARCHAR(50)) + ','
-                            WHEN COLUMN_NAME = 'end_series' THEN CAST(@endSeriesVal AS VARCHAR(50)) + ','
-                            WHEN COLUMN_NAME = 'EntryDate' THEN 'GETDATE(),'
-                            WHEN COLUMN_NAME = 'IsActive' THEN '1,'
-                            WHEN COLUMN_NAME = 'IsAdminVerify' THEN '1,'
-                            WHEN COLUMN_NAME = 'PlanMasterPeriod' THEN CAST(@planPeriod AS VARCHAR(50)) + ','
-                            WHEN COLUMN_NAME = 'DateFrom' THEN '''' + CONVERT(VARCHAR(50), @calcDateFrom, 120) + ''','
-                            WHEN COLUMN_NAME = 'DateTo' THEN '''' + CONVERT(VARCHAR(50), @calcDateTo, 120) + ''','
-                            ELSE '[' + COLUMN_NAME + '],'
-                        END
-                FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_NAME = 'M_ServiceSubscription' AND TABLE_SCHEMA = 'dbo';
+                UPDATE M_ServiceSubscription 
+                SET DateFrom = @calcDateFrom, 
+                    DateTo = @calcDateTo,
+                    PlanMasterPeriod = ISNULL(PlanMasterPeriod, @planPeriod)
+                WHERE Subscribe_Id = @currentSubId;
 
-                SET @columnsList = SUBSTRING(@columnsList, 1, LEN(@columnsList) - 1);
-                SET @selectList = SUBSTRING(@selectList, 1, LEN(@selectList) - 1);
-
-                SET @sql = N'INSERT INTO M_ServiceSubscription (' + @columnsList + N') 
-                             SELECT TOP 1 ' + @selectList + N' FROM M_ServiceSubscription 
-                             WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND Service_ID = @ServiceID';
-                EXEC sp_executesql @sql, N'@ProID VARCHAR(50), @CompID VARCHAR(50), @ServiceID VARCHAR(50)', @ProID = @ProID, @CompID = @CompID, @ServiceID = @ServiceID;
+                SET @subDateFrom = @calcDateFrom;
+                SET @subDateTo = @calcDateTo;
             END
             ELSE
             BEGIN
-                SELECT TOP 1 @templateExists = 1 FROM M_ServiceSubscription WHERE Pro_ID = @ProID AND Comp_ID = @CompID;
+                -- Generate new subscription ID
+                DECLARE @newSubId VARCHAR(50) = 'SUB10001';
+                DECLARE @pfx VARCHAR(50) = 'SUB', @st BIGINT = 10001;
+                SELECT TOP 1 @pfx = PrPrefix, @st = TRY_CAST(PrStart AS BIGINT) FROM Code_Gen WHERE Prfor = 'Subscription';
+                SET @newSubId = @pfx + CAST(@st AS VARCHAR(50));
+
+                -- Try to get template subscription row
+                DECLARE @templateExists INT = 0;
+                SELECT TOP 1 @templateExists = 1 FROM M_ServiceSubscription WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND Service_ID = @ServiceID;
+                
                 IF @templateExists = 1
                 BEGIN
-                    DECLARE @columnsList2 NVARCHAR(MAX) = '';
-                    DECLARE @selectList2 NVARCHAR(MAX) = '';
+                    -- Insert by cloning the template row
+                    DECLARE @columnsList NVARCHAR(MAX) = '';
+                    DECLARE @selectList NVARCHAR(MAX) = '';
                     
                     SELECT 
-                        @columnsList2 = @columnsList2 + '[' + COLUMN_NAME + '],',
-                        @selectList2 = @selectList2 + 
+                        @columnsList = @columnsList + '[' + COLUMN_NAME + '],',
+                        @selectList = @selectList + 
                             CASE 
                                 WHEN COLUMN_NAME = 'Subscribe_Id' THEN '''' + @newSubId + ''','
-                                WHEN COLUMN_NAME = 'Service_ID' THEN '''' + @ServiceID + ''','
                                 WHEN COLUMN_NAME = 'start_order' THEN CAST(@startOrderVal AS VARCHAR(50)) + ','
                                 WHEN COLUMN_NAME = 'end_order' THEN CAST(@endOrderVal AS VARCHAR(50)) + ','
                                 WHEN COLUMN_NAME = 'start_series' THEN CAST(@startSeriesVal AS VARCHAR(50)) + ','
@@ -231,91 +213,153 @@ BEGIN
                     FROM INFORMATION_SCHEMA.COLUMNS
                     WHERE TABLE_NAME = 'M_ServiceSubscription' AND TABLE_SCHEMA = 'dbo';
 
-                    SET @columnsList2 = SUBSTRING(@columnsList2, 1, LEN(@columnsList2) - 1);
-                    SET @selectList2 = SUBSTRING(@selectList2, 1, LEN(@selectList2) - 1);
+                    SET @columnsList = SUBSTRING(@columnsList, 1, LEN(@columnsList) - 1);
+                    SET @selectList = SUBSTRING(@selectList, 1, LEN(@selectList) - 1);
 
-                    SET @sql = N'INSERT INTO M_ServiceSubscription (' + @columnsList2 + N') 
-                                 SELECT TOP 1 ' + @selectList2 + N' FROM M_ServiceSubscription 
-                                 WHERE Pro_ID = @ProID AND Comp_ID = @CompID';
-                    EXEC sp_executesql @sql, N'@ProID VARCHAR(50), @CompID VARCHAR(50)', @ProID = @ProID, @CompID = @CompID;
+                    SET @sql = N'INSERT INTO M_ServiceSubscription (' + @columnsList + N') 
+                                 SELECT TOP 1 ' + @selectList + N' FROM M_ServiceSubscription 
+                                 WHERE Pro_ID = @ProID AND Comp_ID = @CompID AND Service_ID = @ServiceID';
+                    EXEC sp_executesql @sql, N'@ProID VARCHAR(50), @CompID VARCHAR(50), @ServiceID VARCHAR(50)', @ProID = @ProID, @CompID = @CompID, @ServiceID = @ServiceID;
                 END
                 ELSE
                 BEGIN
-                    INSERT INTO M_ServiceSubscription 
-                    (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, PlanMasterPeriod, PlanSalePeriod, PlanMasterPrice, PlanSalePrice, start_order, start_series, end_order, end_series, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType)
-                    VALUES 
-                    (@newSubId, @ServiceID, @CompID, @ProID, 'PLN1002', 'SILVER PLAN', @planPeriod, 0, 0, 0, @startOrderVal, @startSeriesVal, @endOrderVal, @endSeriesVal, @calcDateFrom, @calcDateTo, GETDATE(), 1, 0, 1, 'Service');
+                    SELECT TOP 1 @templateExists = 1 FROM M_ServiceSubscription WHERE Pro_ID = @ProID AND Comp_ID = @CompID;
+                    IF @templateExists = 1
+                    BEGIN
+                        DECLARE @columnsList2 NVARCHAR(MAX) = '';
+                        DECLARE @selectList2 NVARCHAR(MAX) = '';
+                        
+                        SELECT 
+                            @columnsList2 = @columnsList2 + '[' + COLUMN_NAME + '],',
+                            @selectList2 = @selectList2 + 
+                                CASE 
+                                    WHEN COLUMN_NAME = 'Subscribe_Id' THEN '''' + @newSubId + ''','
+                                    WHEN COLUMN_NAME = 'Service_ID' THEN '''' + @ServiceID + ''','
+                                    WHEN COLUMN_NAME = 'start_order' THEN CAST(@startOrderVal AS VARCHAR(50)) + ','
+                                    WHEN COLUMN_NAME = 'end_order' THEN CAST(@endOrderVal AS VARCHAR(50)) + ','
+                                    WHEN COLUMN_NAME = 'start_series' THEN CAST(@startSeriesVal AS VARCHAR(50)) + ','
+                                    WHEN COLUMN_NAME = 'end_series' THEN CAST(@endSeriesVal AS VARCHAR(50)) + ','
+                                    WHEN COLUMN_NAME = 'EntryDate' THEN 'GETDATE(),'
+                                    WHEN COLUMN_NAME = 'IsActive' THEN '1,'
+                                    WHEN COLUMN_NAME = 'IsAdminVerify' THEN '1,'
+                                    WHEN COLUMN_NAME = 'PlanMasterPeriod' THEN CAST(@planPeriod AS VARCHAR(50)) + ','
+                                    WHEN COLUMN_NAME = 'DateFrom' THEN '''' + CONVERT(VARCHAR(50), @calcDateFrom, 120) + ''','
+                                    WHEN COLUMN_NAME = 'DateTo' THEN '''' + CONVERT(VARCHAR(50), @calcDateTo, 120) + ''','
+                                    ELSE '[' + COLUMN_NAME + '],'
+                                END
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_NAME = 'M_ServiceSubscription' AND TABLE_SCHEMA = 'dbo';
+
+                        SET @columnsList2 = SUBSTRING(@columnsList2, 1, LEN(@columnsList2) - 1);
+                        SET @selectList2 = SUBSTRING(@selectList2, 1, LEN(@selectList2) - 1);
+
+                        SET @sql = N'INSERT INTO M_ServiceSubscription (' + @columnsList2 + N') 
+                                     SELECT TOP 1 ' + @selectList2 + N' FROM M_ServiceSubscription 
+                                     WHERE Pro_ID = @ProID AND Comp_ID = @CompID';
+                        EXEC sp_executesql @sql, N'@ProID VARCHAR(50), @CompID VARCHAR(50)', @ProID = @ProID, @CompID = @CompID;
+                    END
+                    ELSE
+                    BEGIN
+                        INSERT INTO M_ServiceSubscription 
+                        (Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, PlanMasterPeriod, PlanSalePeriod, PlanMasterPrice, PlanSalePrice, start_order, start_series, end_order, end_series, DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify, TransType)
+                        VALUES 
+                        (@newSubId, @ServiceID, @CompID, @ProID, 'PLN1002', 'SILVER PLAN', @planPeriod, 0, 0, 0, @startOrderVal, @startSeriesVal, @endOrderVal, @endSeriesVal, @calcDateFrom, @calcDateTo, GETDATE(), 1, 0, 1, 'Service');
+                    END
                 END
+
+                -- Update Code_Gen for Subscription seed
+                UPDATE Code_Gen SET PrStart = TRY_CAST(PrStart AS BIGINT) + 1 WHERE Prfor = 'Subscription';
+
+                SET @currentSubId = @newSubId;
+                SET @currentServiceId = @ServiceID;
+                SET @subDateFrom = @calcDateFrom;
+                SET @subDateTo = @calcDateTo;
             END
-
-            -- Update Code_Gen for Subscription seed
-            UPDATE Code_Gen SET PrStart = TRY_CAST(PrStart AS BIGINT) + 1 WHERE Prfor = 'Subscription';
-
-            SET @currentSubId = @newSubId;
-            SET @currentServiceId = @ServiceID;
-            SET @subDateFrom = @calcDateFrom;
-            SET @subDateTo = @calcDateTo;
         END
 
         -- 5. Insert M_ServiceSubscriptionTrans record
         DECLARE @transDtFrom DATETIME = @calcDateFrom;
         DECLARE @transDtTo DATETIME = @calcDateTo;
         
-        -- Resolve points if 0 passed and PointsData JSON is provided
-        IF (@PointsVal = 0 AND @PointsData IS NOT NULL AND ISJSON(@PointsData) = 1)
+        IF @ServiceID = 'SRV1018'
         BEGIN
-            SELECT TOP 1 @PointsVal = TRY_CAST(Point AS INT)
-            FROM OPENJSON(@PointsData)
-            WITH (UserType VARCHAR(50) '$.UserType', Point VARCHAR(50) '$.Point')
-            WHERE LOWER(UserType) = 'user' AND TRY_CAST(Point AS INT) > 0;
-
-            IF (@PointsVal IS NULL OR @PointsVal = 0)
+            -- For Service ID SRV1018: Only one entry in M_ServiceSubscriptionTrans product-wise, with points = 0.
+            -- If entry already exists, do not create a new record.
+            IF NOT EXISTS (
+                SELECT 1 
+                FROM M_ServiceSubscriptionTrans sst WITH (NOLOCK)
+                INNER JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
+                WHERE ss.Pro_ID = @ProID AND ss.Comp_ID = @CompID AND ss.Service_ID = 'SRV1018'
+            ) AND NOT EXISTS (
+                SELECT 1 
+                FROM M_ServiceSubscriptionTrans WITH (NOLOCK)
+                WHERE Subscribe_Id = @currentSubId
+            )
+            BEGIN
+                INSERT INTO M_ServiceSubscriptionTrans 
+                (Subscribe_Id, Points, Frequency, DateFrom, DateTo, Entry_Date, IsActive, IsDelete, IsCashConvert, IsCash, AmtType, Minval, Maxval, Comments)
+                VALUES 
+                (@currentSubId, 0, @Frequency, @transDtFrom, @transDtTo, GETDATE(), 1, 0, 0, 0, 'Fixed', 0, 0, 'Counterfeit Service Trans');
+            END
+        END
+        ELSE
+        BEGIN
+            -- Resolve points if 0 passed and PointsData JSON is provided
+            IF (@PointsVal = 0 AND @PointsData IS NOT NULL AND ISJSON(@PointsData) = 1)
             BEGIN
                 SELECT TOP 1 @PointsVal = TRY_CAST(Point AS INT)
                 FROM OPENJSON(@PointsData)
                 WITH (UserType VARCHAR(50) '$.UserType', Point VARCHAR(50) '$.Point')
-                WHERE TRY_CAST(Point AS INT) > 0;
+                WHERE LOWER(UserType) = 'user' AND TRY_CAST(Point AS INT) > 0;
+
+                IF (@PointsVal IS NULL OR @PointsVal = 0)
+                BEGIN
+                    SELECT TOP 1 @PointsVal = TRY_CAST(Point AS INT)
+                    FROM OPENJSON(@PointsData)
+                    WITH (UserType VARCHAR(50) '$.UserType', Point VARCHAR(50) '$.Point')
+                    WHERE TRY_CAST(Point AS INT) > 0;
+                END
+
+                SET @PointsVal = ISNULL(@PointsVal, 0);
             END
 
-            SET @PointsVal = ISNULL(@PointsVal, 0);
+            -- Fetch existing trans configuration if available to inherit settings
+            DECLARE @existingIsCashConvert INT = 0;
+            DECLARE @existingIsCash DECIMAL(18,2) = 0;
+            DECLARE @existingAmtType VARCHAR(50) = 'Fixed';
+            DECLARE @existingMinval DECIMAL(18,2) = 0;
+            DECLARE @existingMaxval DECIMAL(18,2) = 0;
+            DECLARE @existingComments VARCHAR(MAX) = '';
+            DECLARE @existingPoints INT = 0;
+
+            SELECT TOP 1 
+                @existingIsCashConvert = ISNULL(sst.IsCashConvert, 0),
+                @existingIsCash = ISNULL(sst.IsCash, 0),
+                @existingAmtType = ISNULL(sst.AmtType, 'Fixed'),
+                @existingMinval = ISNULL(sst.Minval, 0),
+                @existingMaxval = ISNULL(sst.Maxval, 0),
+                @existingComments = ISNULL(sst.Comments, ''),
+                @existingPoints = ISNULL(sst.Points, 0)
+            FROM M_ServiceSubscriptionTrans sst WITH (NOLOCK)
+            INNER JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
+            WHERE ss.Pro_ID = @ProID AND ss.Comp_ID = @CompID
+            ORDER BY sst.SST_Id DESC;
+
+            IF (@PointsVal = 0 AND @existingPoints > 0)
+            BEGIN
+                SET @PointsVal = @existingPoints;
+            END
+
+            DECLARE @finalIsCash DECIMAL(18,2) = CASE 
+                WHEN @existingIsCashConvert = 1 AND @existingIsCash = 0 THEN @PointsVal 
+                ELSE @existingIsCash 
+            END;
+
+            INSERT INTO M_ServiceSubscriptionTrans 
+            (Subscribe_Id, Points, Frequency, DateFrom, DateTo, Entry_Date, IsActive, IsDelete, IsCashConvert, IsCash, AmtType, Minval, Maxval, Comments)
+            VALUES 
+            (@currentSubId, @PointsVal, @Frequency, @transDtFrom, @transDtTo, GETDATE(), 1, 0, @existingIsCashConvert, @finalIsCash, @existingAmtType, @existingMinval, @existingMaxval, @existingComments);
         END
-
-        -- Fetch existing trans configuration if available to inherit settings
-        DECLARE @existingIsCashConvert INT = 0;
-        DECLARE @existingIsCash DECIMAL(18,2) = 0;
-        DECLARE @existingAmtType VARCHAR(50) = 'Fixed';
-        DECLARE @existingMinval DECIMAL(18,2) = 0;
-        DECLARE @existingMaxval DECIMAL(18,2) = 0;
-        DECLARE @existingComments VARCHAR(MAX) = '';
-        DECLARE @existingPoints INT = 0;
-
-        SELECT TOP 1 
-            @existingIsCashConvert = ISNULL(sst.IsCashConvert, 0),
-            @existingIsCash = ISNULL(sst.IsCash, 0),
-            @existingAmtType = ISNULL(sst.AmtType, 'Fixed'),
-            @existingMinval = ISNULL(sst.Minval, 0),
-            @existingMaxval = ISNULL(sst.Maxval, 0),
-            @existingComments = ISNULL(sst.Comments, ''),
-            @existingPoints = ISNULL(sst.Points, 0)
-        FROM M_ServiceSubscriptionTrans sst WITH (NOLOCK)
-        INNER JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
-        WHERE ss.Pro_ID = @ProID AND ss.Comp_ID = @CompID
-        ORDER BY sst.SST_Id DESC;
-
-        IF (@PointsVal = 0 AND @existingPoints > 0)
-        BEGIN
-            SET @PointsVal = @existingPoints;
-        END
-
-        DECLARE @finalIsCash DECIMAL(18,2) = CASE 
-            WHEN @existingIsCashConvert = 1 AND @existingIsCash = 0 THEN @PointsVal 
-            ELSE @existingIsCash 
-        END;
-
-        INSERT INTO M_ServiceSubscriptionTrans 
-        (Subscribe_Id, Points, Frequency, DateFrom, DateTo, Entry_Date, IsActive, IsDelete, IsCashConvert, IsCash, AmtType, Minval, Maxval, Comments)
-        VALUES 
-        (@currentSubId, @PointsVal, @Frequency, @transDtFrom, @transDtTo, GETDATE(), 1, 0, @existingIsCashConvert, @finalIsCash, @existingAmtType, @existingMinval, @existingMaxval, @existingComments);
 
         -- 6. Insert into T_Pro
         DECLARE @seriesLimitStr VARCHAR(100) = 'From ' + RIGHT('0000' + CAST(@startOrderVal AS VARCHAR(4)), 4) + '-' + RIGHT('0000' + CAST(@startSeriesVal AS VARCHAR(4)), 4) + ' To ' + RIGHT('0000' + CAST(@endOrderVal AS VARCHAR(4)), 4) + '-' + RIGHT('0000' + CAST(@endSeriesVal AS VARCHAR(4)), 4);
