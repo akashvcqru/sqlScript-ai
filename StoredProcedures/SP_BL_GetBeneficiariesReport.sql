@@ -139,7 +139,7 @@ BEGIN
         UNION
         SELECT TRY_CAST(M_CounserID AS INT) AS M_ConsumerId FROM Transactions WITH (NOLOCK) WHERE (CompId = REPLACE(@Comp_Id, 'Comp-', '') OR CompId = @Comp_Id) AND Issuccess = 1
         UNION
-        SELECT TRY_CAST(t.M_Consumerid AS INT) AS M_ConsumerId FROM tblUPITransactionDetails t WITH (NOLOCK) WHERE t.Comp_Id = @Comp_Id AND t.Status = 'Success'
+        SELECT TRY_CAST(t.M_Consumerid AS INT) AS M_ConsumerId FROM tblUPITransactionDetails t WITH (NOLOCK) WHERE t.Comp_Id = @Comp_Id AND t.Status = 'Success' AND LEN(ISNULL(t.Code1, '')) > 3
     ) x
     WHERE M_ConsumerId IS NOT NULL;
 
@@ -404,14 +404,14 @@ BEGIN
     ---------------------------------------------------------
     SELECT 
         U.M_ConsumerId,
-        SUM(TRY_CAST(t.Amount AS DECIMAL(18,2))) AS UPIAmount
+        SUM(TRY_CAST(ISNULL(t.Amount, t.Points_Val) AS DECIMAL(18,2))) AS UPIAmount
     INTO #UPI
     FROM tblUPITransactionDetails t WITH (NOLOCK)
     INNER JOIN #UserMobiles UM ON t.MobileNo = UM.MobileNo
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     WHERE t.Status = 'Success'
       AND t.Comp_Id = @Comp_Id
-      AND LEN(ISNULL(t.Code1, '')) > 0
+      AND LEN(ISNULL(t.Code1, '')) > 3
       AND (@StartDate IS NULL OR t.ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR t.ReqDate < @EndDate)
     GROUP BY U.M_ConsumerId;
