@@ -8,15 +8,16 @@ GO
 
 CREATE OR ALTER PROCEDURE [dbo].[sp_codescraperequest]
 (
-    @DatePreset   VARCHAR(50) = NULL,
-    @FromDate     VARCHAR(50) = NULL,
-    @ToDate       VARCHAR(50) = NULL,
-    @Search       NVARCHAR(100) = NULL,
-    @SerialCode   NVARCHAR(100) = NULL,
-    @Code         NVARCHAR(100) = NULL,
-    @Page         INT = 1,
-    @Limit        INT = 10,
-    @IsExport     BIT = 0
+    @DatePreset         VARCHAR(50) = NULL,
+    @FromDate           VARCHAR(50) = NULL,
+    @ToDate             VARCHAR(50) = NULL,
+    @Search             NVARCHAR(100) = NULL,
+    @SerialCode         NVARCHAR(100) = NULL,
+    @Code               NVARCHAR(100) = NULL,
+    @ScrapeCodeStatus   NVARCHAR(50) = NULL,
+    @Page               INT = 1,
+    @Limit              INT = 10,
+    @IsExport           BIT = 0
 )
 AS
 BEGIN
@@ -39,12 +40,13 @@ BEGIN
     DECLARE @EndDate   DATETIME = NULL;
 
     -- Clean parameters
-    SET @DatePreset = NULLIF(LTRIM(RTRIM(@DatePreset)), '');
-    SET @FromDate   = NULLIF(LTRIM(RTRIM(@FromDate)), '');
-    SET @ToDate     = NULLIF(LTRIM(RTRIM(@ToDate)), '');
-    SET @Search     = NULLIF(LTRIM(RTRIM(@Search)), '');
-    SET @SerialCode = NULLIF(LTRIM(RTRIM(@SerialCode)), '');
-    SET @Code       = NULLIF(LTRIM(RTRIM(@Code)), '');
+    SET @DatePreset       = NULLIF(LTRIM(RTRIM(@DatePreset)), '');
+    SET @FromDate         = NULLIF(LTRIM(RTRIM(@FromDate)), '');
+    SET @ToDate           = NULLIF(LTRIM(RTRIM(@ToDate)), '');
+    SET @Search           = NULLIF(LTRIM(RTRIM(@Search)), '');
+    SET @SerialCode       = NULLIF(LTRIM(RTRIM(@SerialCode)), '');
+    SET @Code             = NULLIF(LTRIM(RTRIM(@Code)), '');
+    SET @ScrapeCodeStatus = NULLIF(LTRIM(RTRIM(@ScrapeCodeStatus)), '');
 
     IF (@DatePreset IS NOT NULL)
     BEGIN
@@ -138,7 +140,8 @@ BEGIN
         Code2,
         SerialCode,
         ScrapedBy,
-        scrapeCodeDate AS ScrapeDateRequest
+        ScrapeCodeStatus,
+        scrapeCodeDate AS ScrapedCodeDate
     INTO #ScrapData
     FROM tblScrapdatapfl WITH (NOLOCK)
     WHERE 
@@ -151,6 +154,7 @@ BEGIN
             OR Code2 LIKE '%' + @Search + '%'
             OR (ISNULL(Code1, '') + ISNULL(Code2, '')) LIKE '%' + @Search + '%'
             OR ScrapedBy LIKE '%' + @Search + '%'
+            OR ScrapeCodeStatus LIKE '%' + @Search + '%'
         )
         AND (
             @SerialCode IS NULL 
@@ -161,6 +165,11 @@ BEGIN
             OR Code1 LIKE '%' + @Code + '%'
             OR Code2 LIKE '%' + @Code + '%'
             OR (ISNULL(Code1, '') + ISNULL(Code2, '')) LIKE '%' + @Code + '%'
+        )
+        AND (
+            @ScrapeCodeStatus IS NULL 
+            OR ScrapeCodeStatus = @ScrapeCodeStatus
+            OR ScrapeCodeStatus LIKE '%' + @ScrapeCodeStatus + '%'
         );
 
     IF (@IsExport = 1)
@@ -171,7 +180,8 @@ BEGIN
             Code2,
             SerialCode,
             ScrapedBy,
-            ScrapeDateRequest
+            ScrapeCodeStatus,
+            ScrapedCodeDate
         FROM #ScrapData
         ORDER BY id DESC;
     END
@@ -184,7 +194,8 @@ BEGIN
             Code2,
             SerialCode,
             ScrapedBy,
-            ScrapeDateRequest
+            ScrapeCodeStatus,
+            ScrapedCodeDate
         FROM #ScrapData
         ORDER BY id DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
