@@ -183,7 +183,7 @@ BEGIN
     CREATE INDEX IX_Users_MobileNo ON #Users(MobileNo);
 
     -- Searchable Mobile Number Index for SARGable index seeks on Pro_Enq and ClaimDetails
-    CREATE TABLE #UserMobiles (MobileNo NVARCHAR(50) PRIMARY KEY, M_ConsumerId INT);
+    CREATE TABLE #UserMobiles (MobileNo NVARCHAR(50), M_ConsumerId INT);
     INSERT INTO #UserMobiles (MobileNo, M_ConsumerId)
     SELECT DISTINCT MobileNo, M_ConsumerId FROM #Users WHERE MobileNo IS NOT NULL AND LTRIM(RTRIM(MobileNo)) <> ''
     UNION
@@ -194,6 +194,8 @@ BEGIN
     SELECT DISTINCT '91' + RIGHT(MobileNo, 10), M_ConsumerId FROM #Users WHERE LEN(MobileNo) >= 10
     UNION
     SELECT DISTINCT '0' + RIGHT(MobileNo, 10), M_ConsumerId FROM #Users WHERE LEN(MobileNo) >= 10;
+
+    CREATE INDEX IX_UserMobiles_Mobile ON #UserMobiles(MobileNo);
 
     ---------------------------------------------------------
     -- LATEST STATE / CITY (OPTIMIZED)
@@ -734,7 +736,7 @@ BEGIN
     CREATE INDEX IX_Users_MobileNo ON #Users(MobileNo);
 
     -- Searchable Mobile Number Index for SARGable index seeks on Pro_Enq and ClaimDetails
-    CREATE TABLE #UserMobiles (MobileNo NVARCHAR(50) PRIMARY KEY, M_ConsumerId INT);
+    CREATE TABLE #UserMobiles (MobileNo NVARCHAR(50), M_ConsumerId INT);
     INSERT INTO #UserMobiles (MobileNo, M_ConsumerId)
     SELECT DISTINCT MobileNo, M_ConsumerId FROM #Users WHERE MobileNo IS NOT NULL AND LTRIM(RTRIM(MobileNo)) <> ''
     UNION
@@ -745,6 +747,8 @@ BEGIN
     SELECT DISTINCT '91' + RIGHT(MobileNo, 10), M_ConsumerId FROM #Users WHERE LEN(MobileNo) >= 10
     UNION
     SELECT DISTINCT '0' + RIGHT(MobileNo, 10), M_ConsumerId FROM #Users WHERE LEN(MobileNo) >= 10;
+
+    CREATE INDEX IX_UserMobiles_Mobile ON #UserMobiles(MobileNo);
 
     ---------------------------------------------------------
     -- LATEST STATE / CITY (OPTIMIZED)
