@@ -12,7 +12,7 @@ BEGIN
         SendPushNotification BIT DEFAULT 1,
         SendSms BIT DEFAULT 0,
         SendWhatsApp BIT DEFAULT 0,
-        IsSpecialDay BIT DEFAULT 0,
+        NotificationType VARCHAR(50) DEFAULT 'VCQRUEvent', -- 'VCQRUEvent', 'SpecialDay', 'Instant'
         SpecialDayDate DATETIME NULL,
         RedirectUrl NVARCHAR(1000) NULL,
         CreatedDate DATETIME DEFAULT GETDATE(),
@@ -22,12 +22,12 @@ BEGIN
 END
 GO
 
--- Also ensure IsSpecialDay, SpecialDayDate, RedirectUrl exist if table already exists
+-- Also ensure NotificationType, SpecialDayDate, RedirectUrl exist if table already exists
 IF EXISTS (SELECT * FROM sys.tables WHERE name = 'tbl_NotificationEventSettings')
 BEGIN
-    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('tbl_NotificationEventSettings') AND name = 'IsSpecialDay')
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('tbl_NotificationEventSettings') AND name = 'NotificationType')
     BEGIN
-        ALTER TABLE tbl_NotificationEventSettings ADD IsSpecialDay BIT DEFAULT 0;
+        ALTER TABLE tbl_NotificationEventSettings ADD NotificationType VARCHAR(50) DEFAULT 'VCQRUEvent';
     END
     IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('tbl_NotificationEventSettings') AND name = 'SpecialDayDate')
     BEGIN
