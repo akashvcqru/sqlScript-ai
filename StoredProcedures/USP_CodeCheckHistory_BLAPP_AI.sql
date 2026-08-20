@@ -1,11 +1,12 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_CodeCheckHistory_BLAPP_AI]    Script Date: 6/10/2026 6:24:01 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_CodeCheckHistory_BLAPP_AI]    Script Date: 8/20/2026 3:04:21 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]  
+
+ALTER   PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]  
     @MobileNo VARCHAR(15),  
     @Comp_ID VARCHAR(100),  
     @M_Consumer_id INT,
@@ -25,7 +26,7 @@ BEGIN
                 ELSE 'Unsuccess'   
             END AS Status,  
             bl.Service_ID,
-            FORMAT(bl.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+            FORMAT(bl.Enq_Date, 'dd-MM-yyyy') AS Enq_Date,  
             'MAHINDRA AND MAHINDRA LTD' AS Comp_Name,  
             Pro_Name AS Pro_Name,  
             CONCAT(bl.Code1, bl.Code2) AS [Code],  
@@ -77,7 +78,7 @@ BEGIN
                 ELSE 'Unsuccess'   
             END AS Status,  
             ss.Service_ID,
-            FORMAT(pe.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+            FORMAT(pe.Enq_Date, 'dd-MM-yyyy') AS Enq_Date,  
             ISNULL(cr.Comp_Name, 'N/A') AS Comp_Name,  
             ISNULL(pr.Pro_Name, 'N/A') AS Pro_Name,  
             CONCAT(pe.Received_Code1, pe.Received_Code2) AS [Code],  
@@ -161,7 +162,7 @@ BEGIN
                 ELSE 'Invalid'   
             END AS Status,
             '' as Service_ID,
-            FORMAT(pe.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+            FORMAT(pe.Enq_Date, 'dd-MM-yyyy') AS Enq_Date,  
             pe.Enq_Date AS Sort_Date,
             ISNULL(cr.Comp_Name, 'N/A') AS Comp_Name,  
             ISNULL(pr.Pro_Name, 'N/A') AS Pro_Name,  
@@ -201,8 +202,8 @@ BEGIN
         t2.Status,  
         t2.Service_ID,  
         t2.Enq_Date,  
-        t2.Comp_Name,  
-        t2.Pro_Name,  
+       -- t2.Comp_Name,  
+        t2.Pro_Name as Comp_Name,  '' as Pro_Name,
         t2.Code,  
         t2.Code1,  
         t2.Code2,  
@@ -239,8 +240,8 @@ BEGIN
     t2.Status,  
     t2.Service_ID,  
     t2.Enq_Date,  
-    t2.Comp_Name,  
-    t2.Pro_Name,  
+  --  t2.Comp_Name,  
+    t2.Pro_Name as Comp_Name,  '' as Pro_Name,
     t2.Code,  
     t2.Code1,  
     t2.Code2,  
@@ -275,8 +276,8 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
         t2.Status,  
         t2.Service_ID,  
         t2.Enq_Date,  
-        t2.Comp_Name,  
-        t2.Pro_Name,  
+        -- t2.Comp_Name,  
+        t2.Pro_Name as Comp_Name, '' AS Pro_Name,
         t2.Code,  
         t2.Code1,  
         t2.Code2,  
@@ -300,9 +301,9 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
     SELECT   
         'Success' AS Status,
         '' as Service_ID,
-        FORMAT(bll.UpdateDate, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
-        cr.Comp_Name,  
-        '' AS Pro_Name,  
+        FORMAT(bll.UpdateDate, 'dd-MM-yyyy') AS Enq_Date,  
+       -- cr.Comp_Name,  
+        ''   as Comp_Name,  '' as Pro_Name,
         '' AS Code,  
         '' AS Code1,  
         '' AS Code2,  
