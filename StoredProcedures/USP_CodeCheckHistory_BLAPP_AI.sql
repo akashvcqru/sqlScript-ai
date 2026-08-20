@@ -1,11 +1,12 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_CodeCheckHistory_BLAPP_AI]    Script Date: 6/10/2026 6:24:01 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_CodeCheckHistory_BLAPP_AI]    Script Date: 8/20/2026 3:04:21 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]  
+
+ALTER   PROCEDURE [dbo].[USP_CodeCheckHistory_BLAPP_AI]  
     @MobileNo VARCHAR(15),  
     @Comp_ID VARCHAR(100),  
     @M_Consumer_id INT,
@@ -201,8 +202,8 @@ BEGIN
         t2.Status,  
         t2.Service_ID,  
         t2.Enq_Date,  
-        t2.Comp_Name,  
-        t2.Pro_Name,  
+       -- t2.Comp_Name,  
+        t2.Pro_Name as Comp_Name,  '' as Pro_Name,
         t2.Code,  
         t2.Code1,  
         t2.Code2,  
@@ -239,8 +240,8 @@ BEGIN
     t2.Status,  
     t2.Service_ID,  
     t2.Enq_Date,  
-    t2.Comp_Name,  
-    t2.Pro_Name,  
+  --  t2.Comp_Name,  
+    t2.Pro_Name as Comp_Name,  '' as Pro_Name,
     t2.Code,  
     t2.Code1,  
     t2.Code2,  
@@ -275,8 +276,8 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
         t2.Status,  
         t2.Service_ID,  
         t2.Enq_Date,  
-        t2.Comp_Name,  
-        t2.Pro_Name,  
+       -- t2.Comp_Name,  
+        t2.Pro_Name as Comp_Name, '' asPro_Name ,
         t2.Code,  
         t2.Code1,  
         t2.Code2,  
@@ -301,8 +302,8 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
         'Success' AS Status,
         '' as Service_ID,
         FORMAT(bll.UpdateDate, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
-        cr.Comp_Name,  
-        '' AS Pro_Name,  
+       -- cr.Comp_Name,  
+        ''   as Comp_Name,  '' as Pro_Name,
         '' AS Code,  
         '' AS Code1,  
         '' AS Code2,  
