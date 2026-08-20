@@ -26,7 +26,7 @@ BEGIN
                 ELSE 'Unsuccess'   
             END AS Status,  
             bl.Service_ID,
-            FORMAT(bl.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+            FORMAT(bl.Enq_Date, 'dd-MM-yyyy') AS Enq_Date,  
             'MAHINDRA AND MAHINDRA LTD' AS Comp_Name,  
             Pro_Name AS Pro_Name,  
             CONCAT(bl.Code1, bl.Code2) AS [Code],  
@@ -78,7 +78,7 @@ BEGIN
                 ELSE 'Unsuccess'   
             END AS Status,  
             ss.Service_ID,
-            FORMAT(pe.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+            FORMAT(pe.Enq_Date, 'dd-MM-yyyy') AS Enq_Date,  
             ISNULL(cr.Comp_Name, 'N/A') AS Comp_Name,  
             ISNULL(pr.Pro_Name, 'N/A') AS Pro_Name,  
             CONCAT(pe.Received_Code1, pe.Received_Code2) AS [Code],  
@@ -162,7 +162,7 @@ BEGIN
                 ELSE 'Invalid'   
             END AS Status,
             '' as Service_ID,
-            FORMAT(pe.Enq_Date, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+            FORMAT(pe.Enq_Date, 'dd-MM-yyyy') AS Enq_Date,  
             pe.Enq_Date AS Sort_Date,
             ISNULL(cr.Comp_Name, 'N/A') AS Comp_Name,  
             ISNULL(pr.Pro_Name, 'N/A') AS Pro_Name,  
@@ -276,8 +276,8 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
         t2.Status,  
         t2.Service_ID,  
         t2.Enq_Date,  
-       -- t2.Comp_Name,  
-        t2.Pro_Name as Comp_Name, '' asPro_Name ,
+        -- t2.Comp_Name,  
+        t2.Pro_Name as Comp_Name, '' AS Pro_Name,
         t2.Code,  
         t2.Code1,  
         t2.Code2,  
@@ -301,7 +301,7 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
     SELECT   
         'Success' AS Status,
         '' as Service_ID,
-        FORMAT(bll.UpdateDate, 'dd-MM-yyyy hh:mm:ss tt') AS Enq_Date,  
+        FORMAT(bll.UpdateDate, 'dd-MM-yyyy') AS Enq_Date,  
        -- cr.Comp_Name,  
         ''   as Comp_Name,  '' as Pro_Name,
         '' AS Code,  
