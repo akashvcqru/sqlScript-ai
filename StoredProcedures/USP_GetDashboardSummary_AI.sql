@@ -75,7 +75,8 @@ BEGIN
         MAX(CAST(
             CASE 
                 WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
-                ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
+                WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
+                ELSE NULL
             END 
         AS DECIMAL(18,2))) AS Points
     INTO #EarnedPoints
@@ -166,13 +167,23 @@ BEGIN
     WHERE US.rn = 1;
 
     SELECT 
-        ISNULL(SUM(CAST(Points AS DECIMAL(18,2))), 0) as RefPoints,
-        ISNULL(SUM(CAST(Cash AS DECIMAL(18,2))), 0) as RefCash
+        ISNULL(SUM(CAST(
+            CASE 
+                WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
+                ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
+            END
+        AS DECIMAL(18,2))), 0) as RefPoints,
+        ISNULL(SUM(CAST(
+            CASE 
+                WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
+                ELSE 0.00
+            END
+        AS DECIMAL(18,2))), 0) as RefCash
     INTO #ReferralStats
-    FROM BLoyaltyPointsEarned BL
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
     WHERE BL.M_Consumerid = @M_Consumerid 
-      AND BL.ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards','Transfer From User');
+      AND (BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL OR LOWER(ISNULL(BL.ServiceName, '')) IN ('referral', 'refral', 'kycrewards', 'supervisor', 'invoicebenifit', 'invoicerewards', 'transfer from user', 'bonus point', 'bonus'));
 
     ---------------------------------------------------------
     -- Calculate specific totals for this consumer
