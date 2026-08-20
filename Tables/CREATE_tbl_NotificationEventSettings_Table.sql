@@ -14,6 +14,7 @@ BEGIN
         SendWhatsApp BIT DEFAULT 0,
         IsSpecialDay BIT DEFAULT 0,
         SpecialDayDate DATETIME NULL,
+        RedirectUrl NVARCHAR(1000) NULL,
         CreatedDate DATETIME DEFAULT GETDATE(),
         UpdatedDate DATETIME DEFAULT GETDATE(),
         CONSTRAINT UQ_Comp_Event UNIQUE (CompID, EventId)
@@ -21,7 +22,7 @@ BEGIN
 END
 GO
 
--- Also ensure IsSpecialDay and SpecialDayDate exist if table already exists
+-- Also ensure IsSpecialDay, SpecialDayDate, RedirectUrl exist if table already exists
 IF EXISTS (SELECT * FROM sys.tables WHERE name = 'tbl_NotificationEventSettings')
 BEGIN
     IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('tbl_NotificationEventSettings') AND name = 'IsSpecialDay')
@@ -31,6 +32,10 @@ BEGIN
     IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('tbl_NotificationEventSettings') AND name = 'SpecialDayDate')
     BEGIN
         ALTER TABLE tbl_NotificationEventSettings ADD SpecialDayDate DATETIME NULL;
+    END
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('tbl_NotificationEventSettings') AND name = 'RedirectUrl')
+    BEGIN
+        ALTER TABLE tbl_NotificationEventSettings ADD RedirectUrl NVARCHAR(1000) NULL;
     END
 END
 GO
