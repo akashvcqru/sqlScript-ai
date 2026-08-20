@@ -137,7 +137,7 @@ BEGIN
         END
 
         SELECT @countFrequncy = COUNT(pkid) FROM BuiltLoyaltyMCodeCheck (NOLOCK)   
-        WHERE sst_id = @SST_Id AND M_Cunsumerid = @M_Consumerid AND @M_Consumerid IS NOT NULL AND @M_Consumerid > 0;  
+        WHERE M_Consumer_MCOdeid = @intM_Consumer_MCode and sst_id = @SST_Id AND M_Cunsumerid = @M_Consumerid AND @M_Consumerid IS NOT NULL AND @M_Consumerid > 0;  
   
         IF (@countFrequncy <= @Frequency)  
         BEGIN  
