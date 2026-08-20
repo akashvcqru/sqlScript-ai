@@ -52,10 +52,12 @@ BEGIN
                 B.Display_Series,
                 B.pro_desc,
                 LR.PrintType,
+                ML.Label_Size AS LabelSize,
                 COUNT(*) OVER() AS TotalRecords
             FROM tbl_SoftCodegenrate_Details SD WITH (NOLOCK)
             INNER JOIN Pro_Reg B WITH (NOLOCK) ON SD.Pro_id = B.Pro_ID
             LEFT JOIN M_Label_Request LR WITH (NOLOCK) ON SD.TrackingId = LR.Tracking_No
+            LEFT JOIN M_Label ML WITH (NOLOCK) ON ISNULL(LR.Label_Code, B.Label_Code) = ML.Label_Code
             WHERE SD.Comp_id = @Comp_ID
               AND (SD.Isdelete IS NULL OR SD.Isdelete = 0)
               AND (@DateFrom IS NULL OR SD.Entry_date >= @DateFrom)
@@ -91,7 +93,8 @@ BEGIN
             PB.MRP,
             PB.Frequency,
             PB.pointsdata,
-            PB.FormFillStatus
+            PB.FormFillStatus,
+            PB.LabelSize
         FROM PaginatedBatches PB
         OUTER APPLY (
             SELECT 
@@ -121,10 +124,12 @@ BEGIN
                 B.Display_Series,
                 B.pro_desc,
                 LR.PrintType,
+                ML.Label_Size AS LabelSize,
                 COUNT(*) OVER() AS TotalRecords
             FROM tbl_SoftCodegenrate_Details SD WITH (NOLOCK)
             INNER JOIN Pro_Reg B WITH (NOLOCK) ON SD.Pro_id = B.Pro_ID
             LEFT JOIN M_Label_Request LR WITH (NOLOCK) ON SD.TrackingId = LR.Tracking_No
+            LEFT JOIN M_Label ML WITH (NOLOCK) ON ISNULL(LR.Label_Code, B.Label_Code) = ML.Label_Code
             WHERE SD.Comp_id = @Comp_ID
               AND (SD.Isdelete IS NULL OR SD.Isdelete = 0)
               AND (@DateFrom IS NULL OR SD.Entry_date >= @DateFrom)
@@ -160,7 +165,8 @@ BEGIN
             PB.MRP,
             PB.Frequency,
             PB.pointsdata,
-            PB.FormFillStatus
+            PB.FormFillStatus,
+            PB.LabelSize
         FROM PaginatedBatches PB
         OUTER APPLY (
             SELECT 
