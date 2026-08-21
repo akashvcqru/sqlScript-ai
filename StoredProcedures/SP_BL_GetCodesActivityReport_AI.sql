@@ -193,7 +193,7 @@ BEGIN
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#TempSoftCode') IS NOT NULL DROP TABLE #TempSoftCode;
 
-    SELECT TrackingId, pointsdata 
+    SELECT TrackingId, pointsdata ,Comp_id
     INTO #TempSoftCode 
     FROM tbl_SoftCodegenrate_Details WITH (NOLOCK)
     WHERE TrackingId IN (SELECT LabelRequestId FROM #UniqueLabelRequests);
@@ -389,6 +389,7 @@ BEGIN
         ConsumerName NVARCHAR(150),
         MobileNo VARCHAR(50),
         State NVARCHAR(100),
+        Vrkabel_User_Type NVARCHAR(100),
         City NVARCHAR(100),
         Pro_Name NVARCHAR(200),
         Points DECIMAL(18,2),
@@ -412,7 +413,7 @@ BEGIN
 					 THEN ISNULL(E.MobileNo,'')
 				ELSE MC.MobileNo
 			END AS MobileNo,
-        G.State,
+        G.State,cc.Vrkabel_User_Type,
         G.City,
         PR.Pro_Name,
         CASE 
@@ -454,13 +455,14 @@ BEGIN
 			FROM #Enq
 		) E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
+        inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
         LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid AND P.rn = E.rn
         LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
         LEFT JOIN #ScanReferrals R ON R.Code1 = E.Received_Code1 AND R.Code2 = E.Received_Code2
-        WHERE
+        WHERE cc.comp_id = @comp_id and 
 		  (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
           AND (@StateFilter IS NULL OR G.State = @StateFilter);
 
@@ -472,7 +474,7 @@ BEGIN
         '' AS Dial_Mode,
         MC.ConsumerName,
         MC.MobileNo,
-        MC.State,
+        MC.State,cc.Vrkabel_User_Type,
         MC.City,
         'Referral Bonus' AS Pro_Name,
         0 AS Points,
@@ -484,7 +486,8 @@ BEGIN
         SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
-    WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
+    inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
+    WHERE  cc.comp_id = @comp_id and (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
       AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
       AND BL.Code1 IS NULL
       AND BL.compid = @Comp_Id
@@ -501,7 +504,7 @@ BEGIN
         '' AS Dial_Mode,
         MC.ConsumerName,
         MC.MobileNo,
-        MC.State,
+        MC.State,cc.Vrkabel_User_Type,
         MC.City,
         ISNULL(NULLIF(BL.ServiceName, ''), 'Bonus Point') AS Pro_Name,
         SUM(CAST(
@@ -530,7 +533,8 @@ BEGIN
         0 AS ReferralPoints
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
-    WHERE BL.compid = @Comp_Id
+    inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
+    WHERE  cc.comp_id = @comp_id and BL.compid = @Comp_Id
       AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
       AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
       AND BL.UpdateDate >= @StartDate
