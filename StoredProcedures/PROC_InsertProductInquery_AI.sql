@@ -56,8 +56,17 @@ BEGIN
       AND c.Series_Serial BETWEEN s.start_series AND s.end_series
       AND s.IsActive = 1 AND ISNULL(s.IsDelete, 0) = 0
       AND sst.IsActive = 1 AND ISNULL(sst.IsDelete, 0) = 0
-    ORDER BY sst.SST_Id DESC;
+    ORDER BY sst.Frequency DESC, sst.SST_Id DESC;
 END
+
+DECLARE @Frequency INT = 1;
+SELECT TOP 1 @Frequency = ISNULL(MAX(sst.Frequency), 1) 
+FROM M_ServiceSubscription s (NOLOCK)
+INNER JOIN M_ServiceSubscriptionTrans sst (NOLOCK) ON s.Subscribe_Id = sst.Subscribe_Id
+INNER JOIN M_Code c (NOLOCK) ON s.Pro_ID = c.Pro_ID
+WHERE c.Code1 = TRY_CAST(@Received_Code1 AS NUMERIC(18,0)) AND c.Code2 = TRY_CAST(@Received_Code2 AS NUMERIC(18,0))
+  AND s.IsActive = 1 AND ISNULL(s.IsDelete, 0) = 0
+  AND sst.IsActive = 1 AND ISNULL(sst.IsDelete, 0) = 0;
 
   --Tej Multivendor kyc
  DECLARE @cntTj INT = 0,  
@@ -117,7 +126,7 @@ if @Is_Success = 1
 begin   
 declare @cnt int = 0   
 select @cnt = count(*) from pro_enq  where Is_Success = 1 and Received_Code1 = @Received_Code1 and Received_Code2 = @Received_Code2  
-if (@cnt =  0 OR (@cnt = 1 AND ( @Compid = 'Comp-1669' or @Compid ='Comp-1819') )   )  
+if (@cnt < ISNULL(@Frequency, 1) OR (@cnt = 1 AND ( @Compid = 'Comp-1669' or @Compid ='Comp-1819') )   )  
 begin  
  INSERT INTO [Pro_Enq]([Dial_Mode],[Enq_Date],[Mode_Detail],[MobileNo],  
  [Received_Code1],[Received_Code2],[Is_Success],[IsDraw],[SST_ID],City,Circle,Network,callerdate,callertime,State,Retailer_Name,Others,Image,Latitude,Longitude,Comp_ID,IsVerified)    
@@ -177,7 +186,7 @@ begin
 end  
 end   
 
- else if (@cnt =  0 OR (@cnt =1 AND (@Compid = 'Comp-1856' OR @Compid = 'Comp-1714' OR @Compid = 'Comp-1728' OR @Compid = 'Comp-1862')))  
+ else if (@cnt < ISNULL(@Frequency, 1) OR (@cnt =1 AND (@Compid = 'Comp-1856' OR @Compid = 'Comp-1714' OR @Compid = 'Comp-1728' OR @Compid = 'Comp-1862')))  
 begin  
  INSERT INTO [Pro_Enq]([Dial_Mode],[Enq_Date],[Mode_Detail],[MobileNo],  
  [Received_Code1],[Received_Code2],[Is_Success],[IsDraw],[SST_ID],City,Circle,Network,callerdate,callertime,State,Retailer_Name,Others,Image,Latitude,Longitude,Comp_ID,IsVerified)    

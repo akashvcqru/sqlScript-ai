@@ -3,15 +3,15 @@ SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE [dbo].[PROC_UpdateM_CodeUse_Count_AI]
+CREATE OR ALTER PROCEDURE [dbo].[PROC_UpdateM_CodeUse_Count_AI]
 		 @Received_Code1 nvarchar(50)
 		,@Received_Code2 nvarchar(50)
 		,@Is_Success int
 AS
 BEGIN
 	UPDATE [M_Code] SET
-      [Use_Count] = @Is_Success
- WHERE  [Code1] = @Received_Code1
-      AND [Code2] = @Received_Code2
+      [Use_Count] = ISNULL([Use_Count], 0) + CASE WHEN @Is_Success = 1 THEN 1 ELSE 0 END
+ WHERE [Code1] = TRY_CAST(@Received_Code1 AS NUMERIC(18,0))
+   AND [Code2] = TRY_CAST(@Received_Code2 AS NUMERIC(18,0))
 END
 GO

@@ -71,14 +71,15 @@ BEGIN
     -- Get Earned Points
     SELECT
         MC.M_Codeid,
+        ROW_NUMBER() OVER (PARTITION BY MC.M_Codeid ORDER BY BMC.Createdate ASC, BL.BLoyalty_PointEarnedID ASC) AS rn,
         ISNULL(SS.Service_ID, 'SRV1001') AS Service_ID,
-        MAX(CAST(
+        CAST(
             CASE 
                 WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
                 WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
                 ELSE NULL
             END 
-        AS DECIMAL(18,2))) AS Points
+        AS DECIMAL(18,2)) AS Points
     INTO #EarnedPoints
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
@@ -94,10 +95,9 @@ BEGIN
     LEFT JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) 
         ON BL.SST_id = SST.SST_Id
     LEFT JOIN M_ServiceSubscription SS WITH (NOLOCK) 
-        ON SST.Subscribe_Id = SS.Subscribe_Id
-    GROUP BY MC.M_Codeid, ISNULL(SS.Service_ID, 'SRV1001');
+        ON SST.Subscribe_Id = SS.Subscribe_Id;
 
-    CREATE CLUSTERED INDEX IX_EarnedPoints_MCodeid ON #EarnedPoints(M_Codeid);
+    CREATE CLUSTERED INDEX IX_EarnedPoints_MCodeid ON #EarnedPoints(M_Codeid, rn);
 
     -- Get Config Points
     SELECT 
@@ -140,8 +140,8 @@ BEGIN
     FROM #UserScans US
     LEFT JOIN #ScanServices SS ON US.M_Codeid = SS.M_Codeid
     LEFT JOIN #ConfigPoints CP ON CP.M_Codeid = SS.M_Codeid AND CP.Service_ID = SS.Service_ID
-    LEFT JOIN #EarnedPoints EP ON EP.M_Codeid = SS.M_Codeid AND EP.Service_ID = SS.Service_ID
-    WHERE US.rn = 1
+    LEFT JOIN #EarnedPoints EP ON EP.M_Codeid = SS.M_Codeid AND EP.Service_ID = SS.Service_ID AND EP.rn = US.rn
+    WHERE US.rn <= ISNULL(CP.Frequency, 1)
     GROUP BY COALESCE(SS.Service_ID, 'SRV1001');
 
     ---------------------------------------------------------
@@ -159,12 +159,8 @@ BEGIN
         FROM #ConfigPoints
         GROUP BY M_Codeid
     ) CP ON CP.M_Codeid = US.M_Codeid
-    LEFT JOIN (
-        SELECT M_Codeid, MAX(Points) AS Points
-        FROM #EarnedPoints
-        GROUP BY M_Codeid
-    ) EP ON EP.M_Codeid = US.M_Codeid
-    WHERE US.rn = 1;
+    LEFT JOIN #EarnedPoints EP ON EP.M_Codeid = US.M_Codeid AND EP.rn = US.rn
+    WHERE US.rn <= ISNULL(CP.Frequency, 1);
 
     SELECT 
         ISNULL(SUM(CAST(
