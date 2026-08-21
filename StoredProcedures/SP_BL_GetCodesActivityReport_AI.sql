@@ -189,14 +189,27 @@ BEGIN
     CREATE INDEX IX_UniqueLabelRequests ON #UniqueLabelRequests(LabelRequestId);
 
     ----------------------------------------------------
-    -- SOFT CODE GENERATE DETAILS (TEGEWH)
+    -- SOFT CODE GENERATE DETAILS (TEMP SOFT CODE)
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#TempSoftCode') IS NOT NULL DROP TABLE #TempSoftCode;
 
-    SELECT TrackingId, pointsdata ,Comp_id
+    SELECT 
+        SD.TrackingId,
+        SD.Comp_id,
+        j.UserType,
+        j.Point 
     INTO #TempSoftCode 
-    FROM tbl_SoftCodegenrate_Details WITH (NOLOCK)
-    WHERE TrackingId IN (SELECT LabelRequestId FROM #UniqueLabelRequests);
+    FROM tbl_SoftCodegenrate_Details SD WITH (NOLOCK)
+    CROSS APPLY OPENJSON(SD.pointsdata)
+    WITH (
+        UserType NVARCHAR(100) '$.UserType',
+        Point NVARCHAR(50) '$.Point'
+    ) j
+    WHERE SD.TrackingId IN (SELECT LabelRequestId FROM #UniqueLabelRequests)
+      AND SD.pointsdata IS NOT NULL 
+      AND ISJSON(SD.pointsdata) = 1;
+
+    CREATE INDEX IX_TempSoftCode ON #TempSoftCode(TrackingId, UserType);
 
     ----------------------------------------------------
     -- PRODUCTS
