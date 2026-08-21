@@ -88,6 +88,33 @@ BEGIN
             AND ut.Comp_ID = @ccompid
         WHERE mc.M_Consumerid = @M_Consumerid AND mc.IsDelete = 0;
 
+        -- 1. Check tbl_M_Code_USERFrequency first for role-specific points and frequency
+        DECLARE @UserFreqPoints INT = NULL;
+        DECLARE @UserFreqCount INT = NULL;
+
+        SELECT TOP 1 
+            @UserFreqPoints = AssignPoint,
+            @UserFreqCount = Frequency
+        FROM dbo.tbl_M_Code_USERFrequency WITH (NOLOCK)
+        WHERE Code1 = TRY_CAST(@code1 AS INT) 
+          AND Code2 = TRY_CAST(@code2 AS INT)
+          AND (Comp_id = @ccompid OR Comp_id IS NULL OR @ccompid IS NULL)
+          AND (
+              LOWER(TRIM(UserTypeRole)) = LOWER(TRIM(@CurrentUserType))
+              OR CAST(UserTypeRole AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR)
+          )
+          AND ISNULL(Isdelete, 0) = 0;
+
+        IF @UserFreqPoints IS NOT NULL
+        BEGIN
+            SET @Points = @UserFreqPoints;
+            SET @IsCash = @UserFreqPoints;
+            IF @UserFreqCount IS NOT NULL AND @UserFreqCount > 0
+            BEGIN
+                SET @Frequency = @UserFreqCount;
+            END
+        END
+  
         SELECT @countFrequncy = COUNT(pkid) FROM BuiltLoyaltyMCodeCheck (NOLOCK)   
         WHERE sst_id = @SST_Id AND M_Cunsumerid = @M_Consumerid AND @M_Consumerid IS NOT NULL AND @M_Consumerid > 0;  
   
@@ -135,6 +162,15 @@ BEGIN
             END  
   
             UPDATE BuiltLoyaltyMCodeCheck SET IsPointsAssigned = 1 WHERE pkid = @Pkid;
+
+            UPDATE tbl_M_Code_USERFrequency
+            SET Use_count = ISNULL(Use_count, 0) + 1
+            WHERE Code1 = TRY_CAST(@code1 AS INT)
+              AND Code2 = TRY_CAST(@code2 AS INT)
+              AND (
+                  LOWER(TRIM(UserTypeRole)) = LOWER(TRIM(@CurrentUserType))
+                  OR CAST(UserTypeRole AS VARCHAR) = CAST(@CurrentUserTypeId AS VARCHAR)
+              );  
             COMMIT TRANSACTION;  
             SELECT @t AS ReachedFrequency, @IsCashConvert AS IsCashConvert, @Points AS Points2, @Points AS Points, @IsCash AS Iscash, @AwardNameBL AS AwardNameBL, * FROM BLoyaltyPointsEarned (NOLOCK) WHERE BLoyalty_PointEarnedID = @BLoyalty_PointEarnedID;  
         END  
