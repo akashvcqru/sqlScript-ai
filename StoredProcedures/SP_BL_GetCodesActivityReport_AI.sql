@@ -197,7 +197,9 @@ BEGIN
         SD.TrackingId,
         SD.Comp_id,
         j.UserType,
-        j.Point 
+        j.Point,
+        UT.Row_ID AS UserTypeId,
+        UT.User_Type AS UserTypeName
     INTO #TempSoftCode 
     FROM tbl_SoftCodegenrate_Details SD WITH (NOLOCK)
     CROSS APPLY OPENJSON(SD.pointsdata)
@@ -205,6 +207,10 @@ BEGIN
         UserType NVARCHAR(100) '$.UserType',
         Point NVARCHAR(50) '$.Point'
     ) j
+    LEFT JOIN User_Type UT WITH (NOLOCK)
+        ON (UT.User_Type = j.UserType OR CAST(UT.Row_ID AS VARCHAR(50)) = j.UserType)
+       AND (UT.Comp_ID = SD.Comp_id OR UT.Comp_ID = @Comp_Id)
+       AND ISNULL(UT.IsDeleted, 0) = 0
     WHERE SD.TrackingId IN (SELECT LabelRequestId FROM #UniqueLabelRequests)
       AND SD.pointsdata IS NOT NULL 
       AND ISJSON(SD.pointsdata) = 1;
