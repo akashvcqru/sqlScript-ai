@@ -109,6 +109,11 @@ BEGIN
             SET @StartDate = CAST(DATEADD(DAY, -30, GETDATE()) AS DATE);
             SET @EndDate   = GETDATE();
         END
+        ELSE IF (@NormalizedPreset = 'all' OR @NormalizedPreset = 'alltime')
+        BEGIN
+            SET @StartDate = NULL;
+            SET @EndDate   = NULL;
+        END
         ELSE IF (@NormalizedPreset = 'custom')
         BEGIN
             IF (@FromDate IS NOT NULL AND ISDATE(@FromDate) = 1)
@@ -140,21 +145,26 @@ BEGIN
         Code2,
         SerialCode,
         ScrapedBy,
-        ScrapeCodeStatus,
-        scrapeCodeDate AS ScrapedCodeDate
+        CASE 
+            WHEN CAST(ISNULL(ScrapeCodeStatus, 0) AS VARCHAR(50)) IN ('1', 'true', 'Scraped', 'scraped') OR scrapeCodeDate IS NOT NULL THEN 'Scraped'
+            ELSE 'Unscraped'
+        END AS ScrapeCodeStatus,
+        ScrapedDate,
+        scrapeCodeDate
     INTO #ScrapData
     FROM tblScrapdatapfl WITH (NOLOCK)
     WHERE 
-        (@StartDate IS NULL OR scrapeCodeDate >= @StartDate)
-        AND (@EndDate IS NULL OR scrapeCodeDate <= @EndDate)
+        (@StartDate IS NULL OR ISNULL(scrapeCodeDate, ScrapedDate) >= @StartDate)
+        AND (@EndDate IS NULL OR ISNULL(scrapeCodeDate, ScrapedDate) <= @EndDate)
         AND (
             @Search IS NULL 
             OR SerialCode LIKE '%' + @Search + '%'
-            OR Code1 LIKE '%' + @Search + '%'
-            OR Code2 LIKE '%' + @Search + '%'
-            OR (ISNULL(Code1, '') + ISNULL(Code2, '')) LIKE '%' + @Search + '%'
+            OR CAST(Code1 AS VARCHAR(50)) LIKE '%' + @Search + '%'
+            OR CAST(Code2 AS VARCHAR(50)) LIKE '%' + @Search + '%'
+            OR CONCAT(Code1, Code2) LIKE '%' + @Search + '%'
+            OR (LEN(@Search) = 13 AND Code1 = TRY_CAST(SUBSTRING(@Search, 1, 8) AS INT) AND Code2 = TRY_CAST(SUBSTRING(@Search, 9, 5) AS INT))
             OR ScrapedBy LIKE '%' + @Search + '%'
-            OR ScrapeCodeStatus LIKE '%' + @Search + '%'
+            OR (CASE WHEN CAST(ISNULL(ScrapeCodeStatus, 0) AS VARCHAR(50)) IN ('1', 'true', 'Scraped', 'scraped') OR scrapeCodeDate IS NOT NULL THEN 'Scraped' ELSE 'Unscraped' END) = @Search
         )
         AND (
             @SerialCode IS NULL 
@@ -162,14 +172,23 @@ BEGIN
         )
         AND (
             @Code IS NULL 
-            OR Code1 LIKE '%' + @Code + '%'
-            OR Code2 LIKE '%' + @Code + '%'
-            OR (ISNULL(Code1, '') + ISNULL(Code2, '')) LIKE '%' + @Code + '%'
+            OR CAST(Code1 AS VARCHAR(50)) LIKE '%' + @Code + '%'
+            OR CAST(Code2 AS VARCHAR(50)) LIKE '%' + @Code + '%'
+            OR CONCAT(Code1, Code2) LIKE '%' + @Code + '%'
+            OR (LEN(@Code) = 13 AND Code1 = TRY_CAST(SUBSTRING(@Code, 1, 8) AS INT) AND Code2 = TRY_CAST(SUBSTRING(@Code, 9, 5) AS INT))
         )
         AND (
             @ScrapeCodeStatus IS NULL 
-            OR ScrapeCodeStatus = @ScrapeCodeStatus
-            OR ScrapeCodeStatus LIKE '%' + @ScrapeCodeStatus + '%'
+            OR (
+                CASE 
+                    WHEN CAST(ISNULL(ScrapeCodeStatus, 0) AS VARCHAR(50)) IN ('1', 'true', 'Scraped', 'scraped') OR scrapeCodeDate IS NOT NULL THEN 'Scraped' 
+                    ELSE 'Unscraped' 
+                END
+            ) = CASE 
+                    WHEN LOWER(LTRIM(RTRIM(@ScrapeCodeStatus))) IN ('scraped', '1', 'true') THEN 'Scraped'
+                    WHEN LOWER(LTRIM(RTRIM(@ScrapeCodeStatus))) IN ('unscraped', '0', 'false', 'pending') THEN 'Unscraped'
+                    ELSE LTRIM(RTRIM(@ScrapeCodeStatus))
+                END
         );
 
     IF (@IsExport = 1)
@@ -181,7 +200,8 @@ BEGIN
             SerialCode,
             ScrapedBy,
             ScrapeCodeStatus,
-            ScrapedCodeDate
+            ScrapedDate,
+            scrapeCodeDate
         FROM #ScrapData
         ORDER BY id DESC;
     END
@@ -195,7 +215,8 @@ BEGIN
             SerialCode,
             ScrapedBy,
             ScrapeCodeStatus,
-            ScrapedCodeDate
+            ScrapedDate,
+            scrapeCodeDate
         FROM #ScrapData
         ORDER BY id DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
