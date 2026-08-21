@@ -411,6 +411,7 @@ BEGIN
         ConsumerName NVARCHAR(150),
         MobileNo VARCHAR(50),
         State NVARCHAR(100),
+        Vrkabel_User_Type NVARCHAR(100),
         City NVARCHAR(100),
         Pro_Name NVARCHAR(200),
         Points DECIMAL(18,2),
@@ -419,7 +420,8 @@ BEGIN
         Longitude VARCHAR(50),
         AssignPoint DECIMAL(18,2),
         WornPoint DECIMAL(18,2),
-        ReferralPoints DECIMAL(18,2)
+        ReferralPoints DECIMAL(18,2),
+        LabelRequestId VARCHAR(50)
     );
 
     -- 1. Insert scan enquiries
@@ -434,7 +436,7 @@ BEGIN
 					 THEN ISNULL(E.MobileNo,'')
 				ELSE MC.MobileNo
 			END AS MobileNo,
-        G.State,
+        G.State, cc.Vrkabel_User_Type,
         G.City,
         PR.Pro_Name,
         CASE 
@@ -464,7 +466,8 @@ BEGIN
                 END
             ELSE 0 
         END AS WornPoint,
-        ISNULL(R.ReferralPoints, 0) AS ReferralPoints
+        ISNULL(R.ReferralPoints, 0) AS ReferralPoints,
+        MCd.LabelRequestId
 		FROM
 		(
 			SELECT *,
@@ -476,13 +479,14 @@ BEGIN
 			FROM #Enq
 		) E
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
+        inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
         LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid AND P.rn = E.rn
         LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
         LEFT JOIN #ScanReferrals R ON R.Code1 = E.Received_Code1 AND R.Code2 = E.Received_Code2
-        WHERE
+        WHERE cc.comp_id = @Comp_Id and 
 		  (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
           AND (@StateFilter IS NULL OR G.State = @StateFilter);
 
@@ -494,7 +498,7 @@ BEGIN
         '' AS Dial_Mode,
         MC.ConsumerName,
         MC.MobileNo,
-        MC.State,
+        MC.State, cc.Vrkabel_User_Type,
         MC.City,
         'Referral Bonus' AS Pro_Name,
         0 AS Points,
@@ -503,17 +507,19 @@ BEGIN
         '' AS Longitude,
         0 AS AssignPoint,
         0 AS WornPoint,
-        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints,
+        '' AS LabelRequestId
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
-    WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
+    inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
+    WHERE cc.comp_id = @Comp_Id and (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
       AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
       AND BL.Code1 IS NULL
       AND BL.compid = @Comp_Id
       AND BL.UpdateDate >= @StartDate
       AND BL.UpdateDate < @EndDate
       AND (@StateFilter IS NULL OR MC.State = @StateFilter)
-    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, BL.UpdateDate;
+    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate;
 
     -- 3. Insert other/extra earn point entries (virtual rows)
     INSERT INTO #FinalReport
@@ -523,7 +529,7 @@ BEGIN
         '' AS Dial_Mode,
         MC.ConsumerName,
         MC.MobileNo,
-        MC.State,
+        MC.State, cc.Vrkabel_User_Type,
         MC.City,
         ISNULL(NULLIF(BL.ServiceName, ''), 'Bonus Point') AS Pro_Name,
         SUM(CAST(
@@ -549,16 +555,18 @@ BEGIN
                 ELSE ISNULL(BL.Points, 0)
             END 
         AS DECIMAL(18,2))) AS WornPoint,
-        0 AS ReferralPoints
+        0 AS ReferralPoints,
+        '' AS LabelRequestId
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
-    WHERE BL.compid = @Comp_Id
+    inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
+    WHERE cc.comp_id = @Comp_Id and BL.compid = @Comp_Id
       AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
       AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
       AND BL.UpdateDate >= @StartDate
       AND BL.UpdateDate < @EndDate
       AND (@StateFilter IS NULL OR MC.State = @StateFilter)
-    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, BL.UpdateDate, BL.ServiceName;
+    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate, BL.ServiceName;
 
     ----------------------------------------------------
     -- RESULT SET 1
@@ -572,6 +580,7 @@ BEGIN
             ConsumerName,
             MobileNo,
             State,
+            Vrkabel_User_Type,
             City,
             Pro_Name,
             Points,
@@ -580,7 +589,8 @@ BEGIN
 			Longitude,
             AssignPoint,
             WornPoint,
-            ReferralPoints
+            ReferralPoints,
+            LabelRequestId
 		FROM #FinalReport
         WHERE (
             @CodeStatusFilter IS NULL OR
@@ -604,6 +614,7 @@ BEGIN
             ConsumerName,
             MobileNo,
             State,
+            Vrkabel_User_Type,
             City,
             Pro_Name,
             Points,
@@ -612,7 +623,8 @@ BEGIN
 			Longitude,
             AssignPoint,
             WornPoint,
-            ReferralPoints
+            ReferralPoints,
+            LabelRequestId
         FROM #FinalReport
         WHERE (
             @CodeStatusFilter IS NULL OR

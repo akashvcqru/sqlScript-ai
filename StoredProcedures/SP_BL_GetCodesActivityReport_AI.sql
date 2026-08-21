@@ -417,7 +417,8 @@ BEGIN
         Longitude VARCHAR(50),
         AssignPoint DECIMAL(18,2),
         WornPoint DECIMAL(18,2),
-        ReferralPoints DECIMAL(18,2)
+        ReferralPoints DECIMAL(18,2),
+        LabelRequestId VARCHAR(50)
     );
 
     -- 1. Insert scan enquiries
@@ -462,7 +463,8 @@ BEGIN
                 END
             ELSE 0 
         END AS WornPoint,
-        ISNULL(R.ReferralPoints, 0) AS ReferralPoints
+        ISNULL(R.ReferralPoints, 0) AS ReferralPoints,
+        MCd.LabelRequestId
 		FROM
 		(
 			SELECT *,
@@ -502,7 +504,8 @@ BEGIN
         '' AS Longitude,
         0 AS AssignPoint,
         0 AS WornPoint,
-        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints,
+        '' AS LabelRequestId
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
     inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
@@ -513,7 +516,7 @@ BEGIN
       AND BL.UpdateDate >= @StartDate
       AND BL.UpdateDate < @EndDate
       AND (@StateFilter IS NULL OR MC.State = @StateFilter)
-    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, BL.UpdateDate;
+    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate;
 
     -- 3. Insert other/extra earn point entries (virtual rows)
     INSERT INTO #FinalReport
@@ -549,7 +552,8 @@ BEGIN
                 ELSE ISNULL(BL.Points, 0)
             END 
         AS DECIMAL(18,2))) AS WornPoint,
-        0 AS ReferralPoints
+        0 AS ReferralPoints,
+        '' AS LabelRequestId
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
     inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
@@ -559,7 +563,7 @@ BEGIN
       AND BL.UpdateDate >= @StartDate
       AND BL.UpdateDate < @EndDate
       AND (@StateFilter IS NULL OR MC.State = @StateFilter)
-    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, BL.UpdateDate, BL.ServiceName;
+    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate, BL.ServiceName;
 
     ----------------------------------------------------
     -- RESULT SET 1
@@ -573,7 +577,7 @@ BEGIN
             ConsumerName,
             MobileNo,
             State,
-            City,
+             City,
             Pro_Name,
             Points,
             Result,
@@ -581,8 +585,8 @@ BEGIN
 			Longitude,
             AssignPoint,
             WornPoint,
-            ReferralPoints
-		FROM #FinalReport
+            ReferralPoints 
+		FROM #FinalReport FR left join #TempSoftCode tsc on FR.LabelRequestId=tsc.TrackingId and fr.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
             Result = @CodeStatusFilter OR
@@ -605,7 +609,7 @@ BEGIN
             ConsumerName,
             MobileNo,
             State,
-            City,
+             City,
             Pro_Name,
             Points,
             Result,
@@ -613,8 +617,8 @@ BEGIN
 			Longitude,
             AssignPoint,
             WornPoint,
-            ReferralPoints
-        FROM #FinalReport
+            ReferralPoints 
+        FROM #FinalReport FR left join #TempSoftCode tsc on FR.LabelRequestId=tsc.TrackingId and fr.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
             Result = @CodeStatusFilter OR
@@ -637,7 +641,7 @@ BEGIN
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM #FinalReport
+        FROM #FinalReport FR left join #TempSoftCode tsc on FR.LabelRequestId=tsc.TrackingId and fr.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
             Result = @CodeStatusFilter OR
