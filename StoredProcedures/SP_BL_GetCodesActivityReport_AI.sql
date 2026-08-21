@@ -571,66 +571,66 @@ BEGIN
     IF (@IsExport = 1)
     BEGIN
         SELECT 
-            UniqueCode,
-            Enq_Date,
-            Dial_Mode,
-            ConsumerName,
-            MobileNo,
-            State,
-             City,
-            Pro_Name,
-            Points,
-            Result,
-			Latitude,
-			Longitude,
-            AssignPoint,
-            WornPoint,
-            ReferralPoints 
+            FR.UniqueCode,
+            FR.Enq_Date,
+            FR.Dial_Mode,
+            FR.ConsumerName,
+            FR.MobileNo,
+            FR.State,
+            FR.City,
+            FR.Pro_Name,
+            FR.Points,
+            FR.Result,
+			FR.Latitude,
+			FR.Longitude,
+            CASE WHEN tsc.Point IS NULL THEN FR.AssignPoint ELSE ISNULL(TRY_CAST(tsc.Point AS DECIMAL(18,2)), FR.AssignPoint) END AS AssignPoint,
+            FR.WornPoint,
+            FR.ReferralPoints 
 		FROM #FinalReport FR left join #TempSoftCode tsc on FR.LabelRequestId=tsc.TrackingId and fr.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
-            Result = @CodeStatusFilter OR
-            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+            FR.Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND FR.Result = 'Already Scanned')
         )
         AND (
 			 @Search IS NULL
 			 OR LTRIM(RTRIM(@Search)) = ''
-			 OR MobileNo LIKE '%' + @Search + '%'
-			 OR UniqueCode LIKE '%' + @Search + '%'
+			 OR FR.MobileNo LIKE '%' + @Search + '%'
+			 OR FR.UniqueCode LIKE '%' + @Search + '%'
         )
-        ORDER BY Enq_Date DESC;
+        ORDER BY FR.Enq_Date DESC;
     END
     ELSE
     BEGIN
         SELECT 
-            UniqueCode,
-            Enq_Date,
-            Dial_Mode,
-            ConsumerName,
-            MobileNo,
-            State,
-             City,
-            Pro_Name,
-            Points,
-            Result,
-			Latitude,
-			Longitude,
-            AssignPoint,
-            WornPoint,
-            ReferralPoints 
+            FR.UniqueCode,
+            FR.Enq_Date,
+            FR.Dial_Mode,
+            FR.ConsumerName,
+            FR.MobileNo,
+            FR.State,
+            FR.City,
+            FR.Pro_Name,
+            FR.Points,
+            FR.Result,
+			FR.Latitude,
+			FR.Longitude,
+            CASE WHEN tsc.Point IS NULL THEN FR.AssignPoint ELSE ISNULL(TRY_CAST(tsc.Point AS DECIMAL(18,2)), FR.AssignPoint) END AS AssignPoint,
+            FR.WornPoint,
+            FR.ReferralPoints 
         FROM #FinalReport FR left join #TempSoftCode tsc on FR.LabelRequestId=tsc.TrackingId and fr.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
-            Result = @CodeStatusFilter OR
-            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+            FR.Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND FR.Result = 'Already Scanned')
         )
         AND (
 			 @Search IS NULL
 			 OR LTRIM(RTRIM(@Search)) = ''
-			 OR MobileNo LIKE '%' + @Search + '%'
-			 OR UniqueCode LIKE '%' + @Search + '%'
+			 OR FR.MobileNo LIKE '%' + @Search + '%'
+			 OR FR.UniqueCode LIKE '%' + @Search + '%'
         )
-        ORDER BY Enq_Date DESC
+        ORDER BY FR.Enq_Date DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
         ----------------------------------------------------
@@ -644,14 +644,14 @@ BEGIN
         FROM #FinalReport FR left join #TempSoftCode tsc on FR.LabelRequestId=tsc.TrackingId and fr.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
-            Result = @CodeStatusFilter OR
-            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+            FR.Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND FR.Result = 'Already Scanned')
         )
         AND (
 			 @Search IS NULL
 			 OR LTRIM(RTRIM(@Search)) = ''
-			 OR MobileNo LIKE '%' + @Search + '%'
-			 OR UniqueCode LIKE '%' + @Search + '%'
+			 OR FR.MobileNo LIKE '%' + @Search + '%'
+			 OR FR.UniqueCode LIKE '%' + @Search + '%'
         );
     END
 END

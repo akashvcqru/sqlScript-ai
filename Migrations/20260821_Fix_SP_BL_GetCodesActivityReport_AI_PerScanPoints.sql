@@ -436,7 +436,7 @@ BEGIN
 					 THEN ISNULL(E.MobileNo,'')
 				ELSE MC.MobileNo
 			END AS MobileNo,
-        G.State, cc.Vrkabel_User_Type,
+        G.State,cc.Vrkabel_User_Type,
         G.City,
         PR.Pro_Name,
         CASE 
@@ -486,7 +486,7 @@ BEGIN
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
         LEFT JOIN #ScanReferrals R ON R.Code1 = E.Received_Code1 AND R.Code2 = E.Received_Code2
-        WHERE cc.comp_id = @Comp_Id and 
+        WHERE cc.comp_id = @comp_id and 
 		  (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
           AND (@StateFilter IS NULL OR G.State = @StateFilter);
 
@@ -498,7 +498,7 @@ BEGIN
         '' AS Dial_Mode,
         MC.ConsumerName,
         MC.MobileNo,
-        MC.State, cc.Vrkabel_User_Type,
+        MC.State,cc.Vrkabel_User_Type,
         MC.City,
         'Referral Bonus' AS Pro_Name,
         0 AS Points,
@@ -512,7 +512,7 @@ BEGIN
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
     inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
-    WHERE cc.comp_id = @Comp_Id and (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
+    WHERE  cc.comp_id = @comp_id and (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
       AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
       AND BL.Code1 IS NULL
       AND BL.compid = @Comp_Id
@@ -529,7 +529,7 @@ BEGIN
         '' AS Dial_Mode,
         MC.ConsumerName,
         MC.MobileNo,
-        MC.State, cc.Vrkabel_User_Type,
+        MC.State,cc.Vrkabel_User_Type,
         MC.City,
         ISNULL(NULLIF(BL.ServiceName, ''), 'Bonus Point') AS Pro_Name,
         SUM(CAST(
@@ -560,7 +560,7 @@ BEGIN
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
     inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
-    WHERE cc.comp_id = @Comp_Id and BL.compid = @Comp_Id
+    WHERE  cc.comp_id = @comp_id and BL.compid = @Comp_Id
       AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
       AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
       AND BL.UpdateDate >= @StartDate
@@ -574,70 +574,66 @@ BEGIN
     IF (@IsExport = 1)
     BEGIN
         SELECT 
-            UniqueCode,
-            Enq_Date,
-            Dial_Mode,
-            ConsumerName,
-            MobileNo,
-            State,
-            Vrkabel_User_Type,
-            City,
-            Pro_Name,
-            Points,
-            Result,
-			Latitude,
-			Longitude,
-            AssignPoint,
-            WornPoint,
-            ReferralPoints,
-            LabelRequestId
-		FROM #FinalReport
+            FR.UniqueCode,
+            FR.Enq_Date,
+            FR.Dial_Mode,
+            FR.ConsumerName,
+            FR.MobileNo,
+            FR.State,
+            FR.City,
+            FR.Pro_Name,
+            FR.Points,
+            FR.Result,
+			FR.Latitude,
+			FR.Longitude,
+            CASE WHEN tsc.Point IS NULL THEN FR.AssignPoint ELSE ISNULL(TRY_CAST(tsc.Point AS DECIMAL(18,2)), FR.AssignPoint) END AS AssignPoint,
+            FR.WornPoint,
+            FR.ReferralPoints 
+		FROM #FinalReport FR left join #TempSoftCode tsc on FR.LabelRequestId=tsc.TrackingId and fr.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
-            Result = @CodeStatusFilter OR
-            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+            FR.Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND FR.Result = 'Already Scanned')
         )
         AND (
 			 @Search IS NULL
 			 OR LTRIM(RTRIM(@Search)) = ''
-			 OR MobileNo LIKE '%' + @Search + '%'
-			 OR UniqueCode LIKE '%' + @Search + '%'
+			 OR FR.MobileNo LIKE '%' + @Search + '%'
+			 OR FR.UniqueCode LIKE '%' + @Search + '%'
         )
-        ORDER BY Enq_Date DESC;
+        ORDER BY FR.Enq_Date DESC;
     END
     ELSE
     BEGIN
         SELECT 
-            UniqueCode,
-            Enq_Date,
-            Dial_Mode,
-            ConsumerName,
-            MobileNo,
-            State,
-            Vrkabel_User_Type,
-            City,
-            Pro_Name,
-            Points,
-            Result,
-			Latitude,
-			Longitude,
-            AssignPoint,
-            WornPoint,
-            ReferralPoints,
-            LabelRequestId
-        FROM #FinalReport
+            FR.UniqueCode,
+            FR.Enq_Date,
+            FR.Dial_Mode,
+            FR.ConsumerName,
+            FR.MobileNo,
+            FR.State,
+            FR.City,
+            FR.Pro_Name,
+            FR.Points,
+            FR.Result,
+			FR.Latitude,
+			FR.Longitude,
+            CASE WHEN tsc.Point IS NULL THEN FR.AssignPoint ELSE ISNULL(TRY_CAST(tsc.Point AS DECIMAL(18,2)), FR.AssignPoint) END AS AssignPoint,
+            FR.WornPoint,
+            FR.ReferralPoints 
+        FROM #FinalReport FR left join #TempSoftCode tsc on FR.LabelRequestId=tsc.TrackingId and fr.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
-            Result = @CodeStatusFilter OR
-            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+            FR.Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND FR.Result = 'Already Scanned')
         )
         AND (
 			 @Search IS NULL
 			 OR LTRIM(RTRIM(@Search)) = ''
-			 OR MobileNo LIKE '%' + @Search + '%'
-			 OR UniqueCode LIKE '%' + @Search + '%'
+			 OR FR.MobileNo LIKE '%' + @Search + '%'
+			 OR FR.UniqueCode LIKE '%' + @Search + '%'
         )
-        ORDER BY Enq_Date DESC
+        ORDER BY FR.Enq_Date DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
         ----------------------------------------------------
@@ -648,17 +644,17 @@ BEGIN
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM #FinalReport
+        FROM #FinalReport FR left join #TempSoftCode tsc on FR.LabelRequestId=tsc.TrackingId and fr.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
-            Result = @CodeStatusFilter OR
-            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+            FR.Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND FR.Result = 'Already Scanned')
         )
         AND (
 			 @Search IS NULL
 			 OR LTRIM(RTRIM(@Search)) = ''
-			 OR MobileNo LIKE '%' + @Search + '%'
-			 OR UniqueCode LIKE '%' + @Search + '%'
+			 OR FR.MobileNo LIKE '%' + @Search + '%'
+			 OR FR.UniqueCode LIKE '%' + @Search + '%'
         );
     END
 END
