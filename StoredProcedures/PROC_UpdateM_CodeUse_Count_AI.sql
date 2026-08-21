@@ -11,7 +11,7 @@ AS
 BEGIN
 	UPDATE [M_Code] SET
       [Use_Count] = ISNULL([Use_Count], 0) + CASE WHEN @Is_Success = 1 THEN 1 ELSE 0 END
- WHERE  [Code1] = @Received_Code1
-      AND [Code2] = @Received_Code2
+ WHERE [Code1] = TRY_CAST(@Received_Code1 AS NUMERIC(18,0))
+   AND [Code2] = TRY_CAST(@Received_Code2 AS NUMERIC(18,0))
 END
 GO
