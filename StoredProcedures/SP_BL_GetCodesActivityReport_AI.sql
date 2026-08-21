@@ -165,7 +165,8 @@ BEGIN
         MCd.Pro_ID,
         MCd.Series_Order,
         MCd.Series_Serial,
-        MCd.Row_ID AS M_Codeid
+        MCd.Row_ID AS M_Codeid,
+        MCd.LabelRequestId
     INTO #MCode
     FROM M_Code MCd
     INNER JOIN #Codes C
@@ -173,6 +174,29 @@ BEGIN
        AND MCd.Code2 = C.Received_Code2;
 
     CREATE INDEX IX_MCode ON #MCode(Code1, Code2);
+
+    ----------------------------------------------------
+    -- UNIQUE LABEL REQUESTS
+    ----------------------------------------------------
+    IF OBJECT_ID('tempdb..#UniqueLabelRequests') IS NOT NULL DROP TABLE #UniqueLabelRequests;
+
+    SELECT DISTINCT 
+        LabelRequestId
+    INTO #UniqueLabelRequests
+    FROM #MCode
+    WHERE LabelRequestId IS NOT NULL AND LTRIM(RTRIM(LabelRequestId)) <> '';
+
+    CREATE INDEX IX_UniqueLabelRequests ON #UniqueLabelRequests(LabelRequestId);
+
+    ----------------------------------------------------
+    -- SOFT CODE GENERATE DETAILS (TEGEWH)
+    ----------------------------------------------------
+    IF OBJECT_ID('tempdb..#TempSoftCode') IS NOT NULL DROP TABLE #TempSoftCode;
+
+    SELECT TrackingId, pointsdata 
+    INTO #TempSoftCode 
+    FROM tbl_SoftCodegenrate_Details WITH (NOLOCK)
+    WHERE TrackingId IN (SELECT LabelRequestId FROM #UniqueLabelRequests);
 
     ----------------------------------------------------
     -- PRODUCTS
