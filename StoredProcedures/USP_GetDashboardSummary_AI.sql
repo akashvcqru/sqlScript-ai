@@ -155,7 +155,7 @@ BEGIN
         @TotalConfigCash = ISNULL(SUM(ISNULL(CP.ConfigCash, 0)), 0)
     FROM #UserScans US
     LEFT JOIN (
-        SELECT M_Codeid, MAX(ConfigPoints) AS ConfigPoints, MAX(ConfigCash) AS ConfigCash
+        SELECT M_Codeid, MAX(ConfigPoints) AS ConfigPoints, MAX(ConfigCash) AS ConfigCash, MAX(Frequency) AS Frequency
         FROM #ConfigPoints
         GROUP BY M_Codeid
     ) CP ON CP.M_Codeid = US.M_Codeid
