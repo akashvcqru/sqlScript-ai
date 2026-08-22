@@ -183,6 +183,8 @@ BEGIN
             ON cr.Comp_ID = pr.Comp_ID  
         WHERE pe.MobileNo = @MobileNo   
           AND pr.Comp_ID = @Comp_ID  
+          AND (@Year IS NULL OR YEAR(pe.Enq_Date) = @Year)
+          AND (@Month IS NULL OR MONTH(pe.Enq_Date) = @Month)
     )
     SELECT   
         t.*,  
@@ -406,6 +408,8 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
     WHERE bll.M_Consumerid = @M_Consumer_id   
       AND bll.ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards', 'Transfer From User')   
       AND bll.compid = @Comp_ID  
+      AND (@Year IS NULL OR YEAR(bll.UpdateDate) = @Year)
+      AND (@Month IS NULL OR MONTH(bll.UpdateDate) = @Month)
   
     ORDER BY Sort_Date DESC;  
 END
