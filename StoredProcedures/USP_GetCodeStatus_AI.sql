@@ -219,10 +219,27 @@ BEGIN
             ON pr.Pro_ID = mc.Pro_ID
         LEFT JOIN #temp1 sd 
             ON 1 = 1
-        LEFT JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) 
-            ON BL.Code1 = PE.Received_Code1 
-           AND BL.Code2 = PE.Received_Code2
-           AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
+        OUTER APPLY (
+            SELECT TOP 1 
+                BL.Points,
+                BL.Cash
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK) 
+            LEFT JOIN M_Consumer mc_user WITH (NOLOCK) 
+                ON mc_user.M_Consumerid = BL.M_Consumerid
+            WHERE BL.Code1 = PE.Received_Code1 
+              AND BL.Code2 = PE.Received_Code2
+              AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
+              AND (
+                  PE.MobileNo IS NULL 
+                  OR mc_user.MobileNo = PE.MobileNo 
+                  OR RIGHT(mc_user.MobileNo, 10) = RIGHT(PE.MobileNo, 10)
+                  OR BL.M_Consumerid IS NULL
+              )
+            ORDER BY 
+                CASE WHEN mc_user.MobileNo = PE.MobileNo OR RIGHT(mc_user.MobileNo, 10) = RIGHT(PE.MobileNo, 10) THEN 0 ELSE 1 END ASC,
+                ISNULL(BL.Points, 0) + ISNULL(BL.Cash, 0) DESC,
+                BL.BLoyalty_PointEarnedID DESC
+        ) BL
         WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
     END
     ELSE
@@ -269,10 +286,27 @@ BEGIN
             ON pr.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)
         LEFT JOIN #temp1 sd 
             ON 1 = 1
-        LEFT JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) 
-            ON BL.Code1 = PE.Received_Code1 
-           AND BL.Code2 = PE.Received_Code2
-           AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
+        OUTER APPLY (
+            SELECT TOP 1 
+                BL.Points,
+                BL.Cash
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK) 
+            LEFT JOIN M_Consumer mc_user WITH (NOLOCK) 
+                ON mc_user.M_Consumerid = BL.M_Consumerid
+            WHERE BL.Code1 = PE.Received_Code1 
+              AND BL.Code2 = PE.Received_Code2
+              AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
+              AND (
+                  PE.MobileNo IS NULL 
+                  OR mc_user.MobileNo = PE.MobileNo 
+                  OR RIGHT(mc_user.MobileNo, 10) = RIGHT(PE.MobileNo, 10)
+                  OR BL.M_Consumerid IS NULL
+              )
+            ORDER BY 
+                CASE WHEN mc_user.MobileNo = PE.MobileNo OR RIGHT(mc_user.MobileNo, 10) = RIGHT(PE.MobileNo, 10) THEN 0 ELSE 1 END ASC,
+                ISNULL(BL.Points, 0) + ISNULL(BL.Cash, 0) DESC,
+                BL.BLoyalty_PointEarnedID DESC
+        ) BL
         WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
     END
 
