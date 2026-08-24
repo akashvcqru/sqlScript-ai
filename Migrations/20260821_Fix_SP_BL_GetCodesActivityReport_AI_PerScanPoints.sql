@@ -1,4 +1,4 @@
--- Migration: Fix SP_BL_GetCodesActivityReport_AI Points calculation for multiple scan attempts
+ -- Migration: Fix SP_BL_GetCodesActivityReport_AI Points calculation for multiple scan attempts
 -- Date: 2026-08-21
 
 USE [Vcqru]
