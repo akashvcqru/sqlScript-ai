@@ -1,20 +1,21 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 7/7/2026 5:33:35 PM ******/
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 24-08-2026 17:02:29 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
+
+ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
      @FromDate DATE  = NULL,                -- NEW
     @ToDate DATE  = NULL,                  -- NEW
     @CodeStatusFilter NVARCHAR(20) = NULL,     -- NEW (Verified, Already Scanned, Invalid)
-     @StateFilter NVARCHAR(100) = NULL,       -- ✅ NEW
-    @DialModeFilter NVARCHAR(50) = NULL,     -- ✅ NEW
-    @Page INT = NULL,                        -- ✅ NEW
-    @Limit INT = NULL,                      -- ✅ NEW
+     @StateFilter NVARCHAR(100) = NULL,       -- âœ… NEW
+    @DialModeFilter NVARCHAR(50) = NULL,     -- âœ… NEW
+    @Page INT = NULL,                        -- âœ… NEW
+    @Limit INT = NULL,                      -- âœ… NEW
      @IsExport BIT =NULL,
        @Search nvarchar(30) = null
 AS
