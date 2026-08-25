@@ -45,7 +45,7 @@ if (Test-Path $migrationsDir) {
                 if ([string]::IsNullOrWhiteSpace($batch)) { continue }
                 $cmd = $conn.CreateCommand()
                 $cmd.CommandText = $batch
-                $cmd.CommandTimeout = 300
+                $cmd.CommandTimeout = 0
                 $cmd.ExecuteNonQuery() > $null
             }
             Write-Host " [SUCCESS]" -ForegroundColor Green
@@ -84,7 +84,7 @@ if (Test-Path $spDir) {
                 if ([string]::IsNullOrWhiteSpace($batch)) { continue }
                 $cmd = $conn.CreateCommand()
                 $cmd.CommandText = $batch
-                $cmd.CommandTimeout = 120
+                $cmd.CommandTimeout = 0
                 $cmd.ExecuteNonQuery() > $null
             }
             Write-Host " [SUCCESS]" -ForegroundColor Green
