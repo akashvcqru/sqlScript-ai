@@ -64,7 +64,7 @@ BEGIN
         SET @Type = UPPER(LTRIM(RTRIM(@Type)));
 
     ---------------------------------------------------------
-    -- Subscription Temp Table
+    -- Subscription Temp Table (Aggregated across active services)
     ---------------------------------------------------------
     IF OBJECT_ID('tempdb..#temp1') IS NOT NULL DROP TABLE #temp1;
 
@@ -75,6 +75,8 @@ BEGIN
             sst.IsCash,
             sst.Frequency,
             ss.Service_ID,
+            ms.ServiceName,
+            ss.DateFrom,
             ss.Pro_ID,
             sst.Entry_Date,
             ROW_NUMBER() OVER (
@@ -84,6 +86,8 @@ BEGIN
         FROM M_ServiceSubscriptionTrans sst WITH (NOLOCK)
         INNER JOIN M_ServiceSubscription ss WITH (NOLOCK)
             ON sst.Subscribe_Id = ss.Subscribe_Id
+        INNER JOIN M_Service ms WITH (NOLOCK)
+            ON ms.Service_ID = ss.Service_ID
         INNER JOIN Pro_Reg pr WITH (NOLOCK)
             ON pr.Pro_id = ss.Pro_ID
         WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))
@@ -92,31 +96,17 @@ BEGIN
           AND ss.Pro_ID = @Pro_ID
           AND (ss.start_order IS NULL OR @Series_Order > ss.start_order OR (@Series_Order = ss.start_order AND @Series_Serial >= ss.start_series))
           AND (ss.end_order IS NULL OR @Series_Order < ss.end_order OR (@Series_Order = ss.end_order AND @Series_Serial <= ss.end_series))
-    ),
-    UniqueServiceTrans AS (
-        SELECT * 
-        FROM RankedTrans 
-        WHERE rn_service = 1
-    ),
-    FinalRankedTrans AS (
-        SELECT 
-            Points,
-            IsCash,
-            Frequency,
-            Service_ID,
-            ROW_NUMBER() OVER (
-                ORDER BY Entry_Date DESC, SST_Id DESC
-            ) AS rn_final
-        FROM UniqueServiceTrans
     )
     SELECT 
-        Points,
-        IsCash,
-        Frequency,
-        Service_ID
+        MAX(CASE WHEN Service_ID = 'SRV1001' OR Points > 0 THEN ISNULL(Points, 0) ELSE 0 END) AS Points,
+        MAX(CASE WHEN Service_ID IN ('SRV1028', 'SRV1005', 'SRV1029') OR IsCash > 0 THEN ISNULL(IsCash, 0) ELSE 0 END) AS IsCash,
+        ISNULL(MAX(Frequency), 1) AS Frequency,
+        STRING_AGG(Service_ID, ', ') AS Service_ID,
+        STRING_AGG(ServiceName, ' + ') AS ServiceName,
+        MIN(DateFrom) AS ServiceAssignDate
     INTO #temp1
-    FROM FinalRankedTrans
-    WHERE rn_final = 1;
+    FROM RankedTrans
+    WHERE rn_service = 1;
 
     -------------------------------------------------
     ---------------------------------------------------------
@@ -170,11 +160,13 @@ BEGIN
     BEGIN
         INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, ExpireCodeDate, CodeServiceSetingStatus, ImageVerified, Pro_Name, Batch_No, AssignPoint, WornPoint)
         SELECT
-            CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
-            CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN 
+            CASE WHEN PE.Status = 'Authenticate' OR PE.Status = 'Re-Authenticate' OR PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
+            CAST(CASE WHEN PE.Status = 'Authenticate' OR PE.Status = 'Re-Authenticate' OR PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN 
                 CASE 
-                    WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0)
-                    ELSE CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END
+                    WHEN ISNULL(BL.WornCash, 0) > 0 THEN BL.WornCash
+                    WHEN ISNULL(BL.WornPoints, 0) > 0 THEN BL.WornPoints
+                    WHEN ISNULL(sd.Points, 0) > 0 THEN sd.Points
+                    ELSE ISNULL(sd.IsCash, 0)
                 END
             ELSE 0 END AS DECIMAL(18,2)) AS Points,
             ISNULL(sd.IsCash, 0) AS IsCash,
@@ -187,17 +179,27 @@ BEGIN
             ISNULL(PE.IsVerified, 0) AS ImageVerified,
             PE.Pro_Name,
             PE.Batch_No,
-            CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN
-                CASE WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0) ELSE ISNULL(sd.Points, 0) END
+            CAST(CASE WHEN PE.Status = 'Authenticate' OR PE.Status = 'Re-Authenticate' OR PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN
+                CASE 
+                    WHEN ISNULL(BL.WornCash, 0) > 0 THEN ISNULL(sd.IsCash, BL.WornCash)
+                    WHEN ISNULL(BL.WornPoints, 0) > 0 THEN ISNULL(sd.Points, BL.WornPoints)
+                    WHEN ISNULL(sd.Points, 0) > 0 THEN sd.Points
+                    ELSE ISNULL(sd.IsCash, 0)
+                END
             ELSE 0 END AS DECIMAL(18,2)) AS AssignPoint,
-            CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN
-                CASE WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
+            CAST(CASE WHEN PE.Status = 'Authenticate' OR PE.Status = 'Re-Authenticate' OR PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN
+                CASE 
+                    WHEN ISNULL(BL.WornCash, 0) > 0 THEN BL.WornCash
+                    WHEN ISNULL(BL.WornPoints, 0) > 0 THEN BL.WornPoints
+                    ELSE 0
+                END
             ELSE 0 END AS DECIMAL(18,2)) AS WornPoint
         FROM (
             SELECT 
                 Code1V AS Received_Code1,
                 Code2V AS Received_Code2,
                 CASE WHEN Status = 'Authenticate' THEN 1 WHEN Status = 'Re-Authenticate' THEN 2 ELSE 0 END AS Is_Success,
+                Status,
                 Enq_Date,
                 MobileNo,
                 Dial_Mode,
@@ -219,21 +221,36 @@ BEGIN
             ON pr.Pro_ID = mc.Pro_ID
         LEFT JOIN #temp1 sd 
             ON 1 = 1
-        LEFT JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) 
-            ON BL.Code1 = PE.Received_Code1 
-           AND BL.Code2 = PE.Received_Code2
-           AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
+        OUTER APPLY (
+            SELECT 
+                ISNULL(SUM(BL.Points), 0) AS WornPoints,
+                ISNULL(SUM(BL.Cash), 0)   AS WornCash
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK) 
+            LEFT JOIN M_Consumer mc_user WITH (NOLOCK) 
+                ON mc_user.M_Consumerid = BL.M_Consumerid
+            WHERE BL.Code1 = PE.Received_Code1 
+              AND BL.Code2 = PE.Received_Code2
+              AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
+              AND (
+                  PE.MobileNo IS NULL 
+                  OR mc_user.MobileNo = PE.MobileNo 
+                  OR RIGHT(mc_user.MobileNo, 10) = RIGHT(PE.MobileNo, 10)
+                  OR BL.M_Consumerid IS NULL
+              )
+        ) BL
         WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
     END
     ELSE
     BEGIN
         INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, ExpireCodeDate, CodeServiceSetingStatus, ImageVerified, Pro_Name, Batch_No, AssignPoint, WornPoint)
         SELECT
-            CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
-            CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN 
+            CASE WHEN PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
+            CAST(CASE WHEN PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN 
                 CASE 
-                    WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0)
-                    ELSE CASE WHEN sd.Points IS NULL OR sd.Points = 0 THEN ISNULL(sd.IsCash, 0) ELSE sd.Points END
+                    WHEN ISNULL(BL.WornCash, 0) > 0 THEN BL.WornCash
+                    WHEN ISNULL(BL.WornPoints, 0) > 0 THEN BL.WornPoints
+                    WHEN ISNULL(sd.Points, 0) > 0 THEN sd.Points
+                    ELSE ISNULL(sd.IsCash, 0)
                 END
             ELSE 0 END AS DECIMAL(18,2)) AS Points,
             ISNULL(sd.IsCash, 0) AS IsCash,
@@ -246,11 +263,20 @@ BEGIN
             ISNULL(PE.IsVerified, 0) AS ImageVerified,
             pr.Pro_Name,
             mc.Batch_No,
-            CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN
-                CASE WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0) ELSE ISNULL(sd.Points, 0) END
+            CAST(CASE WHEN PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN
+                CASE 
+                    WHEN ISNULL(BL.WornCash, 0) > 0 THEN ISNULL(sd.IsCash, BL.WornCash)
+                    WHEN ISNULL(BL.WornPoints, 0) > 0 THEN ISNULL(sd.Points, BL.WornPoints)
+                    WHEN ISNULL(sd.Points, 0) > 0 THEN sd.Points
+                    ELSE ISNULL(sd.IsCash, 0)
+                END
             ELSE 0 END AS DECIMAL(18,2)) AS AssignPoint,
-            CAST(CASE WHEN PE.Is_Success = 1 AND PE.Success_Rn <= ISNULL(sd.Frequency, 1) THEN
-                CASE WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) ELSE ISNULL(BL.Points, 0) END
+            CAST(CASE WHEN PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN
+                CASE 
+                    WHEN ISNULL(BL.WornCash, 0) > 0 THEN BL.WornCash
+                    WHEN ISNULL(BL.WornPoints, 0) > 0 THEN BL.WornPoints
+                    ELSE 0
+                END
             ELSE 0 END AS DECIMAL(18,2)) AS WornPoint
         FROM (
             SELECT *,
@@ -269,10 +295,23 @@ BEGIN
             ON pr.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)
         LEFT JOIN #temp1 sd 
             ON 1 = 1
-        LEFT JOIN BLoyaltyPointsEarned BL WITH (NOLOCK) 
-            ON BL.Code1 = PE.Received_Code1 
-           AND BL.Code2 = PE.Received_Code2
-           AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
+        OUTER APPLY (
+            SELECT 
+                ISNULL(SUM(BL.Points), 0) AS WornPoints,
+                ISNULL(SUM(BL.Cash), 0)   AS WornCash
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK) 
+            LEFT JOIN M_Consumer mc_user WITH (NOLOCK) 
+                ON mc_user.M_Consumerid = BL.M_Consumerid
+            WHERE BL.Code1 = PE.Received_Code1 
+              AND BL.Code2 = PE.Received_Code2
+              AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', ''))
+              AND (
+                  PE.MobileNo IS NULL 
+                  OR mc_user.MobileNo = PE.MobileNo 
+                  OR RIGHT(mc_user.MobileNo, 10) = RIGHT(PE.MobileNo, 10)
+                  OR BL.M_Consumerid IS NULL
+              )
+        ) BL
         WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
     END
 
@@ -320,16 +359,19 @@ BEGIN
         BEGIN
             SELECT TOP 1
                 ISNULL(PE.Code1V, '') + ISNULL(PE.Code2V, '') AS ThirteenDigitCode,
-                MS.ServiceName,
-                ss.Service_ID AS Service_ID,
-                ss.DateFrom AS ServiceAssignDate,
+                ISNULL(sd.ServiceName, 'Build Loyalty') AS ServiceName,
+                sd.Service_ID AS Service_ID,
+                ISNULL(sd.ServiceAssignDate, ss.DateFrom) AS ServiceAssignDate,
                 @ExpireCodeDate AS CodeExpiryDate,
                 PE.Pro_Name AS Pro_Name,
                 CASE WHEN MC.Use_Count >= 1 THEN 'Used' ELSE 'Un Used' END AS CodeCheckStatus,
                 PE.Enq_Date,
                 (SELECT COUNT(1) FROM pfl_codecheckData WHERE Code1V = @RecievedCode1 AND Code2V = @RecievedCode2) AS CodeCheckCount,
                 @CodeServiceSetingStatus AS CodeActiveStatus,
-                CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points,
+                CASE 
+                    WHEN ISNULL(sd.Points, 0) > 0 THEN CAST(sd.Points AS SQL_VARIANT) 
+                    ELSE CAST(ISNULL(sd.IsCash, 0) AS SQL_VARIANT) 
+                END AS Points,
                 ISNULL(NULLIF(PE.Batch_No, ''), 'Not Assigned') AS Batch_No
             FROM pfl_codecheckData PE WITH (NOLOCK)
             INNER JOIN M_Code_PFL mc WITH (NOLOCK)
@@ -337,7 +379,7 @@ BEGIN
                AND mc.Code2 = PE.Code2V
             INNER JOIN Pro_Reg pr WITH (NOLOCK)
                 ON pr.Pro_ID = mc.Pro_ID      
-            INNER JOIN M_ServiceSubscription ss WITH (NOLOCK)
+            LEFT JOIN M_ServiceSubscription ss WITH (NOLOCK)
                 ON ss.Pro_ID = pr.Pro_ID
                 AND (
                     ss.start_order IS NULL OR
@@ -350,10 +392,8 @@ BEGIN
                     AND 
                     CONCAT(FORMAT(ss.end_order, '000#'), FORMAT(ss.end_series, '000#'))
                 )
-            LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK)
-                ON sst.Subscribe_Id = ss.Subscribe_Id
-            INNER JOIN M_Service MS WITH (NOLOCK)
-                ON MS.Service_ID = ss.Service_ID
+            LEFT JOIN #temp1 sd 
+                ON 1 = 1
             WHERE PE.Code1V = @RecievedCode1
               AND PE.Code2V = @RecievedCode2
               AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))
@@ -363,16 +403,19 @@ BEGIN
         BEGIN
             SELECT TOP 1
                 ISNULL(PE.Received_Code1, '') + ISNULL(PE.Received_Code2, '') AS ThirteenDigitCode,
-                MS.ServiceName,
-                ss.Service_ID AS Service_ID,
-                ss.DateFrom AS ServiceAssignDate,
+                ISNULL(sd.ServiceName, 'Build Loyalty') AS ServiceName,
+                sd.Service_ID AS Service_ID,
+                ISNULL(sd.ServiceAssignDate, ss.DateFrom) AS ServiceAssignDate,
                 @ExpireCodeDate AS CodeExpiryDate,
                 pr.Pro_Name AS Pro_Name,
                 CASE WHEN MC.Use_Count >= 1 THEN 'Used' ELSE 'Un Used' END AS CodeCheckStatus,
                 PE.Enq_Date,
                 (SELECT COUNT(1) FROM Pro_Enq WHERE Received_Code1 = @RecievedCode1 AND Received_Code2 = @RecievedCode2) AS CodeCheckCount,
                 @CodeServiceSetingStatus AS CodeActiveStatus,
-                CASE WHEN sst.Points IS NULL OR sst.Points = 0 THEN CAST(sst.IsCash AS SQL_VARIANT) ELSE CAST(sst.Points AS SQL_VARIANT) END AS Points,
+                CASE 
+                    WHEN ISNULL(sd.Points, 0) > 0 THEN CAST(sd.Points AS SQL_VARIANT) 
+                    ELSE CAST(ISNULL(sd.IsCash, 0) AS SQL_VARIANT) 
+                END AS Points,
                 ISNULL(NULLIF(mc.Batch_No, ''), 'Not Assigned') AS Batch_No
             FROM Pro_Enq PE WITH (NOLOCK)
             INNER JOIN M_Code mc WITH (NOLOCK)
@@ -380,7 +423,7 @@ BEGIN
                AND mc.Code2 = PE.Received_Code2
             INNER JOIN Pro_Reg pr WITH (NOLOCK)
                 ON pr.Pro_ID = ISNULL(NULLIF(mc.reassignProid, ''), mc.Pro_ID)      
-            INNER JOIN M_ServiceSubscription ss WITH (NOLOCK)
+            LEFT JOIN M_ServiceSubscription ss WITH (NOLOCK)
                 ON ss.Pro_ID = pr.Pro_ID
                 AND (
                     ss.start_order IS NULL OR
@@ -393,10 +436,8 @@ BEGIN
                     AND 
                     CONCAT(FORMAT(ss.end_order, '000#'), FORMAT(ss.end_series, '000#'))
                 )
-            LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK)
-                ON sst.Subscribe_Id = ss.Subscribe_Id
-            INNER JOIN M_Service MS WITH (NOLOCK)
-                ON MS.Service_ID = ss.Service_ID
+            LEFT JOIN #temp1 sd 
+                ON 1 = 1
             WHERE PE.Received_Code1 = @RecievedCode1
               AND PE.Received_Code2 = @RecievedCode2
               AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))

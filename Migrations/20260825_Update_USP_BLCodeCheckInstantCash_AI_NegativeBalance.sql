@@ -1,3 +1,10 @@
+-- Migration: Update USP_BLCodeCheckInstantCash_AI for Negative Balance Handling
+-- When a consumer's RedeemAmount > TotalEarned (BalanceAmount < 0):
+-- 1. Code is successfully checked and points are credited to BLoyaltyPointsEarned.
+-- 2. Payout is not allowed (IsPayoutAllowed = 0).
+-- 3. No records inserted into tblUPITransactionDetails, Paytm_balance, or tblCashWalletBalance.
+-- 4. An informational note is appended to the message in SP: '<br/>Note: adjusted points your outstanding balance.'
+
 USE [Vcqru]
 GO
 
@@ -6,12 +13,6 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- =============================================
--- Author:      Antigravity AI
--- Create date: 2026-04-19
--- Description: Unified Loyalty Code Check for Instant Cash companies (e.g. Comp-2299).
---              Supports lookup in both M_Code and M_Code_PFL.
--- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_BLCodeCheckInstantCash_AI]
 (
     @Code1 NUMERIC(5, 0),
@@ -187,16 +188,11 @@ BEGIN
 
         SELECT @ActualComp_ID = Comp_ID FROM Pro_Reg WHERE Pro_ID = @Pro_ID;
 
-        -- For Instant Cash, we might be more lenient or log mismatch but proceed
-        -- However, we'll keep the mismatch check but ensure it compares against @ActualComp_ID
         IF @Comp_ID IS NOT NULL AND @Comp_ID <> '' AND @Comp_ID <> @ActualComp_ID
         BEGIN
-            -- Log the mismatch for debugging
             INSERT INTO InvalidCodeCompid(ApiComp_ID, DbComp_ID, Code1, Code2, Pro_ID, MobileNo)
             VALUES (@Comp_ID, @ActualComp_ID, @dCode1, @dCode2, @Pro_ID, @MobileNo);
 
-            -- For now, let's allow it if the code is valid for another company, OR reject
-            -- The requirement says "fix this isse", if the issue is mismatch, we should allow it but use the actual company ID
             SET @Comp_ID = @ActualComp_ID; 
         END
         ELSE IF @Comp_ID IS NULL OR @Comp_ID = ''
@@ -209,7 +205,6 @@ BEGIN
         -------------------------------------------------------------------
         DECLARE @Mobile10 VARCHAR(10) = RIGHT(@MobileNo, 10);
         
-        -- Optimized lookup to use index on MobileNo
         SELECT @M_Consumerid = M_Consumerid FROM M_Consumer 
         WHERE (MobileNo = @Mobile10 OR MobileNo = '91' + @Mobile10 OR MobileNo = '0' + @Mobile10)
           AND IsDelete = 0;
@@ -246,7 +241,6 @@ BEGIN
 
         SET @ReturnMConsumerid = @M_Consumerid;
 
-        -- Fallback for ConsumerName if NULL
         IF @ConsumerName IS NULL OR @ConsumerName = ''
         BEGIN
             SELECT TOP 1 @ConsumerName = ConsumerName FROM M_Consumer WHERE M_Consumerid = @M_Consumerid;
@@ -269,7 +263,6 @@ BEGIN
         FROM tbl_UPILimitDetails
         WHERE Comp_ID = @ActualComp_ID AND Service_ID = 'SRV1029';
 
-        -- Check today's total for this consumer (Include Pending to prevent over-limit transfers)
         SELECT @TodaySum = ISNULL(SUM(Amount), 0)
         FROM tblUPITransactionDetails
         WHERE M_Consumerid = @M_Consumerid 
@@ -293,7 +286,6 @@ BEGIN
         BEGIN
             IF NOT EXISTS (SELECT 1 FROM M_BankAccount WHERE M_Consumerid = @M_Consumerid AND Account_No = @AccountNumber)
             BEGIN
-                -- Generate Bank_ID
                 DECLARE @Bank_ID NVARCHAR(50);
                 SELECT TOP 1 @Bank_ID = PrPrefix + CONVERT(varchar, PrStart) FROM Code_Gen WHERE Prfor = 'Account' AND PrFlag = 1;
                 
@@ -324,7 +316,6 @@ BEGIN
         ELSE
             SELECT @UseCount = TRY_CAST(ISNULL(Use_Count, 0) AS INT) FROM M_Code WHERE Row_ID = @M_Codeid;
 
-        -- Log Inquiry
         DECLARE @Is_Success VARCHAR(5) = '1';
         IF @UseCount > 0
             SET @Is_Success = '2';
@@ -346,7 +337,6 @@ BEGIN
 
             DECLARE @AlreadyMessage NVARCHAR(MAX) = NULL;
 
-            -- Try specific company first
             SELECT TOP 1 @AlreadyMessage = Message_Text 
             FROM LandingPage_CodeCheckMessages 
             WHERE Comp_ID = @ActualComp_ID 
@@ -355,7 +345,6 @@ BEGIN
               AND IsActive = 1
             ORDER BY CASE WHEN Service_ID = 'SRV1029' THEN 0 ELSE 1 END;
 
-            -- Try Default company fallback
             IF @AlreadyMessage IS NULL OR @AlreadyMessage = ''
             BEGIN
                 SELECT TOP 1 @AlreadyMessage = Message_Text 
@@ -367,7 +356,6 @@ BEGIN
                 ORDER BY CASE WHEN Service_ID = 'SRV1029' THEN 0 ELSE 1 END;
             END
 
-            -- Final hardcoded fallback
             IF @AlreadyMessage IS NULL OR @AlreadyMessage = ''
                 SET @AlreadyMessage = 'Code is already checked.';
 
@@ -375,7 +363,6 @@ BEGIN
             RETURN;
         END
 
-        -- Update Use_Count
         IF @IsPFL = 1
             UPDATE M_Code_PFL SET Use_Count = 1, Allot_Date = GETDATE() WHERE Row_ID = @M_Codeid;
         ELSE
@@ -384,7 +371,6 @@ BEGIN
         -------------------------------------------------------------------
         -- 6. LOYALTY & SERVICES PROCESSING
         -------------------------------------------------------------------
-        -- A. Link Consumer to Code
         IF NOT EXISTS (SELECT 1 FROM M_Consumer_M_Code WHERE M_Consumerid = @M_Consumerid AND M_Codeid = @M_Codeid)
         BEGIN
             INSERT INTO M_Consumer_M_Code (M_Consumerid, M_Codeid, Pro_id, Compid, CreatedDate)
@@ -393,7 +379,6 @@ BEGIN
 
         DECLARE @M_Consumer_MCodeid BIGINT = (SELECT TOP 1 M_Consumer_MCodeid FROM M_Consumer_M_Code WHERE M_Consumerid = @M_Consumerid AND M_Codeid = @M_Codeid);
 
-        -- B. Identify all active services
         DECLARE @Services TABLE (
             SST_Id BIGINT,
             Service_ID VARCHAR(50),
@@ -418,7 +403,6 @@ BEGIN
                )
           );
 
-        -- C. Process services
         DECLARE @CurrSST BIGINT, @CurrServiceID VARCHAR(50), @CurrPoints DECIMAL(18,2), @CurrFreq INT, @CurrIsCash DECIMAL(18,2);
         DECLARE @EarningAmount DECIMAL(18,2) = 0;
         
@@ -438,18 +422,13 @@ BEGIN
             BEGIN
                 DECLARE @AwardedAmount DECIMAL(18,2) = CASE WHEN @CurrIsCash > 0 THEN @CurrIsCash ELSE @CurrPoints END;
 
-                -- Limit Check for SRV1029
                 IF @CurrServiceID = 'SRV1029' AND @TodaySum + @AwardedAmount > @DailyLimit AND @DailyLimit > 0
                 BEGIN
-                    -- Optionally cap it or return limit message
-                    -- For now, let's proceed but mark as limit reached if user wants a message
                     SET @AwardedAmount = CASE WHEN @DailyLimit > @TodaySum THEN @DailyLimit - @TodaySum ELSE 0 END;
                     
                     IF @AwardedAmount <= 0
                     BEGIN
                         SET @AwardMessage = ' Daily transfer limit reached.';
-                        -- We still keep loyalty record if user wants, or skip?
-                        -- User said "cap the amount or return a limit exceeded message"
                     END
                 END
 
@@ -465,7 +444,6 @@ BEGIN
                     -- Table Updates if NO Claim/Approval Req
                     IF @CurrServiceID = 'SRV1029'
                     BEGIN
-                        -- Capture return data for SRV1029 specifically to avoid being overwritten by other services
                         SET @ReturnAmount = @EarningAmount;
                         SET @ReturnServiceID = @CurrServiceID;
 
@@ -581,13 +559,10 @@ BEGIN
 
                             SET @TransactionID = SCOPE_IDENTITY();
                             SET @ReturnTransactionID = @TransactionID;
-
-                            -- Removed Credit entry to tblCashWalletBalance as per user request (only Debit entry is needed)
                         END
                     END
                     ELSE IF @CurrServiceID IN ('SRV1001', 'SRV1005')
                     BEGIN
-                        -- Capture return data for SRV1001 or SRV1005 if SRV1029 is not already set
                         IF @ReturnServiceID IS NULL OR @ReturnServiceID = '' OR @ReturnServiceID NOT IN ('SRV1029')
                         BEGIN
                             SET @ReturnAmount = @EarningAmount;

@@ -41,7 +41,7 @@ BEGIN
                 SELECT TOP 1 
                     @LastOrder = CAST(Series_Order AS INT), 
                     @LastSerial = CAST(Series_Serial AS INT)
-                FROM M_Code_PFL
+                FROM M_Code_PFL WITH (NOLOCK)
                 WHERE Pro_ID = @Pro_ID 
                   AND Series_Order IS NOT NULL 
                   AND Series_Serial IS NOT NULL
@@ -68,13 +68,22 @@ BEGIN
                 
                 INSERT INTO @SelectedRowsPFL (Row_ID)
                 SELECT TOP (@Qty) Row_ID 
-                FROM M_Code_PFL 
+                FROM M_Code_PFL WITH (NOLOCK)
                 WHERE Pro_ID IS NULL 
+                  AND Use_Type IS NULL
+                  AND Allot_Date IS NULL
                   AND (Print_Status IS NULL OR Print_Status = 0)
                   AND ISNULL([Use_Count],0) = 0 
                   AND DispatchFlag IS NULL 
                   AND ISNULL(ScrapeFlag,0) = 0
                 ORDER BY Row_ID ASC;
+
+                IF (SELECT COUNT(1) FROM @SelectedRowsPFL) < @Qty
+                BEGIN
+                    ROLLBACK TRANSACTION;
+                    SELECT 'Not sufficient code to print LABELS. Kindly first generate the CODES and then proceed further.' AS Result;
+                    RETURN;
+                END
 
                 -- Update top @Qty available codes in M_Code_PFL with sequential series
                 ;WITH CTE_Update AS (
@@ -105,7 +114,7 @@ BEGIN
                 SELECT TOP 1 
                     @LastOrder = CAST(Series_Order AS INT), 
                     @LastSerial = CAST(Series_Serial AS INT)
-                FROM M_Code
+                FROM M_Code WITH (NOLOCK)
                 WHERE Pro_ID = @Pro_ID 
                   AND Series_Order IS NOT NULL 
                   AND Series_Serial IS NOT NULL
@@ -132,13 +141,22 @@ BEGIN
                 
                 INSERT INTO @SelectedRows (Row_ID)
                 SELECT TOP (@Qty) Row_ID 
-                FROM M_Code 
+                FROM M_Code WITH (NOLOCK)
                 WHERE Pro_ID IS NULL 
+                  AND Use_Type IS NULL
+                  AND Allot_Date IS NULL
                   AND (Print_Status IS NULL OR Print_Status = 0)
                   AND ISNULL([Use_Count],0) = 0 
                   AND DispatchFlag IS NULL 
                   AND ISNULL(ScrapeFlag,0) = 0
                 ORDER BY Row_ID ASC;
+
+                IF (SELECT COUNT(1) FROM @SelectedRows) < @Qty
+                BEGIN
+                    ROLLBACK TRANSACTION;
+                    SELECT 'Not sufficient code to print LABELS. Kindly first generate the CODES and then proceed further.' AS Result;
+                    RETURN;
+                END
 
                 -- Update top @Qty available codes in M_Code with sequential series
                 ;WITH CTE_Update AS (
