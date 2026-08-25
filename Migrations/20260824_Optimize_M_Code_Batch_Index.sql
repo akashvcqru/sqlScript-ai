@@ -9,6 +9,6 @@ BEGIN
     CREATE NONCLUSTERED INDEX [IX_M_Code_ProID_BatchNo]
     ON [dbo].[M_Code] ([Pro_ID], [Batch_No])
     INCLUDE ([Series_Order], [Series_Serial], [Row_ID])
-    WITH (ONLINE = ON, FILLFACTOR = 90);
+    WITH (FILLFACTOR = 90);
 END
 GO
