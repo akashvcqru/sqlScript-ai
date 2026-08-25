@@ -13,8 +13,7 @@ BEGIN
         Description NVARCHAR(500) NULL,
         IsActive BIT NOT NULL DEFAULT 1,
         IsDelete BIT NOT NULL DEFAULT 0,
-        ReportPermission NVARCHAR(MAX) NULL,
-        AppSettingPermission NVARCHAR(MAX) NULL,
+        PermissionSettings NVARCHAR(MAX) NULL,
         CreatedDate DATETIME NOT NULL DEFAULT GETDATE(),
         UpdatedDate DATETIME NULL
     );
@@ -29,13 +28,20 @@ BEGIN
     BEGIN
         ALTER TABLE tbl_VendorDashboardRoles ADD IsDelete BIT NOT NULL DEFAULT 0;
     END
-    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'ReportPermission')
+    -- Drop ReportPermission if it exists
+    IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'ReportPermission')
     BEGIN
-        ALTER TABLE tbl_VendorDashboardRoles ADD ReportPermission NVARCHAR(MAX) NULL;
+        ALTER TABLE tbl_VendorDashboardRoles DROP COLUMN ReportPermission;
     END
-    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'AppSettingPermission')
+    -- Rename AppSettingPermission to PermissionSettings if exists
+    IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'AppSettingPermission') 
+       AND NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'PermissionSettings')
     BEGIN
-        ALTER TABLE tbl_VendorDashboardRoles ADD AppSettingPermission NVARCHAR(MAX) NULL;
+        EXEC sp_rename 'tbl_VendorDashboardRoles.AppSettingPermission', 'PermissionSettings', 'COLUMN';
+    END
+    ELSE IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[tbl_VendorDashboardRoles]') AND name = 'PermissionSettings')
+    BEGIN
+        ALTER TABLE tbl_VendorDashboardRoles ADD PermissionSettings NVARCHAR(MAX) NULL;
     END
 END
 GO
