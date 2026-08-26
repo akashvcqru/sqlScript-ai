@@ -329,7 +329,7 @@ BEGIN
             ROLLBACK TRANSACTION;
 
         SET @ResultCode = 0;
-        SET @Message = 'Error: ' + ERROR_MESSAGE();
+        SET @Message = 'Error+: ' + ERROR_MESSAGE();
         
         SELECT 
             @ResultCode AS ResultCode, 
