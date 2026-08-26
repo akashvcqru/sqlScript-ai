@@ -51,6 +51,8 @@ BEGIN
     DECLARE @CurrentScanCount INT = 0;
     DECLARE @ReferrerReferralSST_ID INT = 0;
     DECLARE @ServiceID NVARCHAR(50) = NULL;
+    DECLARE @Points INT = 0;
+    DECLARE @Cash DECIMAL(18,2) = 0;
 
     -- Normalize mobile number (last 10 digits)
     SET @CleanMobile = RIGHT(@MobileNo, 10);
@@ -241,7 +243,6 @@ BEGIN
                         DECLARE @LoyaltyCheckID BIGINT = SCOPE_IDENTITY();
 
                         -- Calculate Points/Cash from SST
-                        DECLARE @Points INT, @Cash DECIMAL(18,2);
                         SELECT @Points = ISNULL(Points, 0), @Cash = ISNULL(IsCash, 0) FROM M_ServiceSubscriptionTrans WHERE SST_Id = @SST_ID;
 
                         -- Insert BLoyaltyPointsEarned for main consumer
@@ -320,6 +321,7 @@ BEGIN
             @Comp_ID AS Comp_ID,
             @Pro_ID AS Pro_ID,
             @Cash AS Amount,
+            @Points AS Points,
             @ServiceID AS ServiceID,
             @ConsumerName AS ConsumerName,
             @Email AS ConsumerEmail;
@@ -337,6 +339,7 @@ BEGIN
             @Comp_ID AS Comp_ID, 
             @Pro_ID AS Pro_ID,
             0 AS Amount,
+            0 AS Points,
             '' AS ServiceID,
             @ConsumerName AS ConsumerName,
             @Email AS ConsumerEmail;
