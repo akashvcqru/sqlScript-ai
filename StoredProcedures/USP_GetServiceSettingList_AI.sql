@@ -2,11 +2,7 @@
 -- Procedure: USP_GetServiceSettingList_AI
 -- Description: Fetch list of service settings for a vendor
 -- =============================================
-IF OBJECT_ID('USP_GetServiceSettingList_AI', 'P') IS NOT NULL
-    DROP PROCEDURE USP_GetServiceSettingList_AI
-GO
-
-CREATE PROCEDURE USP_GetServiceSettingList_AI
+CREATE OR ALTER PROCEDURE USP_GetServiceSettingList_AI
     @Comp_ID       NVARCHAR(50),
     @Pro_ID        NVARCHAR(50) = NULL,
     @Service_ID    NVARCHAR(10) = NULL,
@@ -17,15 +13,38 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    SELECT SST.SST_Id, SST.Subscribe_Id, P.Pro_Name, S.ServiceName, CASE WHEN SS.start_order IS NOT NULL AND SS.start_series IS NOT NULL THEN CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR) + ' to ' + CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR) ELSE 'All' END AS servicerange, SST.DateFrom, SST.DateTo, SST.Points, SST.IsCashConvert, SST.IsCash, SST.Frequency, SST.Comments, SST.IsActive, CASE WHEN SST.IsActive = 0 THEN 'Activated' ELSE 'De-Activated' END AS StatusText, SST.IsDelete, CT.mastercode, CT.Batch_No, CT.Dealer_Name, CT.Dealer_Location, CT.Mobile, CT.Email, CT.Invoice_Number, CT.BatchSize, CT.ID AS TrackTrace_ID, TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 2) AS BIGINT) AS Series_Order, TRY_CAST(PARSENAME(REPLACE(CT.SeriesStart, '-', '.'), 1) AS BIGINT) AS Start_Serial, TRY_CAST(PARSENAME(REPLACE(CT.SeriesEnd, '-', '.'), 1) AS BIGINT) AS End_Serial, SF.IsSound, CASE WHEN SF.IsSound = 0 THEN '../Data/Sound/' + SUBSTRING(SS.Comp_ID, 6, 4) + '/' + SS.Pro_ID + '/Loyalty/' + CAST(SST.SST_Id AS VARCHAR) + '/' + CAST(SST.SST_Id AS VARCHAR) + '_H.wav' ELSE '' END AS SoundPath, CASE WHEN SF.IsSound = 0 THEN '../Data/Sound/' + SUBSTRING(SS.Comp_ID, 6, 4) + '/' + SS.Pro_ID + '/Loyalty/' + CAST(SST.SST_Id AS VARCHAR) + '/' + CAST(SST.SST_Id AS VARCHAR) + '_E.wav' ELSE '' END AS SoundPath1, COUNT(*) OVER() as TotalRecords
-    FROM M_ServiceSubscriptionTrans SST
-    INNER JOIN M_ServiceSubscription SS ON SST.Subscribe_Id = SS.Subscribe_Id
-    INNER JOIN Pro_Reg P ON SS.Pro_ID = P.Pro_ID
-    INNER JOIN M_Service S ON SS.Service_ID = S.Service_ID
-    LEFT JOIN codeassign_tractrac CT ON SST.SST_Id = CT.SST_Id
-    LEFT JOIN M_ServiceFeature SF ON SS.Service_ID = SF.Service_ID
-    WHERE SS.Comp_ID = @Comp_ID AND (SST.IsDelete = 0 OR SST.IsDelete IS NULL) AND (@Pro_ID IS NULL OR SS.Pro_ID = @Pro_ID) AND (@Service_ID IS NULL OR SS.Service_ID = @Service_ID) AND (@Pro_Name IS NULL OR P.Pro_Name LIKE '%' + @Pro_Name + '%')
-    ORDER BY CT.entry_date DESC
+    SELECT SST.SST_Id, 
+           SST.Subscribe_Id, 
+           P.Pro_Name, 
+           S.ServiceName, 
+           CASE WHEN SS.start_order IS NOT NULL AND SS.start_series IS NOT NULL 
+                THEN CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR) + ' to ' + CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR) 
+                ELSE 'All' END AS servicerange, 
+           SST.DateFrom, 
+           SST.DateTo, 
+           SST.Points, 
+           SST.IsCashConvert, 
+           SST.IsCash, 
+           SST.Frequency, 
+           SST.Comments, 
+           SST.IsActive, 
+           CASE WHEN SST.IsActive = 0 THEN 'Activated' ELSE 'De-Activated' END AS StatusText, 
+           SST.IsDelete, 
+           ISNULL(CT.Batch_No, TP.Batch_No) AS Batch_No,
+           COUNT(*) OVER() as TotalRecords
+    FROM M_ServiceSubscriptionTrans SST WITH (NOLOCK)
+    INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+    INNER JOIN Pro_Reg P WITH (NOLOCK) ON SS.Pro_ID = P.Pro_ID
+    INNER JOIN M_Service S WITH (NOLOCK) ON SS.Service_ID = S.Service_ID
+    LEFT JOIN codeassign_tractrac CT WITH (NOLOCK) ON SST.SST_Id = CT.SST_Id
+    LEFT JOIN T_Pro TP WITH (NOLOCK) ON SS.Pro_ID = TP.Pro_ID 
+         AND (TP.Comments = SST.Comments OR (TP.Entry_Date >= DATEADD(SECOND, -10, SST.Entry_Date) AND TP.Entry_Date <= DATEADD(SECOND, 10, SST.Entry_Date)))
+    WHERE SS.Comp_ID = @Comp_ID 
+      AND (SST.IsDelete = 0 OR SST.IsDelete IS NULL) 
+      AND (@Pro_ID IS NULL OR SS.Pro_ID = @Pro_ID) 
+      AND (@Service_ID IS NULL OR SS.Service_ID = @Service_ID) 
+      AND (@Pro_Name IS NULL OR P.Pro_Name LIKE '%' + @Pro_Name + '%')
+    ORDER BY SST.Entry_Date DESC, SST.SST_Id DESC
     OFFSET (@PageIndex - 1) * @PageSize ROWS
     FETCH NEXT @PageSize ROWS ONLY;
 END
