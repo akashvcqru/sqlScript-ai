@@ -1,12 +1,12 @@
--- StoredProcedure [dbo].[SP_BL_GetBeneficiariesReport]
 USE [Vcqru]
 GO
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetBeneficiariesReport]    Script Date: 27-08-2026 16:41:16 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
+ALTER   PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
 (
     @Comp_Id         NVARCHAR(50),  
     @datePreset      NVARCHAR(20) = NULL,   -- TODAY, WEEK, LASTWEEK, MONTH, QUARTER, ALL
@@ -549,4 +549,3 @@ BEGIN
         FROM #FinalData;
     END
 END
-GO
