@@ -1,7 +1,7 @@
 name: Deploy SQL to UAT (Database)
 
 on:
-  push:
+  push: 
     branches: 
       - uat  # Triggers automatically when code is pushed to the uat branch
   workflow_dispatch:  # Allows you to click "Run workflow" manually on GitHub

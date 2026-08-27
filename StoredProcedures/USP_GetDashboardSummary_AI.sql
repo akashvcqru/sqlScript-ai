@@ -177,9 +177,9 @@ BEGIN
         AS DECIMAL(18,2))), 0) as RefCash
     INTO #ReferralStats
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-    INNER JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
+    INNER JOIN @CompanyList CL ON (BL.compid = CL.Comp_Id OR ISNULL(BL.compid, '') = '')
     WHERE BL.M_Consumerid = @M_Consumerid 
-      AND (BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL OR LOWER(ISNULL(BL.ServiceName, '')) IN ('referral', 'refral', 'kycrewards', 'supervisor', 'invoicebenifit', 'invoicerewards', 'transfer from user', 'bonus point', 'bonus'));
+      AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL;
 
     ---------------------------------------------------------
     -- Calculate specific totals for this consumer
