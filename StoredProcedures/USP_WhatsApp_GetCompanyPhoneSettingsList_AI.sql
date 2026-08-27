@@ -24,44 +24,64 @@ BEGIN
     IF (@IsExport = 1)
     BEGIN
         SELECT 
-            ID AS Id,
-            Comp_ID AS Comp_ID,
-            PhoneNumberId AS PhoneNumberId,
-            DisplayPhoneNumber AS DisplayPhoneNumber,
-            DisplayName AS DisplayName,
-            IsDefault AS IsDefault,
-            IsActive AS IsActive,
-            CreatedDate AS CreatedDate,
-            UpdatedDate AS UpdatedDate
-        FROM tbl_whatsapp_company_settings
-        WHERE (@Search IS NULL OR @Search = '' OR Comp_ID LIKE '%' + @Search + '%' OR PhoneNumberId LIKE '%' + @Search + '%' OR DisplayPhoneNumber LIKE '%' + @Search + '%' OR DisplayName LIKE '%' + @Search + '%')
-          AND (@IsActive IS NULL OR IsActive = @IsActive)
-        ORDER BY IsDefault DESC, ID DESC;
+            w.ID AS Id,
+            w.Comp_ID AS Comp_ID,
+            c.Comp_Name AS CompanyName,
+            w.PhoneNumberId AS PhoneNumberId,
+            w.DisplayPhoneNumber AS DisplayPhoneNumber,
+            w.DisplayName AS DisplayName,
+            w.IsDefault AS IsDefault,
+            w.IsActive AS IsActive,
+            w.CreatedDate AS CreatedDate,
+            w.UpdatedDate AS UpdatedDate
+        FROM tbl_whatsapp_company_settings w
+        LEFT JOIN Comp_Reg c WITH (NOLOCK) ON w.Comp_ID = c.Comp_ID
+        WHERE (@Search IS NULL OR @Search = '' 
+               OR w.Comp_ID LIKE '%' + @Search + '%' 
+               OR c.Comp_Name LIKE '%' + @Search + '%' 
+               OR w.PhoneNumberId LIKE '%' + @Search + '%' 
+               OR w.DisplayPhoneNumber LIKE '%' + @Search + '%' 
+               OR w.DisplayName LIKE '%' + @Search + '%')
+          AND (@IsActive IS NULL OR w.IsActive = @IsActive)
+        ORDER BY w.IsDefault DESC, w.ID DESC;
     END
     ELSE
     BEGIN
         -- Result Set 1: Filtered Company Phone Settings List
         SELECT 
-            ID AS Id,
-            Comp_ID AS Comp_ID,
-            PhoneNumberId AS PhoneNumberId,
-            DisplayPhoneNumber AS DisplayPhoneNumber,
-            DisplayName AS DisplayName,
-            IsDefault AS IsDefault,
-            IsActive AS IsActive,
-            CreatedDate AS CreatedDate,
-            UpdatedDate AS UpdatedDate
-        FROM tbl_whatsapp_company_settings
-        WHERE (@Search IS NULL OR @Search = '' OR Comp_ID LIKE '%' + @Search + '%' OR PhoneNumberId LIKE '%' + @Search + '%' OR DisplayPhoneNumber LIKE '%' + @Search + '%' OR DisplayName LIKE '%' + @Search + '%')
-          AND (@IsActive IS NULL OR IsActive = @IsActive)
-        ORDER BY IsDefault DESC, ID DESC
+            w.ID AS Id,
+            w.Comp_ID AS Comp_ID,
+            c.Comp_Name AS CompanyName,
+            w.PhoneNumberId AS PhoneNumberId,
+            w.DisplayPhoneNumber AS DisplayPhoneNumber,
+            w.DisplayName AS DisplayName,
+            w.IsDefault AS IsDefault,
+            w.IsActive AS IsActive,
+            w.CreatedDate AS CreatedDate,
+            w.UpdatedDate AS UpdatedDate
+        FROM tbl_whatsapp_company_settings w
+        LEFT JOIN Comp_Reg c WITH (NOLOCK) ON w.Comp_ID = c.Comp_ID
+        WHERE (@Search IS NULL OR @Search = '' 
+               OR w.Comp_ID LIKE '%' + @Search + '%' 
+               OR c.Comp_Name LIKE '%' + @Search + '%' 
+               OR w.PhoneNumberId LIKE '%' + @Search + '%' 
+               OR w.DisplayPhoneNumber LIKE '%' + @Search + '%' 
+               OR w.DisplayName LIKE '%' + @Search + '%')
+          AND (@IsActive IS NULL OR w.IsActive = @IsActive)
+        ORDER BY w.IsDefault DESC, w.ID DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
         -- Result Set 2: Total Count
         SELECT COUNT(1) AS TotalRecords
-        FROM tbl_whatsapp_company_settings
-        WHERE (@Search IS NULL OR @Search = '' OR Comp_ID LIKE '%' + @Search + '%' OR PhoneNumberId LIKE '%' + @Search + '%' OR DisplayPhoneNumber LIKE '%' + @Search + '%' OR DisplayName LIKE '%' + @Search + '%')
-          AND (@IsActive IS NULL OR IsActive = @IsActive);
+        FROM tbl_whatsapp_company_settings w
+        LEFT JOIN Comp_Reg c WITH (NOLOCK) ON w.Comp_ID = c.Comp_ID
+        WHERE (@Search IS NULL OR @Search = '' 
+               OR w.Comp_ID LIKE '%' + @Search + '%' 
+               OR c.Comp_Name LIKE '%' + @Search + '%' 
+               OR w.PhoneNumberId LIKE '%' + @Search + '%' 
+               OR w.DisplayPhoneNumber LIKE '%' + @Search + '%' 
+               OR w.DisplayName LIKE '%' + @Search + '%')
+          AND (@IsActive IS NULL OR w.IsActive = @IsActive);
     END
 END
 GO
