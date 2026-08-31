@@ -405,7 +405,7 @@ BEGIN
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
     INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
-    WHERE (CD.Isapproved = 1 OR CD.IsPaid = 1 OR CD.PaymentStatus = 'Paid')
+    WHERE CD.Isapproved = 1 AND CD.PaymentStatus = 'Success'
       AND (CD.action_date IS NULL OR ((@StartDate IS NULL OR CD.action_date >= @StartDate) AND (@EndDate IS NULL OR CD.action_date < @EndDate)))
     GROUP BY U.M_ConsumerId;
 
@@ -422,7 +422,7 @@ BEGIN
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
     INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
-    WHERE (CD.Isapproved = 1 OR CD.IsPaid = 1 OR CD.PaymentStatus = 'Paid')
+    WHERE CD.Isapproved = 1 AND CD.PaymentStatus = 'Success'
       AND (CD.action_date IS NULL OR ((@StartDate IS NULL OR CD.action_date >= @StartDate) AND (@EndDate IS NULL OR CD.action_date < @EndDate)))
     GROUP BY U.M_ConsumerId;
 
