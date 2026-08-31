@@ -38,7 +38,7 @@ BEGIN
         ;WITH FilteredBatches AS (
             SELECT 
                 LR.Row_ID,
-                LR.Tracking_No,
+                CAST(LR.Tracking_No AS NVARCHAR(50)) AS Tracking_No,
                 LR.Pro_ID,
                 LR.Entry_Date,
                 LR.Qty,
@@ -90,14 +90,15 @@ BEGIN
             FROM M_Code_PFL MC WITH (NOLOCK)
             WHERE MC.LabelRequestId = PB.Tracking_No AND MC.Pro_ID = PB.Pro_ID
         ) S
-        ORDER BY PB.Entry_Date DESC, PB.Row_ID DESC;
+        ORDER BY PB.Entry_Date DESC, PB.Row_ID DESC
+        OPTION (RECOMPILE);
     END
     ELSE
     BEGIN
         ;WITH FilteredBatches AS (
             SELECT 
                 LR.Row_ID,
-                LR.Tracking_No,
+                CAST(LR.Tracking_No AS NVARCHAR(50)) AS Tracking_No,
                 LR.Pro_ID,
                 LR.Entry_Date,
                 LR.Qty,
@@ -149,7 +150,8 @@ BEGIN
             FROM M_Code MC WITH (NOLOCK)
             WHERE MC.LabelRequestId = PB.Tracking_No AND MC.Pro_ID = PB.Pro_ID
         ) S
-        ORDER BY PB.Entry_Date DESC, PB.Row_ID DESC;
+        ORDER BY PB.Entry_Date DESC, PB.Row_ID DESC
+        OPTION (RECOMPILE);
     END
 END
 GO
