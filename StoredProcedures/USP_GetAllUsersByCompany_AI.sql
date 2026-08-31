@@ -113,7 +113,7 @@ begin
     where v.Comp_id=@Comp_id
       AND (@StartDate IS NULL OR v.Entry_date >= @StartDate)
       AND (@EndDate IS NULL OR v.Entry_date < @EndDate)
-      AND (
+         AND (
           @Search IS NULL OR LTRIM(RTRIM(@Search)) = '' OR
           M.MobileNo LIKE '%' + @Search + '%' OR
           M.ConsumerName LIKE '%' + @Search + '%' OR
