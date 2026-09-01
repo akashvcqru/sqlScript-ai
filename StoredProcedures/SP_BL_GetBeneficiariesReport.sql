@@ -133,10 +133,12 @@ BEGIN
     ---------------------------------------------------------
     -- EARLY CANDIDATE SEARCH FILTER (SHRINKS SEARCH QUERY INSTANTLY)
     ---------------------------------------------------------
+    CREATE TABLE #SearchMatchingUsers (M_ConsumerId INT PRIMARY KEY);
+
     IF @Search IS NOT NULL
     BEGIN
+        INSERT INTO #SearchMatchingUsers (M_ConsumerId)
         SELECT DISTINCT M_ConsumerId
-        INTO #SearchMatchingUsers
         FROM M_Consumer WITH (NOLOCK)
         WHERE (
             MobileNo LIKE '%' + @Search + '%'
@@ -144,7 +146,6 @@ BEGIN
             OR City LIKE '%' + @Search + '%'
             OR State LIKE '%' + @Search + '%'
         );
-        CREATE CLUSTERED INDEX IX_SearchMatchingUsers ON #SearchMatchingUsers(M_ConsumerId);
     END
 
     ---------------------------------------------------------
