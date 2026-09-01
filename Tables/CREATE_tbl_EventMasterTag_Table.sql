@@ -63,5 +63,24 @@ BEGIN
         INSERT INTO tbl_EventMasterTag (event_id, tag_name) VALUES ('republic_day_special', 'name');
     IF NOT EXISTS (SELECT 1 FROM tbl_EventMasterTag WHERE event_id = 'instant_broadcast' AND tag_name = 'name')
         INSERT INTO tbl_EventMasterTag (event_id, tag_name) VALUES ('instant_broadcast', 'name');
+
+    -- Payment Events
+    IF NOT EXISTS (SELECT 1 FROM tbl_EventMasterTag WHERE event_id = 'successfullpayment' AND tag_name = 'name')
+        INSERT INTO tbl_EventMasterTag (event_id, tag_name) VALUES ('successfullpayment', 'name');
+    IF NOT EXISTS (SELECT 1 FROM tbl_EventMasterTag WHERE event_id = 'successfullpayment' AND tag_name = 'company')
+        INSERT INTO tbl_EventMasterTag (event_id, tag_name) VALUES ('successfullpayment', 'company');
+    IF NOT EXISTS (SELECT 1 FROM tbl_EventMasterTag WHERE event_id = 'successfullpayment' AND tag_name = 'amount')
+        INSERT INTO tbl_EventMasterTag (event_id, tag_name) VALUES ('successfullpayment', 'amount');
+    IF NOT EXISTS (SELECT 1 FROM tbl_EventMasterTag WHERE event_id = 'successfullpayment' AND tag_name = 'transactionid')
+        INSERT INTO tbl_EventMasterTag (event_id, tag_name) VALUES ('successfullpayment', 'transactionid');
+
+    IF NOT EXISTS (SELECT 1 FROM tbl_EventMasterTag WHERE event_id = 'failpayment' AND tag_name = 'name')
+        INSERT INTO tbl_EventMasterTag (event_id, tag_name) VALUES ('failpayment', 'name');
+    IF NOT EXISTS (SELECT 1 FROM tbl_EventMasterTag WHERE event_id = 'failpayment' AND tag_name = 'company')
+        INSERT INTO tbl_EventMasterTag (event_id, tag_name) VALUES ('failpayment', 'company');
+    IF NOT EXISTS (SELECT 1 FROM tbl_EventMasterTag WHERE event_id = 'failpayment' AND tag_name = 'amount')
+        INSERT INTO tbl_EventMasterTag (event_id, tag_name) VALUES ('failpayment', 'amount');
+    IF NOT EXISTS (SELECT 1 FROM tbl_EventMasterTag WHERE event_id = 'failpayment' AND tag_name = 'transactionid')
+        INSERT INTO tbl_EventMasterTag (event_id, tag_name) VALUES ('failpayment', 'transactionid');
 END
 GO
