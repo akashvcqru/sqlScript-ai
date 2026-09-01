@@ -126,7 +126,7 @@ BEGIN
                  ELSE ISNULL(CD.Amount, 0) END) AS ClaimsAmount
     INTO #Claims
     FROM ClaimDetails CD WITH (NOLOCK)
-    WHERE CD.Comp_Id = @CompId AND CD.Isapproved = 1 AND PaymentStatus = 'Success'
+    WHERE CD.Comp_Id = @CompId AND CD.Isapproved = 1
       AND CD.Claim_date >= @CompRegDate
       AND CD.Claim_date >= @StartDate AND CD.Claim_date < DATEADD(DAY, 1, @EndDate)
       AND EXISTS (SELECT 1 FROM #Users U WHERE U.MobileNo = CD.MobileNo)

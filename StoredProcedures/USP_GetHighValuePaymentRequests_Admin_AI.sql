@@ -350,7 +350,7 @@ BEGIN
     INTO #Claims
     FROM #ReqConsumers rc
     INNER JOIN ClaimDetails CD WITH (NOLOCK) ON RIGHT(CD.Mobileno, 10) = RIGHT(rc.MobileNo, 10) AND CD.Comp_id = rc.CompId
-    WHERE CD.Isapproved = 1 AND CD.PaymentStatus = 'Success'
+    WHERE CD.Isapproved = 1
     GROUP BY rc.MobileNo, rc.CompId;
 
     -- 8. BPoints Debits

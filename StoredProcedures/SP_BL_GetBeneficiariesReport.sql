@@ -417,7 +417,7 @@ BEGIN
     INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     WHERE CD.Comp_id = @Comp_Id
-      AND CD.Isapproved = 1 AND CD.PaymentStatus = 'Success'
+      AND CD.Isapproved = 1
       AND (@StartDate IS NULL OR CD.Claim_date >= @StartDate)
       AND (@EndDate   IS NULL OR CD.Claim_date < @EndDate)
     GROUP BY U.M_ConsumerId;
