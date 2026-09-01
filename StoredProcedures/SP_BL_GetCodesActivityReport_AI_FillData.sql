@@ -8,7 +8,8 @@ GO
 -- =========================================================================================================
 -- Author:      Antigravity
 -- Create Date: 2026-07-21
--- Description: Codes Activity Report with Comp_ID and Comp_Name returned in result sets.
+-- Last Modified: 2026-09-01 (Synced with SP_BL_GetCodesActivityReport_AI points & virtual rows logic)
+-- Description: Codes Activity Report with Comp_ID and Comp_Name returned in result sets for background fill jobs.
 -- =========================================================================================================
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI_FillData]
     @Comp_Id VARCHAR(50),
@@ -47,8 +48,8 @@ BEGIN
     -- Explicit date range wins
     IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
     BEGIN
-        SET @StartDate = @FromDate;
-        SET @EndDate   = DATEADD(DAY, 1, @ToDate);
+        SET @StartDate = CAST(@FromDate AS DATETIME);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
     END
     ELSE
     BEGIN
@@ -170,7 +171,8 @@ BEGIN
         MCd.Pro_ID,
         MCd.Series_Order,
         MCd.Series_Serial,
-        MCd.Row_ID AS M_Codeid
+        MCd.Row_ID AS M_Codeid,
+        MCd.LabelRequestId
     INTO #MCode
     FROM M_Code MCd
     INNER JOIN #Codes C
@@ -178,6 +180,48 @@ BEGIN
        AND MCd.Code2 = C.Received_Code2;
 
     CREATE INDEX IX_MCode ON #MCode(Code1, Code2);
+
+    ----------------------------------------------------
+    -- UNIQUE LABEL REQUESTS
+    ----------------------------------------------------
+    IF OBJECT_ID('tempdb..#UniqueLabelRequests') IS NOT NULL DROP TABLE #UniqueLabelRequests;
+
+    SELECT DISTINCT 
+        LabelRequestId
+    INTO #UniqueLabelRequests
+    FROM #MCode
+    WHERE LabelRequestId IS NOT NULL AND LTRIM(RTRIM(LabelRequestId)) <> '';
+
+    CREATE INDEX IX_UniqueLabelRequests ON #UniqueLabelRequests(LabelRequestId);
+
+    ----------------------------------------------------
+    -- SOFT CODE GENERATE DETAILS (TEMP SOFT CODE)
+    ----------------------------------------------------
+    IF OBJECT_ID('tempdb..#TempSoftCode') IS NOT NULL DROP TABLE #TempSoftCode;
+
+    SELECT 
+        SD.TrackingId,
+        SD.Comp_id,
+        j.UserType,
+        j.Point,
+        UT.Row_ID AS UserTypeId,
+        UT.User_Type AS UserTypeName
+    INTO #TempSoftCode 
+    FROM tbl_SoftCodegenrate_Details SD WITH (NOLOCK)
+    CROSS APPLY OPENJSON(SD.pointsdata)
+    WITH (
+        UserType NVARCHAR(100) '$.UserType',
+        Point NVARCHAR(50) '$.Point'
+    ) j
+    LEFT JOIN User_Type UT WITH (NOLOCK)
+        ON (UT.User_Type = j.UserType OR CAST(UT.Row_ID AS VARCHAR(50)) = j.UserType)
+       AND (UT.Comp_ID = SD.Comp_id OR UT.Comp_ID = @Comp_Id)
+       AND ISNULL(UT.IsDeleted, 0) = 0
+    WHERE SD.TrackingId IN (SELECT LabelRequestId FROM #UniqueLabelRequests)
+      AND SD.pointsdata IS NOT NULL 
+      AND ISJSON(SD.pointsdata) = 1;
+
+    CREATE INDEX IX_TempSoftCode ON #TempSoftCode(TrackingId, UserType);
 
     ----------------------------------------------------
     -- PRODUCTS & COMPANY
@@ -225,7 +269,7 @@ BEGIN
     CREATE INDEX IX_Geo ON #Geo(Code1, Code2, MobileNo);
 
     ----------------------------------------------------
-    -- POINTS (REFACTORED - ID BASED)
+    -- POINTS (REFACTORED - ID BASED & MATCHED TO SP_BL_GetCodesActivityReport_AI)
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#Points') IS NOT NULL DROP TABLE #Points;
 
@@ -236,35 +280,38 @@ BEGIN
  
     SELECT
         MC.M_Codeid,
-        MAX(CAST(
+        ROW_NUMBER() OVER (PARTITION BY MC.M_Codeid ORDER BY BMC.Createdate ASC, BL.BLoyalty_PointEarnedID ASC) AS rn,
+        CAST(
             CASE 
                 WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
                 WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
                 ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
             END 
-        AS DECIMAL(18,2))) AS Points,
-        MAX(CAST(
+        AS DECIMAL(18,2)) AS Points,
+        CAST(
             CASE 
                 WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
                 WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
                 ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
             END 
-        AS DECIMAL(18,2))) AS WornPoint
+        AS DECIMAL(18,2)) AS WornPoint
     INTO #Points
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-    INNER JOIN (
-        SELECT Pkid, M_Consumer_MCOdeid, ROW_NUMBER() OVER (PARTITION BY M_Consumer_MCOdeid ORDER BY Createdate ASC) as rn
-        FROM BuiltLoyaltyMCodeCheck
-    ) BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid AND BMC.rn = 1
-    INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-    INNER JOIN M_Code M WITH (NOLOCK) ON MC.M_Codeid = M.Row_ID
-    INNER JOIN Pro_Reg PR WITH (NOLOCK) ON M.Pro_ID = PR.Pro_ID
-    LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON BL.SST_id = sst.SST_Id
-    LEFT JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
-    WHERE BL.compid = @Comp_Id OR (BL.compid IS NULL AND PR.Comp_ID = @Comp_Id)
-    GROUP BY MC.M_Codeid;
+    INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
+        ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
+        ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+    INNER JOIN #MCode M WITH (NOLOCK) 
+        ON MC.M_Codeid = M.M_Codeid
+    INNER JOIN Pro_Reg PR WITH (NOLOCK) 
+        ON M.Pro_ID = PR.Pro_ID
+    LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) 
+        ON BL.SST_id = sst.SST_Id
+    LEFT JOIN M_ServiceSubscription ss WITH (NOLOCK) 
+        ON sst.Subscribe_Id = ss.Subscribe_Id
+    WHERE BL.compid = @Comp_Id OR (BL.compid IS NULL AND PR.Comp_ID = @Comp_Id);
 
-    CREATE INDEX IX_Points_MCodeid ON #Points(M_Codeid);
+    CREATE INDEX IX_Points_MCodeid ON #Points(M_Codeid, rn);
 
     ----------------------------------------------------
     -- REFERRAL POINTS
@@ -372,6 +419,7 @@ BEGIN
         ConsumerName NVARCHAR(150),
         MobileNo VARCHAR(50),
         State NVARCHAR(100),
+        Vrkabel_User_Type NVARCHAR(100),
         City NVARCHAR(100),
         Pro_Name NVARCHAR(200),
         Points DECIMAL(18,2),
@@ -380,7 +428,8 @@ BEGIN
         Longitude VARCHAR(50),
         AssignPoint DECIMAL(18,2),
         WornPoint DECIMAL(18,2),
-        ReferralPoints DECIMAL(18,2)
+        ReferralPoints DECIMAL(18,2),
+        LabelRequestId VARCHAR(50)
     );
 
     -- 1. Insert scan enquiries
@@ -398,10 +447,15 @@ BEGIN
             ELSE MC.MobileNo
         END AS MobileNo,
         G.State,
+        cc.Vrkabel_User_Type,
         G.City,
         PR.Pro_Name,
         CASE 
-            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.Points, ISNULL(CP.ConfigPoints, 0)) 
+            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 
+                CASE 
+                    WHEN ISNULL(P.Points, 0) > 0 THEN P.Points 
+                    ELSE ISNULL(CP.ConfigPoints, 0) 
+                END
             ELSE 0 
         END AS Points,
         CASE 
@@ -416,10 +470,15 @@ BEGIN
             ELSE 0 
         END AS AssignPoint,
         CASE 
-            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN ISNULL(P.WornPoint, ISNULL(CP.ConfigPoints, 0)) 
+            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 
+                CASE 
+                    WHEN ISNULL(P.WornPoint, 0) > 0 THEN P.WornPoint 
+                    ELSE ISNULL(CP.ConfigPoints, 0) 
+                END
             ELSE 0 
         END AS WornPoint,
-        ISNULL(R.ReferralPoints, 0) AS ReferralPoints
+        ISNULL(R.ReferralPoints, 0) AS ReferralPoints,
+        MCd.LabelRequestId
     FROM
     (
         SELECT *,
@@ -431,14 +490,14 @@ BEGIN
         FROM #Enq
     ) E
     LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
+    LEFT JOIN tbl_Vendorvisekycstatus cc ON mc.M_Consumerid = cc.M_consumerId AND cc.comp_id = @Comp_Id
     LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
-    LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid
+    LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid AND P.rn = E.rn
     LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
     LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
     LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
     LEFT JOIN #ScanReferrals R ON R.Code1 = E.Received_Code1 AND R.Code2 = E.Received_Code2
-    WHERE
-      (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
+    WHERE (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1))
       AND (@StateFilter IS NULL OR G.State = @StateFilter);
 
     -- 2. Insert registration referrals (virtual rows)
@@ -448,133 +507,162 @@ BEGIN
         CR.Comp_Name,
         '' AS UniqueCode,
         BL.UpdateDate AS Enq_Date,
-        'Referral' AS Dial_Mode,
+        '' AS Dial_Mode,
         MC.ConsumerName,
         MC.MobileNo,
         MC.State,
+        cc.Vrkabel_User_Type,
         MC.City,
         'Referral Bonus' AS Pro_Name,
         0 AS Points,
-        'Referral' AS Result,
+        'Referral Point' AS Result,
         '' AS Latitude,
         '' AS Longitude,
         0 AS AssignPoint,
         0 AS WornPoint,
-        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints
+        SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints,
+        '' AS LabelRequestId
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
+    LEFT JOIN tbl_Vendorvisekycstatus cc ON mc.M_Consumerid = cc.M_consumerId AND cc.comp_id = @Comp_Id
     LEFT JOIN Comp_Reg CR ON CR.Comp_ID = BL.compid
     WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
       AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
       AND BL.Code1 IS NULL
-      AND (
-          (@Comp_Id IN ('Comp-1567','Comp-1650') AND BL.compid IN ('Comp-1567','Comp-1650'))
-          OR
-          (@Comp_Id NOT IN ('Comp-1567','Comp-1650') AND BL.compid = @Comp_Id)
-      )
+      AND BL.compid = @Comp_Id
       AND BL.UpdateDate >= @StartDate
       AND BL.UpdateDate < @EndDate
       AND (@StateFilter IS NULL OR MC.State = @StateFilter)
-    GROUP BY BL.compid, CR.Comp_Name, BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, BL.UpdateDate;
+    GROUP BY BL.compid, CR.Comp_Name, BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate;
+
+    -- 3. Insert extra/other earn point entries (virtual rows for Bonus, KYC, Invoice, etc.)
+    INSERT INTO #FinalReport
+    SELECT 
+        BL.compid AS Comp_ID,
+        CR.Comp_Name,
+        '' AS UniqueCode,
+        BL.UpdateDate AS Enq_Date,
+        '' AS Dial_Mode,
+        MC.ConsumerName,
+        MC.MobileNo,
+        MC.State,
+        cc.Vrkabel_User_Type,
+        MC.City,
+        ISNULL(NULLIF(BL.ServiceName, ''), 'Bonus Point') AS Pro_Name,
+        SUM(CAST(
+            CASE 
+                WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
+                ELSE ISNULL(BL.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS Points,
+        CASE 
+            WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%kyc%' THEN 'KYC Point'
+            WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%invoice%' THEN 'Invoice Point'
+            WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%refral%' OR LOWER(ISNULL(BL.ServiceName, '')) LIKE '%referral%' THEN 'Referral Point'
+            WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%bonus%' THEN 'Bonus Point'
+            WHEN LTRIM(RTRIM(ISNULL(BL.ServiceName, ''))) <> '' THEN BL.ServiceName + ' Point'
+            ELSE 'Bonus Point'
+        END AS Result,
+        '' AS Latitude,
+        '' AS Longitude,
+        0 AS AssignPoint,
+        SUM(CAST(
+            CASE 
+                WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
+                ELSE ISNULL(BL.Points, 0)
+            END 
+        AS DECIMAL(18,2))) AS WornPoint,
+        0 AS ReferralPoints,
+        '' AS LabelRequestId
+    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
+    LEFT JOIN tbl_Vendorvisekycstatus cc ON mc.M_Consumerid = cc.M_consumerId AND cc.comp_id = @Comp_Id
+    LEFT JOIN Comp_Reg CR ON CR.Comp_ID = BL.compid
+    WHERE BL.compid = @Comp_Id
+      AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+      AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
+      AND BL.UpdateDate >= @StartDate
+      AND BL.UpdateDate < @EndDate
+      AND (@StateFilter IS NULL OR MC.State = @StateFilter)
+    GROUP BY BL.compid, CR.Comp_Name, BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate, BL.ServiceName;
 
     ----------------------------------------------------
-    -- RESULT SET 1
+    -- RESULT SET 1 (Returns 17 Columns for FillData)
     ----------------------------------------------------
     IF (@IsExport = 1)
     BEGIN
         SELECT 
-            Comp_ID,
-            Comp_Name,
-            UniqueCode,
-            Enq_Date,
-            Dial_Mode,
-            ConsumerName,
-            MobileNo,
-            State,
-            City,
-            Pro_Name,
-            Points,
-            Result,
-            Latitude,
-            Longitude,
-            AssignPoint,
-            WornPoint,
-            ReferralPoints
-        FROM #FinalReport
+            FR.Comp_ID,
+            FR.Comp_Name,
+            FR.UniqueCode,
+            FR.Enq_Date,
+            FR.Dial_Mode,
+            FR.ConsumerName,
+            FR.MobileNo,
+            FR.State,
+            FR.City,
+            FR.Pro_Name,
+            FR.Points,
+            FR.Result,
+            FR.Latitude,
+            FR.Longitude,
+            CASE WHEN tsc.Point IS NULL THEN FR.AssignPoint ELSE ISNULL(TRY_CAST(tsc.Point AS DECIMAL(18,2)), FR.AssignPoint) END AS AssignPoint,
+            FR.WornPoint,
+            FR.ReferralPoints 
+        FROM #FinalReport FR 
+        LEFT JOIN #TempSoftCode tsc ON FR.LabelRequestId = tsc.TrackingId AND FR.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
-            Result = @CodeStatusFilter OR
-            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+            FR.Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND FR.Result = 'Already Scanned')
         )
         AND (
              @Search IS NULL
              OR LTRIM(RTRIM(@Search)) = ''
-             OR MobileNo LIKE '%' + @Search + '%'
-             OR UniqueCode LIKE '%' + @Search + '%'
-             OR Comp_ID LIKE '%' + @Search + '%'
-             OR Comp_Name LIKE '%' + @Search + '%'
+             OR FR.MobileNo LIKE '%' + @Search + '%'
+             OR FR.UniqueCode LIKE '%' + @Search + '%'
+             OR FR.Comp_ID LIKE '%' + @Search + '%'
+             OR FR.Comp_Name LIKE '%' + @Search + '%'
         )
-        ORDER BY Enq_Date DESC;
+        ORDER BY FR.Enq_Date DESC;
     END
     ELSE
     BEGIN
         SELECT 
-            Comp_ID,
-            Comp_Name,
-            UniqueCode,
-            Enq_Date,
-            Dial_Mode,
-            ConsumerName,
-            MobileNo,
-            State,
-            City,
-            Pro_Name,
-            Points,
-            Result,
-            Latitude,
-            Longitude,
-            AssignPoint,
-            WornPoint,
-            ReferralPoints
-        FROM #FinalReport
+            FR.Comp_ID,
+            FR.Comp_Name,
+            FR.UniqueCode,
+            FR.Enq_Date,
+            FR.Dial_Mode,
+            FR.ConsumerName,
+            FR.MobileNo,
+            FR.State,
+            FR.City,
+            FR.Pro_Name,
+            FR.Points,
+            FR.Result,
+            FR.Latitude,
+            FR.Longitude,
+            CASE WHEN tsc.Point IS NULL THEN FR.AssignPoint ELSE ISNULL(TRY_CAST(tsc.Point AS DECIMAL(18,2)), FR.AssignPoint) END AS AssignPoint,
+            FR.WornPoint,
+            FR.ReferralPoints 
+        FROM #FinalReport FR 
+        LEFT JOIN #TempSoftCode tsc ON FR.LabelRequestId = tsc.TrackingId AND FR.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
             @CodeStatusFilter IS NULL OR
-            Result = @CodeStatusFilter OR
-            (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
+            FR.Result = @CodeStatusFilter OR
+            (@CodeStatusFilter = 'Already Verified' AND FR.Result = 'Already Scanned')
         )
         AND (
              @Search IS NULL
              OR LTRIM(RTRIM(@Search)) = ''
-             OR MobileNo LIKE '%' + @Search + '%'
-             OR UniqueCode LIKE '%' + @Search + '%'
-             OR Comp_ID LIKE '%' + @Search + '%'
-             OR Comp_Name LIKE '%' + @Search + '%'
+             OR FR.MobileNo LIKE '%' + @Search + '%'
+             OR FR.UniqueCode LIKE '%' + @Search + '%'
+             OR FR.Comp_ID LIKE '%' + @Search + '%'
+             OR FR.Comp_Name LIKE '%' + @Search + '%'
         )
-        ORDER BY Enq_Date DESC
+        ORDER BY FR.Enq_Date DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
-
-        ----------------------------------------------------
-        -- META
-        ----------------------------------------------------
-        -- SELECT
-        --     COUNT(1) AS TotalRecords,
-        --     @Page AS CurrentPage,
-        --     @Limit AS [Limit],
-        --     CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        -- FROM #FinalReport
-        -- WHERE (
-        --     @CodeStatusFilter IS NULL OR
-        --     Result = @CodeStatusFilter OR
-        --     (@CodeStatusFilter = 'Already Verified' AND Result = 'Already Scanned')
-        -- )
-        -- AND (
-        --      @Search IS NULL
-        --      OR LTRIM(RTRIM(@Search)) = ''
-        --      OR MobileNo LIKE '%' + @Search + '%'
-        --      OR UniqueCode LIKE '%' + @Search + '%'
-        --      OR Comp_ID LIKE '%' + @Search + '%'
-        --      OR Comp_Name LIKE '%' + @Search + '%'
-        -- );
     END
 END
 GO
