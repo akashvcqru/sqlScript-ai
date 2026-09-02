@@ -1,7 +1,7 @@
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetDatabaseTableSizeReport_AI]
     @TableName NVARCHAR(256) = NULL,   -- Optional: filter by table name (e.g., 'M_Code')
     @TopN INT = NULL,                  -- Optional: Top N largest tables (e.g., 50)
-    @MinSizeMB DECIMAL(18,2) = NULL    -- Optional: filter tables larger than X MB
+    @MinSizeGB DECIMAL(18,2) = NULL    -- Optional: filter tables larger than X GB
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -21,13 +21,8 @@ BEGIN
                       AND p2.index_id IN (0, 1)
                 ) AS [TotalRows],
                 
-                CAST(SUM(a.total_pages) * 8.0 / 1024 AS DECIMAL(18, 2)) AS [TotalSize_MB],
                 CAST(SUM(a.total_pages) * 8.0 / 1024 / 1024 AS DECIMAL(18, 2)) AS [TotalSize_GB],
-                
-                CAST(SUM(a.used_pages) * 8.0 / 1024 AS DECIMAL(18, 2)) AS [UsedSize_MB],
                 CAST(SUM(a.used_pages) * 8.0 / 1024 / 1024 AS DECIMAL(18, 2)) AS [UsedSize_GB],
-                
-                CAST((SUM(a.total_pages) - SUM(a.used_pages)) * 8.0 / 1024 AS DECIMAL(18, 2)) AS [UnusedSize_MB],
                 CAST((SUM(a.total_pages) - SUM(a.used_pages)) * 8.0 / 1024 / 1024 AS DECIMAL(18, 2)) AS [UnusedSize_GB]
 
             FROM sys.tables t
@@ -51,15 +46,12 @@ BEGIN
             [SchemaName],
             [TableName],
             [TotalRows],
-            [TotalSize_MB],
             [TotalSize_GB],
-            [UsedSize_MB],
             [UsedSize_GB],
-            [UnusedSize_MB],
             [UnusedSize_GB]
         FROM TableSpaceData
-        WHERE (@MinSizeMB IS NULL OR TotalSize_MB >= @MinSizeMB)
-        ORDER BY [TotalSize_MB] DESC
+        WHERE (@MinSizeGB IS NULL OR TotalSize_GB >= @MinSizeGB)
+        ORDER BY [TotalSize_GB] DESC
         OFFSET 0 ROWS
         FETCH NEXT CASE WHEN @TopN IS NOT NULL AND @TopN > 0 THEN @TopN ELSE 2147483647 END ROWS ONLY;
 

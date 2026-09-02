@@ -14,8 +14,8 @@ BEGIN
             i.type_desc AS IndexType,
             SUM(ps.row_count) AS TableRows,
             CAST(
-                SUM(ps.reserved_page_count) * 8.0 / 1024 AS DECIMAL(18, 2)
-            ) AS IndexSizeMB,
+                SUM(ps.reserved_page_count) * 8.0 / 1024 / 1024 AS DECIMAL(18, 2)
+            ) AS IndexSizeGB,
             ISNULL(us.user_seeks, 0) AS UserSeeks,
             ISNULL(us.user_scans, 0) AS UserScans,
             ISNULL(us.user_lookups, 0) AS UserLookups,
@@ -65,7 +65,7 @@ BEGIN
                    + ISNULL(us.user_lookups, 0) = 0 THEN 0
                 ELSE 1
             END,
-            IndexSizeMB DESC;
+            IndexSizeGB DESC;
 
     END TRY
     BEGIN CATCH
