@@ -47,21 +47,19 @@ BEGIN
         (
             SELECT
                 us.object_id,
-                -- Last Read Time (Seeks, Scans, Lookups)
-                MAX(
-                    CASE 
-                        WHEN us.last_user_seek >= ISNULL(us.last_user_scan, '1900-01-01') AND us.last_user_seek >= ISNULL(us.last_user_lookup, '1900-01-01') THEN us.last_user_seek
-                        WHEN us.last_user_scan >= ISNULL(us.last_user_lookup, '1900-01-01') THEN us.last_user_scan
-                        ELSE us.last_user_lookup
-                    END
-                ) AS [LastReadTime],
+                -- Last Read Time (Seek, Scan, Lookup)
+                MAX(r.ReadTime) AS [LastReadTime],
                 
-                -- Last Write Time (Updates, Inserts, Deletes)
+                -- Last Write Time (Update, Insert, Delete)
                 MAX(us.last_user_update) AS [LastWriteTime],
                 
                 SUM(ISNULL(us.user_seeks, 0) + ISNULL(us.user_scans, 0) + ISNULL(us.user_lookups, 0)) AS [TotalReads],
                 SUM(ISNULL(us.user_updates, 0)) AS [TotalWrites]
             FROM sys.dm_db_index_usage_stats us
+            CROSS APPLY (
+                SELECT MAX(v.d) AS ReadTime
+                FROM (VALUES (us.last_user_seek), (us.last_user_scan), (us.last_user_lookup)) AS v(d)
+            ) r
             WHERE us.database_id = DB_ID()
             GROUP BY us.object_id
         )
@@ -74,18 +72,13 @@ BEGIN
             tsd.[UnusedSize_GB],
             
             -- Overall Last Access Time (Date & Time)
-            CASE 
-                WHEN tud.LastReadTime IS NOT NULL AND tud.LastWriteTime IS NOT NULL THEN
-                    CASE WHEN tud.LastReadTime >= tud.LastWriteTime THEN tud.LastReadTime ELSE tud.LastWriteTime END
-                WHEN tud.LastReadTime IS NOT NULL THEN tud.LastReadTime
-                WHEN tud.LastWriteTime IS NOT NULL THEN tud.LastWriteTime
-                ELSE NULL
-            END AS [LastAccessTime],
+            a.MaxAccessTime AS [LastAccessTime],
 
-            -- Last Activity Type: Select (Read), Insert/Update/Delete (Write), or No Activity
+            -- Last Activity Type: Read (Select), Write (Insert/Update/Delete), or No Activity
             CASE 
                 WHEN tud.LastReadTime IS NULL AND tud.LastWriteTime IS NULL THEN 'No Activity'
-                WHEN tud.LastWriteTime IS NOT NULL AND (tud.LastReadTime IS NULL OR tud.LastWriteTime >= tud.LastReadTime) THEN 'Write (Insert/Update/Delete)'
+                WHEN tud.LastWriteTime IS NOT NULL AND (tud.LastReadTime IS NULL OR tud.LastWriteTime >= tud.LastReadTime) 
+                    THEN 'Write (Insert/Update/Delete)'
                 ELSE 'Read (Select)'
             END AS [LastActivityType],
 
@@ -97,6 +90,10 @@ BEGIN
         FROM TableSpaceData tsd
         LEFT JOIN TableUsageData tud
             ON tsd.object_id = tud.object_id
+        CROSS APPLY (
+            SELECT MAX(v.d) AS MaxAccessTime
+            FROM (VALUES (tud.LastReadTime), (tud.LastWriteTime)) AS v(d)
+        ) a
         WHERE (@MinSizeGB IS NULL OR tsd.TotalSize_GB >= @MinSizeGB)
         ORDER BY tsd.[TotalSize_GB] DESC
         OFFSET 0 ROWS
