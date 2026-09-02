@@ -6,11 +6,17 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- =============================================
--- Author:      Antigravity
--- Create date: 2026-09-02
--- Description: Retrieves failed transaction summary report for Admin with company info, wallet balances, pagination, presets, and search.
--- =============================================
+-- ====================================================================
+-- Migration: 20260902_Deduplicate_SP_FailedTransactionSummaryAdmin_AI.sql
+-- Purpose: Remove duplicate transactions from FailedTransactionSummary:
+--          1. Excludes transactions marked 'Duplicate Transaction' or '%Duplicate%'.
+--          2. Excludes coupon records where ANY transaction with that Code1 & Code2 succeeded.
+--          3. Excludes non-coupon records where ClaimDetails or tblUPITransactionDetails has a successful payout.
+--          4. Deduplicates multiple retry attempts for coupons and non-coupons, keeping only the latest.
+--          5. Adds CompleteCode (Code1 + Code2 merged).
+--          6. If account_no is null or blank, falls back to UPI_Id.
+--          7. Removes unused/null Service_ID and tblCashWalletBalance outer apply.
+-- ====================================================================
 CREATE OR ALTER PROCEDURE [dbo].[SP_FailedTransactionSummaryAdmin_AI]
     @CompId       NVARCHAR(50) = NULL,
     @Search       NVARCHAR(100) = NULL,
