@@ -528,7 +528,7 @@ BEGIN
                         FROM ClaimDetails CD WITH (NOLOCK)
                         WHERE CD.Comp_id = @ActualComp_ID 
                           AND CD.Mobileno IN (SELECT MobileNo FROM @ConsumerMobiles)
-                          AND CD.Isapproved = 1 AND CD.PaymentStatus = 'Success';
+                          AND CD.Isapproved = 1;
 
                         -- 4. Total UPI Transferred
                         DECLARE @TotalUPI DECIMAL(18,2) = 0;

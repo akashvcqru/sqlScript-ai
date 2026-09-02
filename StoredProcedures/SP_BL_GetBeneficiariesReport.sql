@@ -123,7 +123,30 @@ BEGIN
     END
 
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #Candidates, #Users, #UserMobiles, #State, #Benefit, #Claims, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals, #OtherEarnedPoints;
+    DROP TABLE IF EXISTS #Candidates, #Users, #UserMobiles, #State, #Benefit, #Claims, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints, #Referrals, #OtherEarnedPoints, #SearchMatchingUsers;
+
+    -- Normalize filters early
+    IF LTRIM(RTRIM(ISNULL(@Search, ''))) = '' OR @Search = 'null' SET @Search = NULL;
+    IF LTRIM(RTRIM(ISNULL(@KYCStatusFilter, ''))) = '' OR @KYCStatusFilter = 'null' SET @KYCStatusFilter = NULL;
+    IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' OR @StateFilter = 'null' SET @StateFilter = NULL;
+
+    ---------------------------------------------------------
+    -- EARLY CANDIDATE SEARCH FILTER (SHRINKS SEARCH QUERY INSTANTLY)
+    ---------------------------------------------------------
+    CREATE TABLE #SearchMatchingUsers (M_ConsumerId INT PRIMARY KEY);
+
+    IF @Search IS NOT NULL
+    BEGIN
+        INSERT INTO #SearchMatchingUsers (M_ConsumerId)
+        SELECT DISTINCT M_ConsumerId
+        FROM M_Consumer WITH (NOLOCK)
+        WHERE (
+            MobileNo LIKE '%' + @Search + '%'
+            OR ConsumerName LIKE '%' + @Search + '%'
+            OR City LIKE '%' + @Search + '%'
+            OR State LIKE '%' + @Search + '%'
+        );
+    END
 
     ---------------------------------------------------------
     -- CANDIDATE USERS FOR THIS COMPANY (FAST DISCOVERY)
@@ -141,7 +164,8 @@ BEGIN
         UNION
         SELECT TRY_CAST(t.M_Consumerid AS INT) AS M_ConsumerId FROM tblUPITransactionDetails t WITH (NOLOCK) WHERE t.Comp_Id = @Comp_Id AND t.Status = 'Success' AND LEN(ISNULL(t.Code1, '')) > 3
     ) x
-    WHERE M_ConsumerId IS NOT NULL;
+    WHERE M_ConsumerId IS NOT NULL
+      AND (@Search IS NULL OR M_ConsumerId IN (SELECT M_ConsumerId FROM #SearchMatchingUsers));
 
     CREATE CLUSTERED INDEX IX_Candidates_ConsumerId ON #Candidates(M_ConsumerId);
 
@@ -315,7 +339,7 @@ BEGIN
       AND SS.Comp_Id = @Comp_Id
       AND SS.IsActive = 1 AND SS.IsDelete = 0
       AND SST.IsActive = 1 AND SST.IsDelete = 0
-      AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
+      AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1028', 'SRV1029', 'SRV1023', 'SRV1024', 'SRV1027')
       AND (US.Series_Order > SS.start_order OR (US.Series_Order = SS.start_order AND US.Series_Serial >= SS.start_series))
       AND (US.Series_Order < SS.end_order OR (US.Series_Order = SS.end_order AND US.Series_Serial <= SS.end_series))
     GROUP BY US.M_Codeid;
@@ -394,7 +418,7 @@ BEGIN
     INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     WHERE CD.Comp_id = @Comp_Id
-      AND CD.Isapproved = 1 AND CD.PaymentStatus = 'Success'
+      AND CD.Isapproved = 1
       AND (@StartDate IS NULL OR CD.Claim_date >= @StartDate)
       AND (@EndDate   IS NULL OR CD.Claim_date < @EndDate)
     GROUP BY U.M_ConsumerId;

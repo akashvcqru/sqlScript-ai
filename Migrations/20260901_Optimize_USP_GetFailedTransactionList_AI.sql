@@ -1,16 +1,22 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetFailedTransactionList_AI]    Script Date: 9/1/2026 4:15:00 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
 -- ====================================================================
--- Stored Procedure: USP_GetFailedTransactionList_AI
--- Purpose: Retrieves detailed list of failed transactions for reporting.
--- Used By: ReprocessTransactionService (Failed Transaction List API)
+-- Migration: 20260901_Optimize_USP_GetFailedTransactionList_AI.sql
+-- Purpose: Highly optimize USP_GetFailedTransactionList_AI to eliminate
+--          massive latency during search and pagination queries.
+-- Fixes:
+--  1. Adds proper datePreset handling (TODAY, YESTERDAY, WEEK, MONTH, etc.).
+--  2. Uses sargable date filtering on ReqDate instead of CAST(ReqDate AS DATE).
+--  3. Adds @Search, @Comp_ID, date filters, and @CutoffDate bounds to all 3 PRE-STEPs
+--     so searches (e.g. search=7416134445) no longer trigger full table scans/updates.
+--  4. Adds WITH (NOLOCK) across all read operations.
 -- ====================================================================
+
 ALTER PROCEDURE [dbo].[USP_GetFailedTransactionList_AI]
     @Comp_ID    VARCHAR(50)  = NULL,
     @datePreset VARCHAR(50)  = NULL,
