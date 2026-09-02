@@ -13,6 +13,7 @@ BEGIN
             SELECT
                 s.name AS [SchemaName],
                 t.name AS [TableName],
+                t.object_id,
                 
                 (
                     SELECT SUM(p2.[rows])
@@ -41,17 +42,63 @@ BEGIN
                 s.name,
                 t.name,
                 t.object_id
+        ),
+        TableUsageData AS
+        (
+            SELECT
+                us.object_id,
+                -- Last Read Time (Seeks, Scans, Lookups)
+                MAX(
+                    CASE 
+                        WHEN us.last_user_seek >= ISNULL(us.last_user_scan, '1900-01-01') AND us.last_user_seek >= ISNULL(us.last_user_lookup, '1900-01-01') THEN us.last_user_seek
+                        WHEN us.last_user_scan >= ISNULL(us.last_user_lookup, '1900-01-01') THEN us.last_user_scan
+                        ELSE us.last_user_lookup
+                    END
+                ) AS [LastReadTime],
+                
+                -- Last Write Time (Updates, Inserts, Deletes)
+                MAX(us.last_user_update) AS [LastWriteTime],
+                
+                SUM(ISNULL(us.user_seeks, 0) + ISNULL(us.user_scans, 0) + ISNULL(us.user_lookups, 0)) AS [TotalReads],
+                SUM(ISNULL(us.user_updates, 0)) AS [TotalWrites]
+            FROM sys.dm_db_index_usage_stats us
+            WHERE us.database_id = DB_ID()
+            GROUP BY us.object_id
         )
         SELECT 
-            [SchemaName],
-            [TableName],
-            [TotalRows],
-            [TotalSize_GB],
-            [UsedSize_GB],
-            [UnusedSize_GB]
-        FROM TableSpaceData
-        WHERE (@MinSizeGB IS NULL OR TotalSize_GB >= @MinSizeGB)
-        ORDER BY [TotalSize_GB] DESC
+            tsd.[SchemaName],
+            tsd.[TableName],
+            tsd.[TotalRows],
+            tsd.[TotalSize_GB],
+            tsd.[UsedSize_GB],
+            tsd.[UnusedSize_GB],
+            
+            -- Overall Last Access Time (Date & Time)
+            CASE 
+                WHEN tud.LastReadTime IS NOT NULL AND tud.LastWriteTime IS NOT NULL THEN
+                    CASE WHEN tud.LastReadTime >= tud.LastWriteTime THEN tud.LastReadTime ELSE tud.LastWriteTime END
+                WHEN tud.LastReadTime IS NOT NULL THEN tud.LastReadTime
+                WHEN tud.LastWriteTime IS NOT NULL THEN tud.LastWriteTime
+                ELSE NULL
+            END AS [LastAccessTime],
+
+            -- Last Activity Type: Select (Read), Insert/Update/Delete (Write), or No Activity
+            CASE 
+                WHEN tud.LastReadTime IS NULL AND tud.LastWriteTime IS NULL THEN 'No Activity'
+                WHEN tud.LastWriteTime IS NOT NULL AND (tud.LastReadTime IS NULL OR tud.LastWriteTime >= tud.LastReadTime) THEN 'Write (Insert/Update/Delete)'
+                ELSE 'Read (Select)'
+            END AS [LastActivityType],
+
+            tud.[LastReadTime],
+            tud.[LastWriteTime],
+            ISNULL(tud.[TotalReads], 0) AS [TotalReads],
+            ISNULL(tud.[TotalWrites], 0) AS [TotalWrites]
+
+        FROM TableSpaceData tsd
+        LEFT JOIN TableUsageData tud
+            ON tsd.object_id = tud.object_id
+        WHERE (@MinSizeGB IS NULL OR tsd.TotalSize_GB >= @MinSizeGB)
+        ORDER BY tsd.[TotalSize_GB] DESC
         OFFSET 0 ROWS
         FETCH NEXT CASE WHEN @TopN IS NOT NULL AND @TopN > 0 THEN @TopN ELSE 2147483647 END ROWS ONLY;
 

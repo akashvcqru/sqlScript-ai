@@ -12,7 +12,6 @@ BEGIN
             mf.type_desc AS [FileType],
             
             -- SQL File Size
-            CAST(mf.size * 8.0 / 1024 AS DECIMAL(18, 2)) AS [FileSize_MB],
             CAST(mf.size * 8.0 / 1024 / 1024 AS DECIMAL(18, 2)) AS [FileSize_GB],
             
             -- Host Drive
