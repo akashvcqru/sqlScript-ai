@@ -298,6 +298,6 @@ BEGIN
           OR UT.UPI_Id LIKE '%' + @Search + '%'
           OR UT.account_no LIKE '%' + @Search + '%'
       )
-    ORDER BY UT.Id ASC;
+    ORDER BY UT.ReqDate DESC;
 END;
 GO
