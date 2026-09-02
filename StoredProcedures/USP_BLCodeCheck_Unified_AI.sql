@@ -57,6 +57,77 @@ BEGIN
     -- Normalize mobile number (last 10 digits)
     SET @CleanMobile = RIGHT(@MobileNo, 10);
 
+    -- =========================================================================
+    -- STEP 0: VENDOR-WISE DAILY USER SCAN LIMIT & TIME WINDOW CHECK
+    -- =========================================================================
+    IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'tbl_VendorScanLimitSetting')
+    BEGIN
+        DECLARE @DailyUserLimit INT = NULL;
+        DECLARE @ScanStartTime TIME(0) = NULL;
+        DECLARE @ScanEndTime TIME(0) = NULL;
+        DECLARE @CustomLimitMsg NVARCHAR(500) = NULL;
+
+        SELECT TOP 1 
+            @DailyUserLimit = DailyUserScanLimit,
+            @ScanStartTime = ISNULL(ScanStartTime, '00:00:00'),
+            @ScanEndTime = ISNULL(ScanEndTime, '23:59:59'),
+            @CustomLimitMsg = CustomLimitMessage
+        FROM [dbo].[tbl_VendorScanLimitSetting] WITH (NOLOCK)
+        WHERE Comp_Id = @Comp_ID 
+          AND IsActive = 1;
+
+        IF @DailyUserLimit IS NOT NULL AND @DailyUserLimit > 0
+        BEGIN
+            DECLARE @CurrentTime TIME(0) = CAST(GETDATE() AS TIME(0));
+
+            -- Check A: Time window check
+            IF (@ScanStartTime IS NOT NULL AND @ScanEndTime IS NOT NULL)
+            BEGIN
+                IF @CurrentTime < @ScanStartTime OR @CurrentTime > @ScanEndTime
+                BEGIN
+                    -- Stop immediately: No writes to any table
+                    SELECT 
+                        3 AS ResultCode, 
+                        CONCAT('Code scanning is allowed only between ', 
+                               FORMAT(CAST(@ScanStartTime AS DATETIME), 'hh:mm tt'), ' and ', 
+                               FORMAT(CAST(@ScanEndTime AS DATETIME), 'hh:mm tt'), '.') AS Message,
+                        @Comp_ID AS Comp_ID,
+                        NULL AS Pro_ID,
+                        0 AS Amount,
+                        0 AS Points,
+                        '' AS ServiceID,
+                        @ConsumerName AS ConsumerName,
+                        @Email AS ConsumerEmail;
+                    RETURN;
+                END
+            END
+
+            -- Check B: Daily scan limit count check
+            DECLARE @TodayScanCount INT = 0;
+            SELECT @TodayScanCount = COUNT(1)
+            FROM [dbo].[Pro_Enq] WITH (NOLOCK)
+            WHERE Comp_ID = @Comp_ID
+              AND RIGHT(MobileNo, 10) = @CleanMobile
+              AND CAST(Enq_Date AS DATE) = CAST(GETDATE() AS DATE);
+
+            IF @TodayScanCount >= @DailyUserLimit
+            BEGIN
+                -- Stop immediately: No writes to any table
+                SELECT 
+                    3 AS ResultCode, 
+                    ISNULL(NULLIF(LTRIM(RTRIM(@CustomLimitMsg)), ''), 'You have reached your daily scan limit for today. Please try again tomorrow.') AS Message,
+                    @Comp_ID AS Comp_ID,
+                    NULL AS Pro_ID,
+                    0 AS Amount,
+                    0 AS Points,
+                    '' AS ServiceID,
+                    @ConsumerName AS ConsumerName,
+                    @Email AS ConsumerEmail;
+                RETURN;
+            END
+        END
+    END
+
     BEGIN TRY
         BEGIN TRANSACTION;
 

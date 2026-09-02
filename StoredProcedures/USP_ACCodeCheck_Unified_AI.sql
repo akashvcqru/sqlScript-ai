@@ -69,6 +69,67 @@ BEGIN
         RETURN;
     END
 
+    -- =========================================================================
+    -- VENDOR-WISE DAILY SCAN LIMIT & TIME WINDOW CHECK
+    -- =========================================================================
+    IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'tbl_VendorScanLimitSetting')
+    BEGIN
+        DECLARE @VendorDailyLimit INT = NULL;
+        DECLARE @VendorScanStartTime TIME(0) = NULL;
+        DECLARE @VendorScanEndTime TIME(0) = NULL;
+        DECLARE @VendorCustomLimitMsg NVARCHAR(500) = NULL;
+        DECLARE @CheckCompID NVARCHAR(50) = ISNULL(@Comp_ID, @CurrentCompID);
+
+        SELECT TOP 1 
+            @VendorDailyLimit = DailyUserScanLimit,
+            @VendorScanStartTime = ISNULL(ScanStartTime, '00:00:00'),
+            @VendorScanEndTime = ISNULL(ScanEndTime, '23:59:59'),
+            @VendorCustomLimitMsg = CustomLimitMessage
+        FROM [dbo].[tbl_VendorScanLimitSetting] WITH (NOLOCK)
+        WHERE Comp_Id = @CheckCompID 
+          AND IsActive = 1;
+
+        IF @VendorDailyLimit IS NOT NULL AND @VendorDailyLimit > 0
+        BEGIN
+            DECLARE @CurrentTimeVal TIME(0) = CAST(GETDATE() AS TIME(0));
+
+            -- Check Time Window
+            IF (@VendorScanStartTime IS NOT NULL AND @VendorScanEndTime IS NOT NULL)
+            BEGIN
+                IF @CurrentTimeVal < @VendorScanStartTime OR @CurrentTimeVal > @VendorScanEndTime
+                BEGIN
+                    SELECT 
+                        3 AS ResultCode, 
+                        CONCAT('Code scanning is allowed only between ', 
+                               FORMAT(CAST(@VendorScanStartTime AS DATETIME), 'hh:mm tt'), ' and ', 
+                               FORMAT(CAST(@VendorScanEndTime AS DATETIME), 'hh:mm tt'), '.') AS [Message],
+                        @CheckCompID AS Comp_ID;
+                    RETURN;
+                END
+            END
+
+            -- Check User Daily Limit (if MobileNo is provided)
+            IF @MobileNo IS NOT NULL AND LTRIM(RTRIM(@MobileNo)) <> ''
+            BEGIN
+                DECLARE @TodayScanCountVal INT = 0;
+                SELECT @TodayScanCountVal = COUNT(1)
+                FROM [dbo].[Pro_Enq] WITH (NOLOCK)
+                WHERE Comp_ID = @CheckCompID
+                  AND RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
+                  AND CAST(Enq_Date AS DATE) = CAST(GETDATE() AS DATE);
+
+                IF @TodayScanCountVal >= @VendorDailyLimit
+                BEGIN
+                    SELECT 
+                        3 AS ResultCode, 
+                        ISNULL(NULLIF(LTRIM(RTRIM(@VendorCustomLimitMsg)), ''), 'You have reached your daily scan limit for today. Please try again tomorrow.') AS [Message],
+                        @CheckCompID AS Comp_ID;
+                    RETURN;
+                END
+            END
+        END
+    END
+
     -- Check Service Subscription
     IF NOT EXISTS (SELECT 1 FROM M_ServiceSubscription WHERE Pro_ID = @ProID)
     BEGIN
