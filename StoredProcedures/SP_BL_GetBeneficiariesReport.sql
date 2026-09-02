@@ -162,7 +162,7 @@ BEGIN
         UNION
         SELECT TRY_CAST(M_CounserID AS INT) AS M_ConsumerId FROM Transactions WITH (NOLOCK) WHERE (CompId = REPLACE(@Comp_Id, 'Comp-', '') OR CompId = @Comp_Id) AND Issuccess = 1
         UNION
-        SELECT TRY_CAST(t.M_Consumerid AS INT) AS M_ConsumerId FROM tblUPITransactionDetails t WITH (NOLOCK) WHERE t.Comp_Id = @Comp_Id AND t.Status = 'Success' AND LEN(ISNULL(t.Code1, '')) > 3
+        SELECT TRY_CAST(t.M_Consumerid AS INT) AS M_ConsumerId FROM tblUPITransactionDetails t WITH (NOLOCK) WHERE t.Comp_Id = @Comp_Id AND t.Status = 'Success'
     ) x
     WHERE M_ConsumerId IS NOT NULL
       AND (@Search IS NULL OR M_ConsumerId IN (SELECT M_ConsumerId FROM #SearchMatchingUsers));
@@ -419,6 +419,14 @@ BEGIN
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     WHERE CD.Comp_id = @Comp_Id
       AND CD.Isapproved = 1
+      AND NOT EXISTS (
+          SELECT 1 FROM tblUPITransactionDetails UT WITH (NOLOCK)
+          WHERE (UT.MobileNo = CD.Mobileno OR RIGHT(UT.MobileNo, 10) = RIGHT(CD.Mobileno, 10))
+            AND UT.Amount = CD.Amount
+            AND UT.Comp_Id = @Comp_Id
+            AND UT.Status = 'Success'
+            AND (UT.Code1 IS NULL OR LEN(UT.Code1) <= 3)
+      )
       AND (@StartDate IS NULL OR CD.Claim_date >= @StartDate)
       AND (@EndDate   IS NULL OR CD.Claim_date < @EndDate)
     GROUP BY U.M_ConsumerId;
@@ -437,7 +445,6 @@ BEGIN
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     WHERE t.Status = 'Success'
       AND t.Comp_Id = @Comp_Id
-      AND LEN(ISNULL(t.Code1, '')) > 3
       AND (@StartDate IS NULL OR t.ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR t.ReqDate < @EndDate)
     GROUP BY U.M_ConsumerId;

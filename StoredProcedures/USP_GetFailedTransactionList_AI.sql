@@ -257,16 +257,24 @@ BEGIN
           AND ISNULL(Account_No, '') <> ''
         ORDER BY Row_ID DESC
     ) MBAA
-    WHERE UT.Status = 'Failed'
-      AND UT.Remarks IN (
-          'Insufficient wallet balance for debit'
-         ,'Service Provider Downtime'
-         ,'Insufficient Wallet Balance'
-         ,'BENEFICIARY BANK IS DOWN'
-         ,'Beneficiary Bank is not responding, try again later'
-         ,'TRANSACTION TYPE NOT SUPPORTED'
-         ,'Invalid Account Number'
-      )
+    WHERE (
+        (
+            UT.Status = 'Failed'
+            AND UT.Remarks IN (
+                'Insufficient wallet balance for debit'
+               ,'Service Provider Downtime'
+               ,'Insufficient Wallet Balance'
+               ,'BENEFICIARY BANK IS DOWN'
+               ,'Beneficiary Bank is not responding, try again later'
+               ,'TRANSACTION TYPE NOT SUPPORTED'
+               ,'Invalid Account Number'
+            )
+        )
+        OR (
+            UT.OrderId LIKE 'TXN[2][0][2-9][0-9]%'
+            AND LEN(UT.OrderId) = 17
+        )
+    )
       AND LEN(UT.Code1) = 5 
       AND LEN(UT.Code2) = 8
       AND (UT.Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
@@ -290,6 +298,6 @@ BEGIN
           OR UT.UPI_Id LIKE '%' + @Search + '%'
           OR UT.account_no LIKE '%' + @Search + '%'
       )
-    ORDER BY UT.Id ASC;
+    ORDER BY UT.ReqDate DESC;
 END;
 GO
