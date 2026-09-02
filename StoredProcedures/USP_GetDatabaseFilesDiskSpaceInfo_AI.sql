@@ -15,27 +15,10 @@ BEGIN
             CAST(mf.size * 8.0 / 1024 AS DECIMAL(18, 2)) AS [FileSize_MB],
             CAST(mf.size * 8.0 / 1024 / 1024 AS DECIMAL(18, 2)) AS [FileSize_GB],
             
-            -- Drive / Volume
+            -- Host Drive
             vs.volume_mount_point AS [Drive],
             
-            -- Total Drive Size
-            CAST(vs.total_bytes / 1073741824.0 AS DECIMAL(18, 2)) AS [DriveTotal_GB],
-            
-            -- Free Drive Space
-            CAST(vs.available_bytes / 1073741824.0 AS DECIMAL(18, 2)) AS [DriveFree_GB],
-            
-            -- Used Drive Space
-            CAST((vs.total_bytes - vs.available_bytes) / 1073741824.0 AS DECIMAL(18, 2)) AS [DriveUsed_GB],
-            
-            -- Free %
-            CAST((vs.available_bytes * 100.0) / NULLIF(vs.total_bytes, 0) AS DECIMAL(10, 2)) AS [DriveFreePercent],
-            
-            -- Used %
-            CAST(((vs.total_bytes - vs.available_bytes) * 100.0) / NULLIF(vs.total_bytes, 0) AS DECIMAL(10, 2)) AS [DriveUsedPercent],
-            
-            -- Growth settings
-            mf.growth AS [Growth],
-            mf.is_percent_growth AS [IsPercentGrowth],
+            -- Auto-growth description
             CASE 
                 WHEN mf.is_percent_growth = 1 THEN CONCAT(mf.growth, '%')
                 ELSE CONCAT(CAST(mf.growth * 8.0 / 1024 AS DECIMAL(18, 2)), ' MB')
