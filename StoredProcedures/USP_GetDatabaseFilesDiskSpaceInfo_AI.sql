@@ -42,10 +42,18 @@ BEGIN
             END AS [AutoGrowthDescription]
 
         FROM sys.master_files mf
+        INNER JOIN sys.databases d ON mf.database_id = d.database_id
         CROSS APPLY sys.dm_os_volume_stats(mf.database_id, mf.file_id) vs
+        WHERE d.database_id > 4                                       -- Exclude core system DBs (master, tempdb, model, msdb)
+          AND ISNULL(d.is_distributor, 0) = 0                        -- Exclude replication distribution DB
+          AND d.source_database_id IS NULL                           -- Exclude database snapshots
+          AND d.name NOT IN ('master', 'tempdb', 'model', 'msdb', 'distribution', 'SSISDB', 'DWDiagnostics', 'DWConfiguration', 'DWQueue')
+          AND d.name NOT LIKE 'ReportServer%'                         -- Exclude SSRS system databases
+          AND d.name NOT LIKE 'rdsadmin%'                             -- Exclude cloud/RDS system DBs
+          AND d.name NOT LIKE 'mssqlsystemresource%'                  -- Exclude internal system resource DBs
         ORDER BY
             vs.volume_mount_point,
-            DB_NAME(mf.database_id),
+            d.name,
             mf.type_desc;
 
     END TRY
