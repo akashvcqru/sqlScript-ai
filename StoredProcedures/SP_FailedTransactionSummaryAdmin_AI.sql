@@ -100,7 +100,13 @@ BEGIN
         SELECT COUNT(1) AS TotalRecords
         FROM tblUPITransactionDetails u WITH (NOLOCK)
         LEFT JOIN Comp_Reg c WITH (NOLOCK) ON c.Comp_ID = u.Comp_Id
-        WHERE ISNULL(u.Status, '') <> 'Success'
+        WHERE (
+            ISNULL(u.Status, '') <> 'Success'
+            OR (
+                u.OrderId LIKE 'TXN[2][0][2-9][0-9]%'
+                AND LEN(u.OrderId) = 17
+            )
+        )
           AND (@CompId IS NULL OR @CompId = '' OR @CompId = 'ALL' OR u.Comp_Id = @CompId)
           AND (@StartDate IS NULL OR u.ReqDate >= @StartDate)
           AND (@EndDate IS NULL OR u.ReqDate < @EndDate)
@@ -156,7 +162,13 @@ BEGIN
         WHERE w.PayrefId = u.Id
         ORDER BY w.Id DESC
     ) w
-    WHERE ISNULL(u.Status, '') <> 'Success'
+    WHERE (
+        ISNULL(u.Status, '') <> 'Success'
+        OR (
+            u.OrderId LIKE 'TXN[2][0][2-9][0-9]%'
+            AND LEN(u.OrderId) = 17
+        )
+    )
       AND (@CompId IS NULL OR @CompId = '' OR @CompId = 'ALL' OR u.Comp_Id = @CompId)
       AND (@StartDate IS NULL OR u.ReqDate >= @StartDate)
       AND (@EndDate IS NULL OR u.ReqDate < @EndDate)
