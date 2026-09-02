@@ -116,7 +116,8 @@ BEGIN
                 FROM [dbo].[Pro_Enq] WITH (NOLOCK)
                 WHERE Comp_ID = @CheckCompID
                   AND RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
-                  AND CAST(Enq_Date AS DATE) = CAST(GETDATE() AS DATE);
+                  AND CAST(Enq_Date AS DATE) = CAST(GETDATE() AS DATE)
+                  AND Is_Success = '1';
 
                 IF @TodayScanCountVal >= @VendorDailyLimit
                 BEGIN
