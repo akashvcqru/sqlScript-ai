@@ -30,7 +30,7 @@ BEGIN
     BEGIN
         SELECT 
             0 AS success, 
-            'Invalid code format. Please provide a standard 13-digit code or split by hyphen.' AS Message;
+            'Please valid 13 digit code.' AS Message;
         RETURN;
     END
 
