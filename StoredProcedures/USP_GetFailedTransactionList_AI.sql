@@ -11,7 +11,7 @@ GO
 -- Purpose: Retrieves detailed list of failed transactions for reporting.
 -- Used By: ReprocessTransactionService (Failed Transaction List API)
 -- ====================================================================
-ALTER PROCEDURE [dbo].[USP_GetFailedTransactionList_AI]
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetFailedTransactionList_AI]
     @Comp_ID    VARCHAR(50)  = NULL,
     @datePreset VARCHAR(50)  = NULL,
     @FromDate   VARCHAR(50)  = NULL,
@@ -26,6 +26,7 @@ BEGIN
     -- 0. CLEAN / NORMALIZE INPUTS
     ---------------------------------------------------------
     SET @Comp_ID = NULLIF(LTRIM(RTRIM(@Comp_ID)), '');
+    IF (UPPER(@Comp_ID) = 'ALL') SET @Comp_ID = NULL;
     SET @Search = NULLIF(LTRIM(RTRIM(@Search)), '');
 
     DECLARE @ParsedFromDate DATETIME = NULL;
@@ -39,6 +40,14 @@ BEGIN
     IF (ISNULL(@FromDate, '') <> '' AND ISNULL(@ToDate, '') <> '')
     BEGIN
         SET @ParsedFromDate = TRY_CAST(@FromDate AS DATETIME);
+        SET @ParsedToDate   = TRY_CAST(@ToDate AS DATETIME);
+    END
+    ELSE IF (ISNULL(@FromDate, '') <> '')
+    BEGIN
+        SET @ParsedFromDate = TRY_CAST(@FromDate AS DATETIME);
+    END
+    ELSE IF (ISNULL(@ToDate, '') <> '')
+    BEGIN
         SET @ParsedToDate   = TRY_CAST(@ToDate AS DATETIME);
     END
     ELSE IF (@Win = 'TODAY')
@@ -218,13 +227,20 @@ BEGIN
         UT.Id, 
         UT.OrderId,
         UT.Comp_Id, 
+        ISNULL(c.Comp_Name, UT.Comp_Id) AS CompanyName,
         UT.M_Consumerid, 
         UT.MobileNo, 
         UT.ConsumerName, 
         UT.ConsumerEmailId, 
         UT.Code1, 
         UT.Code2, 
+        CASE 
+            WHEN ISNULL(UT.Code1, '') <> '' AND ISNULL(UT.Code2, '') <> '' AND UT.Code1 <> '0' AND UT.Code2 <> '0'
+            THEN UT.Code1 + UT.Code2
+            ELSE ISNULL(NULLIF(UT.Code1, '0'), ISNULL(NULLIF(UT.Code2, '0'), ''))
+        END AS CompleteCode,
         UT.Amount, 
+        UT.Status,
         UT.UPI_Id, 
         CASE 
             WHEN ISNULL(MBA.Account_No, '') <> '' THEN MBA.Account_No
@@ -241,11 +257,13 @@ BEGIN
             WHEN ISNULL(UT.account_no, '') <> '' THEN UT.benef_name
             ELSE ISNULL(MBAA.Account_HolderNm, '')
         END AS benef_name,         
+        ISNULL(KYC.KycStatus, 'Pending') AS KycStatus,
         UT.Remarks,
         UT.FinalRemarks,
         UT.FinalStatus,
         UT.ReqDate
     FROM tblUPITransactionDetails UT WITH (NOLOCK)
+    LEFT JOIN Comp_Reg c WITH (NOLOCK) ON c.Comp_ID = UT.Comp_Id
     OUTER APPLY (
         SELECT TOP 1 Account_No, IFSC_Code, Account_HolderNm 
         FROM dbo.M_BankAccount WITH (NOLOCK) 
@@ -260,6 +278,22 @@ BEGIN
           AND ISNULL(Account_No, '') <> ''
         ORDER BY Row_ID DESC
     ) MBAA
+    OUTER APPLY (
+        SELECT TOP 1 
+            CASE 
+                WHEN vk.VRKbl_KYC_status = 1 THEN 'Approved'
+                WHEN vk.VRKbl_KYC_status = 2 THEN 'Rejected'
+                WHEN mc.panekycStatus = '1' OR mc.bankekycStatus = '1' OR mc.aadharkycStatus = '1' THEN 'Approved'
+                ELSE 'Pending'
+            END AS KycStatus
+        FROM dbo.M_Consumer mc WITH (NOLOCK)
+        LEFT JOIN dbo.tbl_Vendorvisekycstatus vk WITH (NOLOCK) 
+            ON (vk.M_consumerId = mc.M_Consumerid OR vk.MobileNo = mc.MobileNo)
+           AND (vk.Comp_id = UT.Comp_Id OR vk.Comp_id IS NULL)
+        WHERE mc.M_Consumerid = UT.M_Consumerid 
+           OR (UT.MobileNo IS NOT NULL AND RIGHT(mc.MobileNo, 10) = RIGHT(UT.MobileNo, 10))
+        ORDER BY vk.Entry_date DESC, mc.M_Consumerid DESC
+    ) KYC
     WHERE (
         (
             UT.Status = 'Failed'
@@ -299,8 +333,14 @@ BEGIN
           OR UT.ConsumerName LIKE '%' + @Search + '%'
           OR UT.Code1 LIKE '%' + @Search + '%'
           OR UT.Code2 LIKE '%' + @Search + '%'
+          OR (UT.Code1 + UT.Code2) LIKE '%' + @Search + '%'
+          OR UT.Comp_Id LIKE '%' + @Search + '%'
           OR UT.UPI_Id LIKE '%' + @Search + '%'
           OR UT.account_no LIKE '%' + @Search + '%'
+          OR CAST(UT.Id AS VARCHAR(20)) LIKE '%' + @Search + '%'
+          OR UT.Remarks LIKE '%' + @Search + '%'
+          OR UT.FinalRemarks LIKE '%' + @Search + '%'
+          OR c.Comp_Name LIKE '%' + @Search + '%'
       )
     ORDER BY UT.ReqDate DESC;
 END;
