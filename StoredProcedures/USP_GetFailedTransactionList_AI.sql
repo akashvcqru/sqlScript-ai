@@ -225,7 +225,7 @@ BEGIN
     -- =========================================================================
     SELECT 
         UT.Id, 
-        UT.OrderId,
+        ISNULL(NULLIF(LTRIM(RTRIM(UT.OrderId)), ''), CD_MATCH.BankRefID) AS OrderId,
         UT.Comp_Id, 
         ISNULL(c.Comp_Name, UT.Comp_Id) AS CompanyName,
         UT.M_Consumerid, 
@@ -308,7 +308,7 @@ BEGIN
         ORDER BY vk.Entry_date DESC, mc.M_Consumerid DESC
     ) KYC
     OUTER APPLY (
-        SELECT TOP 1 CD.Row_id
+        SELECT TOP 1 CD.Row_id, CD.BankRefID
         FROM dbo.ClaimDetails CD WITH (NOLOCK)
         WHERE (CD.BankRefID = UT.OrderId AND UT.OrderId IS NOT NULL AND UT.OrderId <> '')
            OR (
