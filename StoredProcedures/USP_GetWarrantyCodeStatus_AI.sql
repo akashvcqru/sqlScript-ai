@@ -30,7 +30,7 @@ BEGIN
     BEGIN
         SELECT 
             0 AS success, 
-            'Please valid 13 digit code.' AS Message;
+            'Please enter valid 13 digit code.' AS Message;
         RETURN;
     END
 
