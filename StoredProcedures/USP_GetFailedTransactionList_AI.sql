@@ -113,7 +113,7 @@ BEGIN
       AND UT.ReqDate > @CutoffDate
       AND (@ParsedFromDate IS NULL OR UT.ReqDate >= @ParsedFromDate)
       AND (@ParsedToDate IS NULL OR UT.ReqDate < DATEADD(DAY, 1, @ParsedToDate))
-      AND (@Search IS NULL OR UT.OrderId LIKE '%' + @Search + '%' OR UT.MobileNo LIKE '%' + @Search + '%' OR UT.ConsumerName LIKE '%' + @Search + '%')
+      AND (@Search IS NULL OR CAST(UT.Id AS VARCHAR(20)) = @Search OR CAST(UT.Id AS VARCHAR(20)) LIKE '%' + @Search + '%' OR UT.OrderId LIKE '%' + @Search + '%' OR UT.MobileNo LIKE '%' + @Search + '%' OR UT.ConsumerName LIKE '%' + @Search + '%')
       AND (ISNULL(NULLIF(LTRIM(RTRIM(UT.Code1)), '0'), '') = '' OR ISNULL(NULLIF(LTRIM(RTRIM(UT.Code2)), '0'), '') = '')
       AND UT.Remarks IN (
           'Insufficient wallet balance for debit'
@@ -148,7 +148,7 @@ BEGIN
       AND UT.ReqDate > @CutoffDate
       AND (@ParsedFromDate IS NULL OR UT.ReqDate >= @ParsedFromDate)
       AND (@ParsedToDate IS NULL OR UT.ReqDate < DATEADD(DAY, 1, @ParsedToDate))
-      AND (@Search IS NULL OR UT.OrderId LIKE '%' + @Search + '%' OR UT.MobileNo LIKE '%' + @Search + '%' OR UT.ConsumerName LIKE '%' + @Search + '%')
+      AND (@Search IS NULL OR CAST(UT.Id AS VARCHAR(20)) = @Search OR CAST(UT.Id AS VARCHAR(20)) LIKE '%' + @Search + '%' OR UT.OrderId LIKE '%' + @Search + '%' OR UT.MobileNo LIKE '%' + @Search + '%' OR UT.ConsumerName LIKE '%' + @Search + '%')
       AND ISNULL(UT.Code1, '0') <> '0' 
       AND ISNULL(UT.Code2, '0') <> '0' 
       AND LEN(UT.Code1) = 5 
@@ -180,7 +180,7 @@ BEGIN
           AND ReqDate > @CutoffDate
           AND (@ParsedFromDate IS NULL OR ReqDate >= @ParsedFromDate)
           AND (@ParsedToDate IS NULL OR ReqDate < DATEADD(DAY, 1, @ParsedToDate))
-          AND (@Search IS NULL OR OrderId LIKE '%' + @Search + '%' OR MobileNo LIKE '%' + @Search + '%' OR ConsumerName LIKE '%' + @Search + '%')
+          AND (@Search IS NULL OR CAST(Id AS VARCHAR(20)) = @Search OR CAST(Id AS VARCHAR(20)) LIKE '%' + @Search + '%' OR OrderId LIKE '%' + @Search + '%' OR MobileNo LIKE '%' + @Search + '%' OR ConsumerName LIKE '%' + @Search + '%')
           AND ISNULL(Code1, '0') <> '0'
           AND ISNULL(Code2, '0') <> '0'
           AND LEN(Code1) = 5
@@ -200,7 +200,7 @@ BEGIN
         WHERE Status = 'Success'
           AND ReqDate > @CutoffDate
           AND (ISNULL(NULLIF(LTRIM(RTRIM(Code1)), '0'), '') = '' OR ISNULL(NULLIF(LTRIM(RTRIM(Code2)), '0'), '') = '')
-          AND (@Search IS NULL OR OrderId LIKE '%' + @Search + '%' OR MobileNo LIKE '%' + @Search + '%' OR ConsumerName LIKE '%' + @Search + '%')
+          AND (@Search IS NULL OR CAST(Id AS VARCHAR(20)) = @Search OR CAST(Id AS VARCHAR(20)) LIKE '%' + @Search + '%' OR OrderId LIKE '%' + @Search + '%' OR MobileNo LIKE '%' + @Search + '%' OR ConsumerName LIKE '%' + @Search + '%')
           AND (Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
     ),
     Matched AS (
@@ -355,10 +355,15 @@ BEGIN
           @ParsedToDate IS NULL
           OR UT.ReqDate < DATEADD(DAY, 1, @ParsedToDate)
       )
-      -- Search filter on mobile number, consumer name, code, etc.
+      -- Search filter on transactionId, orderId, mobile number, consumer name, code, etc.
       AND (
           @Search IS NULL
+          OR CAST(UT.Id AS VARCHAR(20)) = @Search
+          OR CAST(UT.Id AS VARCHAR(20)) LIKE '%' + @Search + '%'
+          OR UT.OrderId = @Search
           OR UT.OrderId LIKE '%' + @Search + '%'
+          OR CD_MATCH.BankRefID = @Search
+          OR CD_MATCH.BankRefID LIKE '%' + @Search + '%'
           OR UT.MobileNo LIKE '%' + @Search + '%'
           OR UT.ConsumerName LIKE '%' + @Search + '%'
           OR UT.Code1 LIKE '%' + @Search + '%'
@@ -369,7 +374,6 @@ BEGIN
           OR UT.Comp_Id LIKE '%' + @Search + '%'
           OR UT.UPI_Id LIKE '%' + @Search + '%'
           OR UT.account_no LIKE '%' + @Search + '%'
-          OR CAST(UT.Id AS VARCHAR(20)) LIKE '%' + @Search + '%'
           OR UT.Remarks LIKE '%' + @Search + '%'
           OR UT.FinalRemarks LIKE '%' + @Search + '%'
           OR c.Comp_Name LIKE '%' + @Search + '%'
