@@ -235,10 +235,16 @@ BEGIN
         UT.Code1, 
         UT.Code2, 
         CASE 
-            WHEN ISNULL(UT.Code1, '') <> '' AND ISNULL(UT.Code2, '') <> '' AND UT.Code1 <> '0' AND UT.Code2 <> '0'
+            WHEN CD_MATCH.Row_id IS NOT NULL 
+                 AND (ISNULL(NULLIF(LTRIM(RTRIM(UT.Code1)), '0'), '') = '' OR ISNULL(NULLIF(LTRIM(RTRIM(UT.Code2)), '0'), '') = '' OR LEN(UT.Code1) <> 5 OR LEN(UT.Code2) <> 8)
+            THEN CAST(CD_MATCH.Row_id AS VARCHAR(30)) + ' - Claimid'
+            WHEN ISNULL(UT.Code1, '') <> '' AND ISNULL(UT.Code2, '') <> '' AND UT.Code1 <> '0' AND UT.Code2 <> '0' AND LEN(UT.Code1) = 5 AND LEN(UT.Code2) = 8
             THEN UT.Code1 + UT.Code2
+            WHEN CD_MATCH.Row_id IS NOT NULL
+            THEN CAST(CD_MATCH.Row_id AS VARCHAR(30)) + ' - Claimid'
             ELSE ISNULL(NULLIF(UT.Code1, '0'), ISNULL(NULLIF(UT.Code2, '0'), ''))
         END AS CompleteCode,
+        CD_MATCH.Row_id AS ClaimId,
         UT.Amount, 
         UT.Status,
         UT.UPI_Id, 
@@ -257,6 +263,13 @@ BEGIN
             WHEN ISNULL(UT.account_no, '') <> '' THEN UT.benef_name
             ELSE ISNULL(MBAA.Account_HolderNm, '')
         END AS benef_name,         
+        ISNULL(NULLIF(LTRIM(RTRIM(UT.UPI_Id)), ''), 
+            CASE 
+                WHEN ISNULL(MBA.Account_No, '') <> '' THEN MBA.Account_No
+                WHEN ISNULL(UT.account_no, '') <> '' THEN UT.account_no
+                ELSE ISNULL(MBAA.Account_No, '')
+            END
+        ) AS [UPIID/AC],
         ISNULL(KYC.KycStatus, 'Pending') AS KycStatus,
         UT.Remarks,
         UT.FinalRemarks,
@@ -294,6 +307,21 @@ BEGIN
            OR (UT.MobileNo IS NOT NULL AND RIGHT(mc.MobileNo, 10) = RIGHT(UT.MobileNo, 10))
         ORDER BY vk.Entry_date DESC, mc.M_Consumerid DESC
     ) KYC
+    OUTER APPLY (
+        SELECT TOP 1 CD.Row_id
+        FROM dbo.ClaimDetails CD WITH (NOLOCK)
+        WHERE (CD.BankRefID = UT.OrderId AND UT.OrderId IS NOT NULL AND UT.OrderId <> '')
+           OR (
+               CD.Comp_id = UT.Comp_Id 
+               AND CD.Mobileno = UT.MobileNo 
+               AND CD.Amount = UT.Amount
+               AND (UT.ReqDate IS NULL OR CD.Claim_date <= DATEADD(DAY, 1, UT.ReqDate))
+           )
+        ORDER BY 
+            CASE WHEN CD.BankRefID = UT.OrderId THEN 0 ELSE 1 END,
+            ABS(DATEDIFF(SECOND, ISNULL(UT.ReqDate, GETDATE()), CD.Claim_date)) ASC,
+            CD.Row_id DESC
+    ) CD_MATCH
     WHERE (
         (
             UT.Status = 'Failed'
@@ -312,8 +340,10 @@ BEGIN
             AND LEN(UT.OrderId) = 17
         )
     )
-      AND LEN(UT.Code1) = 5 
-      AND LEN(UT.Code2) = 8
+      AND (
+          (LEN(UT.Code1) = 5 AND LEN(UT.Code2) = 8)
+          OR CD_MATCH.Row_id IS NOT NULL
+      )
       AND (UT.Comp_Id = @Comp_ID OR @Comp_ID IS NULL)
       AND UT.ReqDate > @CutoffDate
       -- Sargable Date range filter
@@ -334,6 +364,8 @@ BEGIN
           OR UT.Code1 LIKE '%' + @Search + '%'
           OR UT.Code2 LIKE '%' + @Search + '%'
           OR (UT.Code1 + UT.Code2) LIKE '%' + @Search + '%'
+          OR (CD_MATCH.Row_id IS NOT NULL AND CAST(CD_MATCH.Row_id AS VARCHAR(30)) LIKE '%' + @Search + '%')
+          OR (CD_MATCH.Row_id IS NOT NULL AND (CAST(CD_MATCH.Row_id AS VARCHAR(30)) + ' - Claimid') LIKE '%' + @Search + '%')
           OR UT.Comp_Id LIKE '%' + @Search + '%'
           OR UT.UPI_Id LIKE '%' + @Search + '%'
           OR UT.account_no LIKE '%' + @Search + '%'
