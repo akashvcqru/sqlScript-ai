@@ -1,15 +1,15 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetFailedTransactionList_AI]    Script Date: 9/1/2026 4:15:00 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetFailedTransactionList_AI] ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
 -- ====================================================================
--- Stored Procedure: USP_GetFailedTransactionList_AI
--- Purpose: Retrieves detailed list of failed transactions for reporting.
--- Used By: ReprocessTransactionService (Failed Transaction List API)
+-- Migration: 20260903_Add_OrderId_To_USP_GetFailedTransactionList_AI.sql
+-- Purpose: Add OrderId from tblUPITransactionDetails to the SELECT list
+--          and search filter conditions for /api/vendor/failedTransactions/FailedtransactionList.
 -- ====================================================================
 ALTER PROCEDURE [dbo].[USP_GetFailedTransactionList_AI]
     @Comp_ID    VARCHAR(50)  = NULL,
