@@ -272,7 +272,6 @@ BEGIN
     CREATE INDEX IX_Geo ON #Geo(Code1, Code2, MobileNo);
 
     ----------------------------------------------------
-    ----------------------------------------------------
     -- POINTS (REFACTORED - ALIGNED WITH BENEFICIARIES REPORT)
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#Points') IS NOT NULL DROP TABLE #Points;
@@ -284,15 +283,29 @@ BEGIN
  
     SELECT
         M_Codeid,
-        MAX(Points) AS Points,
-        MAX(WornPoint) AS WornPoint
+        MobileNo,
+        CASE 
+            WHEN @Comp_Id = 'Comp-1669' THEN SUM(Points)
+            ELSE MAX(Points)
+        END AS Points,
+        CASE 
+            WHEN @Comp_Id = 'Comp-1669' THEN SUM(WornPoint)
+            ELSE MAX(WornPoint)
+        END AS WornPoint
     INTO #Points
     FROM (
         SELECT
             MC.M_Codeid,
+            Cons.MobileNo,
             CAST(
                 CASE 
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
+                    WHEN @Comp_Id = 'Comp-1669' THEN
+                        CASE
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            ELSE 0.00
+                        END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
                     ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
                 END 
@@ -300,6 +313,12 @@ BEGIN
             CAST(
                 CASE 
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
+                    WHEN @Comp_Id = 'Comp-1669' THEN
+                        CASE
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            ELSE 0.00
+                        END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
                     ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
                 END 
@@ -309,15 +328,27 @@ BEGIN
             ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
         INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
             ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN #MCode M WITH (NOLOCK)
+            ON MC.M_Codeid = M.M_Codeid
+        LEFT JOIN M_Consumer Cons WITH (NOLOCK)
+            ON BL.M_Consumerid = Cons.M_Consumerid
         WHERE BL.compid = @Comp_Id
+          AND (@Comp_Id <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001'))
 
         UNION ALL
 
         SELECT
             MC.M_Codeid,
+            Cons.MobileNo,
             CAST(
                 CASE 
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
+                    WHEN @Comp_Id = 'Comp-1669' THEN
+                        CASE
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            ELSE 0.00
+                        END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
                     ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
                 END 
@@ -325,6 +356,12 @@ BEGIN
             CAST(
                 CASE 
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
+                    WHEN @Comp_Id = 'Comp-1669' THEN
+                        CASE
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            ELSE 0.00
+                        END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
                     ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
                 END 
@@ -338,12 +375,15 @@ BEGIN
             ON MC.M_Codeid = M.M_Codeid
         INNER JOIN Pro_Reg PR WITH (NOLOCK) 
             ON M.Pro_ID = PR.Pro_ID
+        LEFT JOIN M_Consumer Cons WITH (NOLOCK)
+            ON BL.M_Consumerid = Cons.M_Consumerid
         WHERE BL.compid IS NULL
           AND PR.Comp_ID = @Comp_Id
+          AND (@Comp_Id <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001'))
     ) x
-    GROUP BY M_Codeid;
+    GROUP BY M_Codeid, MobileNo;
 
-    CREATE CLUSTERED INDEX IX_Points_MCodeid ON #Points(M_Codeid);
+    CREATE CLUSTERED INDEX IX_Points_MCodeid ON #Points(M_Codeid, MobileNo);
 
     ----------------------------------------------------
     -- REFERRAL POINTS
@@ -371,41 +411,99 @@ BEGIN
     CREATE INDEX IX_ScanReferrals ON #ScanReferrals(Code1, Code2);
 
     ----------------------------------------------------
-    -- CODE CONFIG POINTS (ALIGNED WITH BENEFICIARIES REPORT)
+    -- CODE CONFIG POINTS (ISOLATED FOR COMP-1669)
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#CodeConfigPoints') IS NOT NULL DROP TABLE #CodeConfigPoints;
 
-    SELECT 
-        MC.M_Codeid,
-        MAX(ISNULL(SST.Frequency, 1)) AS Frequency,
-        MAX(CAST(
-            CASE 
-                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
-                WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
-                ELSE ISNULL(SST.IsCash, 0) * @Multiplier
-            END 
-        AS DECIMAL(18,2))) AS ConfigPoints,
-        MAX(CAST(
-            CASE 
-                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
-                WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
-                ELSE ISNULL(SST.IsCash, 0)
-            END 
-        AS DECIMAL(18,2))) AS AssignPoint,
-        SUM(ISNULL(SST.Frequency, 1)) AS TotalFrequency
-    INTO #CodeConfigPoints
-    FROM #MCode MC
-    INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = MC.Pro_ID
-    INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
-    WHERE SS.Comp_ID = @Comp_Id 
-      AND SS.IsActive = 1 AND SS.IsDelete = 0
-      AND SST.IsActive = 1 AND SST.IsDelete = 0
-      AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1028', 'SRV1029', 'SRV1023', 'SRV1024', 'SRV1027')
-      AND (MC.Series_Order > SS.start_order OR (MC.Series_Order = SS.start_order AND MC.Series_Serial >= SS.start_series))
-      AND (MC.Series_Order < SS.end_order OR (MC.Series_Order = SS.end_order AND MC.Series_Serial <= SS.end_series))
-    GROUP BY MC.M_Codeid;
-
+    CREATE TABLE #CodeConfigPoints
+    (
+        M_Codeid BIGINT,
+        Frequency INT,
+        ConfigPoints DECIMAL(18,2),
+        AssignPoint DECIMAL(18,2),
+        TotalFrequency INT
+    );
     CREATE CLUSTERED INDEX IX_CodeConfigPoints_MCodeid ON #CodeConfigPoints(M_Codeid);
+
+    IF @Comp_Id = 'Comp-1669'
+    BEGIN
+        -- ISOLATED SPECIFICALLY FOR COMP-1669 (Loyalty Points SRV1001 Priority)
+        ;WITH ConfigRanked AS (
+            SELECT 
+                MC.M_Codeid,
+                ISNULL(SST.Frequency, 1) AS Frequency,
+                CAST(
+                    CASE 
+                        WHEN SS.Service_ID = 'SRV1001' THEN ISNULL(SST.Points, 0)
+                        WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
+                        ELSE ISNULL(SST.IsCash, 0)
+                    END AS DECIMAL(18,2)
+                ) AS ConfigPoints,
+                CAST(
+                    CASE 
+                        WHEN SS.Service_ID = 'SRV1001' THEN ISNULL(SST.Points, 0)
+                        WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
+                        ELSE ISNULL(SST.IsCash, 0)
+                    END AS DECIMAL(18,2)
+                ) AS AssignPoint,
+                ROW_NUMBER() OVER (
+                    PARTITION BY MC.M_Codeid 
+                    ORDER BY CASE WHEN SS.Service_ID = 'SRV1001' THEN 1 WHEN SS.Service_ID = 'SRV1005' THEN 2 ELSE 3 END,
+                             SST.SST_Id DESC
+                ) AS rn
+            FROM #MCode MC
+            INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = MC.Pro_ID
+            INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+            WHERE SS.Comp_ID = 'Comp-1669'
+              AND SS.IsActive = 1 AND SS.IsDelete = 0
+              AND SST.IsActive = 1 AND SST.IsDelete = 0
+              AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1028', 'SRV1029', 'SRV1023', 'SRV1024', 'SRV1027')
+              AND (MC.Series_Order > SS.start_order OR (MC.Series_Order = SS.start_order AND MC.Series_Serial >= SS.start_series))
+              AND (MC.Series_Order < SS.end_order OR (MC.Series_Order = SS.end_order AND MC.Series_Serial <= SS.end_series))
+        )
+        INSERT INTO #CodeConfigPoints (M_Codeid, Frequency, ConfigPoints, AssignPoint, TotalFrequency)
+        SELECT 
+            M_Codeid,
+            Frequency,
+            ConfigPoints,
+            AssignPoint,
+            1 AS TotalFrequency
+        FROM ConfigRanked
+        WHERE rn = 1;
+    END
+    ELSE
+    BEGIN
+        -- STANDARD LOGIC FOR ALL OTHER COMPANIES (100% UNTOUCHED)
+        INSERT INTO #CodeConfigPoints (M_Codeid, Frequency, ConfigPoints, AssignPoint, TotalFrequency)
+        SELECT 
+            MC.M_Codeid,
+            MAX(ISNULL(SST.Frequency, 1)) AS Frequency,
+            MAX(CAST(
+                CASE 
+                    WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
+                    WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
+                    ELSE ISNULL(SST.IsCash, 0) * @Multiplier
+                END 
+            AS DECIMAL(18,2))) AS ConfigPoints,
+            MAX(CAST(
+                CASE 
+                    WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
+                    WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
+                    ELSE ISNULL(SST.IsCash, 0)
+                END 
+            AS DECIMAL(18,2))) AS AssignPoint,
+            SUM(ISNULL(SST.Frequency, 1)) AS TotalFrequency
+        FROM #MCode MC
+        INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = MC.Pro_ID
+        INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
+        WHERE SS.Comp_ID = @Comp_Id 
+          AND SS.IsActive = 1 AND SS.IsDelete = 0
+          AND SST.IsActive = 1 AND SST.IsDelete = 0
+          AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1028', 'SRV1029', 'SRV1023', 'SRV1024', 'SRV1027')
+          AND (MC.Series_Order > SS.start_order OR (MC.Series_Order = SS.start_order AND MC.Series_Serial >= SS.start_series))
+          AND (MC.Series_Order < SS.end_order OR (MC.Series_Order = SS.end_order AND MC.Series_Serial <= SS.end_series))
+        GROUP BY MC.M_Codeid;
+    END
 
     ----------------------------------------------------
     -- COMBINE SCANS AND REGISTRATION REFERRALS
@@ -450,6 +548,7 @@ BEGIN
         CASE 
             WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.TotalFrequency, 1) THEN 
                 CASE 
+                    WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(P.Points, 0)
                     WHEN ISNULL(P.Points, 0) > 0 THEN P.Points 
                     ELSE ISNULL(CP.ConfigPoints, 0) 
                 END
@@ -474,6 +573,7 @@ BEGIN
         CASE 
             WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.TotalFrequency, 1) THEN 
                 CASE 
+                    WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(P.WornPoint, 0)
                     WHEN ISNULL(P.WornPoint, 0) > 0 THEN P.WornPoint 
                     ELSE ISNULL(CP.ConfigPoints, 0) 
                 END
@@ -494,7 +594,7 @@ BEGIN
         LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN tbl_Vendorvisekycstatus cc ON mc.M_Consumerid = cc.M_consumerId AND cc.comp_id = @comp_id
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
-        LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid
+        LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid AND (P.MobileNo = E.MobileNo OR '91' + P.MobileNo = E.MobileNo OR P.MobileNo = '91' + E.MobileNo OR P.MobileNo IS NULL)
         LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
@@ -524,10 +624,8 @@ BEGIN
         '' AS LabelRequestId
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
-    inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
-    WHERE  cc.comp_id = @comp_id and (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
-      AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
-      AND BL.Code1 IS NULL
+    LEFT JOIN tbl_Vendorvisekycstatus cc ON mc.M_Consumerid = cc.M_consumerId AND cc.comp_id = @comp_id
+    WHERE (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
       AND BL.compid = @Comp_Id
       AND BL.UpdateDate >= @StartDate
       AND BL.UpdateDate < @EndDate
@@ -539,27 +637,47 @@ BEGIN
       )
     GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate;
 
-    -- 3. Insert other/extra earn point entries (virtual rows)
+    -- 3. Insert other/extra earn point entries (Bonus, Repair, KYC, Invoice, Team Scans, etc.)
     INSERT INTO #FinalReport
     SELECT 
-        '' AS UniqueCode,
+        ISNULL(CAST(C.Code1 AS VARCHAR(50)) + CAST(C.Code2 AS VARCHAR(50)), '') AS UniqueCode,
         BL.UpdateDate AS Enq_Date,
         '' AS Dial_Mode,
         MC.ConsumerName,
         MC.MobileNo,
-        MC.State,cc.Vrkabel_User_Type,
+        MC.State, cc.Vrkabel_User_Type,
         MC.City,
-        ISNULL(NULLIF(BL.ServiceName, ''), 'Bonus Point') AS Pro_Name,
+        ISNULL(
+            CASE 
+                WHEN PR.Pro_Name IS NOT NULL AND LTRIM(RTRIM(PR.Pro_Name)) <> '' THEN PR.Pro_Name
+                WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%repair%' THEN 'Repair Point'
+                WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%cash%' THEN 'Cash Transfer'
+                WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%kyc%' THEN 'KYC Bonus'
+                WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%invoice%' THEN 'Invoice Bonus'
+                WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%bonus%' THEN 'Bonus Point'
+                WHEN LTRIM(RTRIM(ISNULL(BL.ServiceName, ''))) <> '' THEN BL.ServiceName + ' Point'
+                ELSE 'Bonus Point'
+            END, 'Bonus Point'
+        ) AS Pro_Name,
         SUM(CAST(
             CASE 
+                WHEN @Comp_Id = 'Comp-1669' THEN
+                    CASE
+                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
+                        WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                        ELSE 0.00
+                    END
                 WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
                 ELSE ISNULL(BL.Points, 0)
             END 
         AS DECIMAL(18,2))) AS Points,
         CASE 
+            WHEN PR.Pro_Name IS NOT NULL AND LTRIM(RTRIM(PR.Pro_Name)) <> '' THEN 'Verified'
             WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%kyc%' THEN 'KYC Point'
             WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%invoice%' THEN 'Invoice Point'
             WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%refral%' OR LOWER(ISNULL(BL.ServiceName, '')) LIKE '%referral%' THEN 'Referral Point'
+            WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%repair%' THEN 'Repair Point'
+            WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%cash%' THEN 'Cash Transfer'
             WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%bonus%' THEN 'Bonus Point'
             WHEN LTRIM(RTRIM(ISNULL(BL.ServiceName, ''))) <> '' THEN BL.ServiceName + ' Point'
             ELSE 'Bonus Point'
@@ -569,18 +687,40 @@ BEGIN
         0 AS AssignPoint,
         SUM(CAST(
             CASE 
+                WHEN @Comp_Id = 'Comp-1669' THEN
+                    CASE
+                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
+                        WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                        ELSE 0.00
+                    END
                 WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
                 ELSE ISNULL(BL.Points, 0)
             END 
         AS DECIMAL(18,2))) AS WornPoint,
         0 AS ReferralPoints,
-        '' AS LabelRequestId
+        ISNULL(MCd.LabelRequestId, '') AS LabelRequestId
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
-    inner join tbl_Vendorvisekycstatus cc on mc.M_Consumerid = cc.M_consumerId
-    WHERE  cc.comp_id = @comp_id and BL.compid = @Comp_Id
-      AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+    LEFT JOIN tbl_Vendorvisekycstatus cc ON mc.M_Consumerid = cc.M_consumerId AND cc.comp_id = @comp_id
+    LEFT JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+    LEFT JOIN M_Consumer_M_Code MCMC ON BMC.M_Consumer_MCOdeid = MCMC.M_Consumer_MCodeid
+    LEFT JOIN M_Code C ON MCMC.M_Codeid = C.Row_ID
+    LEFT JOIN #Pro PR ON C.Pro_ID = PR.Pro_ID
+    LEFT JOIN #MCode MCd ON MCMC.M_Codeid = MCd.M_Codeid
+    WHERE BL.compid = @Comp_Id
       AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
+      AND (
+          (@Comp_Id = 'Comp-1669' AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('buildloyalty', 'srv1001'))
+          OR
+          (@Comp_Id <> 'Comp-1669' AND (
+              BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+              OR NOT EXISTS (
+                  SELECT 1 FROM #Enq E 
+                  WHERE E.M_Codeid = MCMC.M_Codeid 
+                    AND (E.MobileNo = MC.MobileNo OR '91' + E.MobileNo = MC.MobileNo OR E.MobileNo = '91' + MC.MobileNo)
+              )
+          ))
+      )
       AND BL.UpdateDate >= @StartDate
       AND BL.UpdateDate < @EndDate
       AND (@StateFilter IS NULL OR MC.State = @StateFilter)
@@ -589,7 +729,7 @@ BEGIN
           OR MC.MobileNo LIKE '%' + @Search + '%'
           OR MC.ConsumerName LIKE '%' + @Search + '%'
       )
-    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate, BL.ServiceName;
+    GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate, BL.ServiceName, C.Code1, C.Code2, PR.Pro_Name, MCd.LabelRequestId;
 
     ----------------------------------------------------
     -- RESULT SET 1
