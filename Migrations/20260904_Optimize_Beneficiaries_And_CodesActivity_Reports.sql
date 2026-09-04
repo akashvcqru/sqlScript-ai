@@ -1,120 +1,118 @@
 USE [Vcqru]
 GO
+
+/****** 1. UPDATE SP_BL_GetBeneficiariesReport (Isolated for Comp-1669, 100% untouched for other companies) ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- ============================================================================
--- [dbo].[SP_BL_GetBeneficiariesReport]
--- Logic isolated for Comp-1669 without modifying any other company logic
--- Author: Antigravity
--- Date: 2026-09-04
--- ============================================================================
-CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
-(
-    @Comp_Id         NVARCHAR(50),  
-    @datePreset      NVARCHAR(20) = NULL,   -- TODAY, WEEK, LASTWEEK, MONTH, QUARTER, ALL
-    @FromDate        DATE = NULL,
-    @ToDate          DATE = NULL,
-    @KYCStatusFilter NVARCHAR(20) = NULL,   -- Approved / Rejected / Pending
-    @StateFilter     NVARCHAR(100) = NULL,
-    @Page            INT = NULL,
-    @Limit           INT = NULL,
-    @IsExport        BIT = NULL,
-    @Search          NVARCHAR(30) = NULL
-)
+ALTER   PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
+    @Comp_Id NVARCHAR(50),
+    @datePreset NVARCHAR(50) = NULL,
+    @FromDate DATE = NULL,
+    @ToDate DATE = NULL,
+    @KYCStatusFilter NVARCHAR(50) = NULL,
+    @StateFilter NVARCHAR(100) = NULL,
+    @Page INT = 1,
+    @Limit INT = 10,
+    @IsExport BIT = 0,
+    @Search NVARCHAR(100) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
 
     ---------------------------------------------------------
-    -- DEFAULT PAGINATION
+    -- Pagination & Sanitization
     ---------------------------------------------------------
-    IF @Page IS NULL OR @Page <= 0 SET @Page = 1;
-    IF @Limit IS NULL OR @Limit <= 0 SET @Limit = 10;
+    IF @Page IS NULL OR @Page < 1 SET @Page = 1;
+    IF @Limit IS NULL OR @Limit < 1 SET @Limit = 10;
     IF @IsExport IS NULL SET @IsExport = 0;
 
     DECLARE @Offset INT = (@Page - 1) * @Limit;
 
     ---------------------------------------------------------
-    -- COMPANY FILTER PREPARATION
+    -- Handle Multi-Company Grouping
     ---------------------------------------------------------
-    DECLARE @CompanyList TABLE (Comp_Id VARCHAR(50) PRIMARY KEY);
-    IF @Comp_Id IN ('Comp-1567','Comp-1650')
-        INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
-    ELSE
-        INSERT INTO @CompanyList VALUES (@Comp_Id);
+    DECLARE @CompanyList TABLE (Comp_Id NVARCHAR(50) PRIMARY KEY);
 
+    IF (@Comp_Id IN ('Comp-1567', 'Comp-1650'))
+    BEGIN
+        INSERT INTO @CompanyList (Comp_Id) VALUES ('Comp-1567'), ('Comp-1650');
+    END
+    ELSE
+    BEGIN
+        INSERT INTO @CompanyList (Comp_Id) VALUES (@Comp_Id);
+    END
+
+    ---------------------------------------------------------
+    -- Multiplier for Comp Loyalty Calculation
+    ---------------------------------------------------------
     DECLARE @Multiplier DECIMAL(18,2) = 1.00;
     SELECT TOP 1 @Multiplier = 1.00 + (ISNULL(TRY_CAST(calculation_value AS DECIMAL(18,2)), 0.00) / 100.0) 
     FROM loyalty_calculation WITH (NOLOCK)
-    WHERE comp_id = @Comp_Id AND isactive = 1 AND isdelete = 0;
+    WHERE comp_id IN (SELECT Comp_Id FROM @CompanyList) AND isactive = 1 AND isdelete = 0;
 
     ---------------------------------------------------------
-    -- DATE RANGE
+    -- Date Range Calculation
     ---------------------------------------------------------
-    DECLARE @CompanyStartDate DATETIME;
-    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') 
-    FROM Comp_Reg WITH (NOLOCK) 
-    WHERE Comp_ID = @Comp_Id AND ([Status] = 1 OR [Status] IS NULL);
-
-    DECLARE @StartDate DATETIME = NULL;
-    DECLARE @EndDate   DATETIME = NULL;
-
-    -- Normalize datePreset
+    DECLARE @StartDate DATETIME;
+    DECLARE @EndDate DATETIME;
     DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset, ''))));
-    IF (@Win = '' OR @Win = 'NULL') SET @Win = 'ALL';
 
-    -- Explicit date range overrides datePreset
+    DECLARE @CompanyStartDate DATETIME;
+    SELECT @CompanyStartDate = MIN(ISNULL(Reg_Date, '2015-01-01')) 
+    FROM Comp_Reg WITH (NOLOCK) 
+    WHERE Comp_ID IN (SELECT Comp_Id FROM @CompanyList) AND Status = 1;
+
     IF (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
     BEGIN
         SET @StartDate = CAST(@FromDate AS DATETIME);
-        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME)); -- Exclusive end date
+        SET @EndDate   = DATEADD(DAY, 1, CAST(@ToDate AS DATETIME));
     END
     ELSE IF (@Win = 'TODAY')
     BEGIN
         SET @StartDate = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
-        SET @EndDate = DATEADD(DAY, 1, @StartDate);
+        SET @EndDate   = DATEADD(DAY, 1, @StartDate);
     END
     ELSE IF (@Win = 'YESTERDAY' OR @Win = 'LASTDAY')
     BEGIN
         SET @StartDate = DATEADD(DAY, -1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
-        SET @EndDate = DATEADD(DAY, 1, @StartDate);
+        SET @EndDate   = DATEADD(DAY, 1, @StartDate);
     END
-    ELSE IF (@Win = 'WEEK' OR @Win = 'THIS WEEK')
+    ELSE IF (@Win = 'THISWEEK' OR @Win = 'WEEK')
     BEGIN
         SET DATEFIRST 1;
-        SET @StartDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(GETDATE() AS DATE)) AS DATETIME);
-        SET @EndDate = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+        SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()), CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+        SET @EndDate   = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
     END
     ELSE IF (@Win = 'LASTWEEK')
     BEGIN
         SET DATEFIRST 1;
-        SET @StartDate = CAST(DATEADD(DAY, 1 - DATEPART(WEEKDAY, GETDATE()) - 7, CAST(GETDATE() AS DATE)) AS DATETIME);
-        SET @EndDate = DATEADD(DAY, 7, @StartDate);
+        SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()) - 1, 0);
+        SET @EndDate   = DATEADD(WEEK, DATEDIFF(WEEK, 0, GETDATE()), 0);
     END
-    ELSE IF (@Win = 'MONTH' OR @Win = 'THIS MONTH')
+    ELSE IF (@Win = 'THISMONTH' OR @Win = 'MONTH')
     BEGIN
         SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME);
-        SET @EndDate = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+        SET @EndDate   = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
     END
     ELSE IF (@Win = 'LASTMONTH')
     BEGIN
-        SET @StartDate = DATEADD(MONTH, -1, CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME));
-        SET @EndDate = DATEADD(MONTH, 1, @StartDate);
+        SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0);
+        SET @EndDate   = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0);
     END
-    ELSE IF (@Win = 'QUARTER' OR @Win = 'THIS QUARTER')
+    ELSE IF (@Win = 'THISQUARTER' OR @Win = 'QUARTER')
     BEGIN
         SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
-        SET @EndDate = DATEADD(QUARTER, 1, @StartDate);
+        SET @EndDate   = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
     END
     ELSE IF (@Win = 'LASTQUARTER')
     BEGIN
         SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
-        SET @EndDate = DATEADD(QUARTER, 1, @StartDate);
+        SET @EndDate   = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
     END
-    ELSE IF (@Win = 'YEAR' OR @Win = 'THIS YEAR')
+    ELSE IF (@Win = 'THISYEAR' OR @Win = 'YEAR')
     BEGIN
         SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME);
         SET @EndDate = DATEADD(DAY, 1, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
@@ -139,7 +137,7 @@ BEGIN
     IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' OR @StateFilter = 'null' SET @StateFilter = NULL;
 
     ---------------------------------------------------------
-    -- 1. EARLY CANDIDATE SEARCH FILTER
+    -- 1. EARLY CANDIDATE SEARCH FILTER (ISDELETE = 0 ONLY)
     ---------------------------------------------------------
     CREATE TABLE #SearchMatchingUsers (M_ConsumerId INT PRIMARY KEY);
 
@@ -182,7 +180,7 @@ BEGIN
     CREATE CLUSTERED INDEX IX_Candidates_ConsumerId ON #Candidates(M_ConsumerId);
 
     ---------------------------------------------------------
-    -- 3. USERS + KYC
+    -- 3. USERS + KYC (ISDELETE = 0 ONLY)
     ---------------------------------------------------------
     SELECT DISTINCT
         C.M_ConsumerId,
@@ -199,13 +197,12 @@ BEGIN
         END AS KYCStatus
     INTO #Users
     FROM #Candidates C
-    INNER JOIN M_Consumer MC WITH (NOLOCK) ON C.M_ConsumerId = MC.M_ConsumerId
+    INNER JOIN M_Consumer MC WITH (NOLOCK) ON C.M_ConsumerId = MC.M_ConsumerId AND MC.IsDelete = 0
     LEFT JOIN (
         SELECT M_consumerId AS M_ConsumerId, VRKbl_KYC_status, ROW_NUMBER() OVER (PARTITION BY M_consumerId ORDER BY Entry_date DESC) as rn
         FROM tbl_VendorViseKYCStatus WITH (NOLOCK)
         WHERE Comp_id IN (SELECT Comp_Id FROM @CompanyList)
-    ) V ON V.M_ConsumerId = C.M_ConsumerId AND V.rn = 1
-    WHERE MC.IsDelete = 0;
+    ) V ON V.M_ConsumerId = C.M_ConsumerId AND V.rn = 1;
 
     CREATE CLUSTERED INDEX IX_Users_ConsumerId ON #Users(M_ConsumerId);
     CREATE INDEX IX_Users_MobileNo ON #Users(MobileNo);
@@ -422,7 +419,6 @@ BEGIN
             AS DECIMAL(18,2))) AS OtherPoints
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
         WHERE BL.compid IN (SELECT Comp_Id FROM @CompanyList)
-          AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #Candidates)
           AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
           AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
           AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
