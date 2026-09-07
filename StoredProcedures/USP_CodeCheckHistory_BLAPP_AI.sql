@@ -282,6 +282,17 @@ BEGIN
         t2.M_Consumerid,  
         t2.Sort_Date,
         CASE 
+            WHEN (LOWER(@Comp_ID) = 'comp-1669' OR @Comp_ID = 'Comp-1669') AND ss.Service_ID IN ('SRV1028') THEN 
+                CASE 
+                    WHEN ISNULL(sst.IsCash, 0) <> 0 THEN CONCAT('+', CAST(CAST(sst.IsCash AS DECIMAL(18,2)) AS VARCHAR(50)))
+                    ELSE '0'
+                END
+            WHEN (LOWER(@Comp_ID) = 'comp-1669' OR @Comp_ID = 'Comp-1669') AND ss.Service_ID IN ('SRV1001') THEN 
+                CASE 
+                    WHEN ISNULL(P.Points, 0) > 0 THEN CONCAT('+', CAST(CAST(P.Points AS DECIMAL(18,2)) AS VARCHAR(50)))
+                    WHEN sst.Points IS NOT NULL AND sst.Points <> 0 THEN CONCAT('+', CAST(sst.Points AS VARCHAR(50)))
+                    ELSE '0'
+                END
             WHEN ISNULL(P.Points, 0) > 0 THEN CONCAT('+', CAST(CAST(P.Points AS DECIMAL(18,2)) AS VARCHAR(50)))
             WHEN tsc.Point IS NOT NULL AND TRY_CAST(tsc.Point AS DECIMAL(18,2)) > 0 THEN CONCAT('+', CAST(CAST(tsc.Point AS DECIMAL(18,2)) AS VARCHAR(50)))
             WHEN sst.Points IS NOT NULL AND sst.Points <> 0 THEN CONCAT('+', CAST(sst.Points AS VARCHAR(50)))
