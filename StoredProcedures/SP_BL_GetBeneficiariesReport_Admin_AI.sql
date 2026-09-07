@@ -188,7 +188,11 @@ BEGIN
     SELECT DISTINCT
         C.M_ConsumerId,
         MC.ConsumerName,
-        MC.MobileNo,
+        CASE 
+            WHEN LEN(LTRIM(RTRIM(ISNULL(MC.MobileNo, '')))) >= 10 
+            THEN RIGHT(LTRIM(RTRIM(MC.MobileNo)), 10) 
+            ELSE LTRIM(RTRIM(ISNULL(MC.MobileNo, ''))) 
+        END AS MobileNo,
         MC.PinCode,
         MC.State,
         MC.City,
@@ -238,7 +242,7 @@ BEGIN
         MC.M_ConsumerId, 
         UM.M_ConsumerId AS Active_ConsumerId
     FROM #UserMobiles UM
-    INNER JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = UM.MobileNo;
+    INNER JOIN M_Consumer MC WITH (NOLOCK) ON (MC.MobileNo = UM.MobileNo OR (LEN(MC.MobileNo) >= 10 AND RIGHT(MC.MobileNo, 10) = RIGHT(UM.MobileNo, 10)));
 
     CREATE CLUSTERED INDEX IX_ConsumerMapping_ConsumerId ON #ConsumerMapping(M_ConsumerId);
     CREATE INDEX IX_ConsumerMapping_Active ON #ConsumerMapping(Active_ConsumerId);

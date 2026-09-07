@@ -537,11 +537,11 @@ BEGIN
         E.Enq_Date,
         E.Dial_Mode,
         MC.ConsumerName,
-			CASE 
-				WHEN LEN(ISNULL(MC.MobileNo,'')) < 10 
-					 THEN ISNULL(E.MobileNo,'')
-				ELSE MC.MobileNo
-			END AS MobileNo,
+        CASE 
+            WHEN LEN(ISNULL(MC.MobileNo,'')) >= 10 THEN RIGHT(MC.MobileNo, 10)
+            WHEN LEN(ISNULL(E.MobileNo,'')) >= 10 THEN RIGHT(E.MobileNo, 10)
+            ELSE ISNULL(MC.MobileNo, ISNULL(E.MobileNo,''))
+        END AS MobileNo,
         G.State,cc.Vrkabel_User_Type,
         G.City,
         PR.Pro_Name,
@@ -591,10 +591,10 @@ BEGIN
 				   END AS rn
 			FROM #Enq
 		) E
-        LEFT JOIN M_Consumer MC ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
+        LEFT JOIN M_Consumer MC ON (MC.MobileNo = E.MobileNo OR (LEN(E.MobileNo) >= 10 AND RIGHT(MC.MobileNo, 10) = RIGHT(E.MobileNo, 10))) AND MC.IsDelete = '0'
         LEFT JOIN tbl_Vendorvisekycstatus cc ON mc.M_Consumerid = cc.M_consumerId AND cc.comp_id = @comp_id
         LEFT JOIN #Geo G ON G.Code1 = E.Received_Code1 AND G.Code2 = E.Received_Code2 AND G.MobileNo = E.MobileNo
-        LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid AND (P.MobileNo = E.MobileNo OR '91' + P.MobileNo = E.MobileNo OR P.MobileNo = '91' + E.MobileNo OR P.MobileNo IS NULL)
+        LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid AND (P.MobileNo = E.MobileNo OR '91' + P.MobileNo = E.MobileNo OR P.MobileNo = '91' + E.MobileNo OR (LEN(P.MobileNo) >= 10 AND LEN(E.MobileNo) >= 10 AND RIGHT(P.MobileNo, 10) = RIGHT(E.MobileNo, 10)) OR P.MobileNo IS NULL)
         LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
         LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
@@ -610,7 +610,10 @@ BEGIN
         BL.UpdateDate AS Enq_Date,
         '' AS Dial_Mode,
         MC.ConsumerName,
-        MC.MobileNo,
+        CASE 
+            WHEN LEN(ISNULL(MC.MobileNo,'')) >= 10 THEN RIGHT(MC.MobileNo, 10)
+            ELSE ISNULL(MC.MobileNo,'')
+        END AS MobileNo,
         MC.State,cc.Vrkabel_User_Type,
         MC.City,
         'Referral Bonus' AS Pro_Name,
@@ -644,7 +647,10 @@ BEGIN
         BL.UpdateDate AS Enq_Date,
         '' AS Dial_Mode,
         MC.ConsumerName,
-        MC.MobileNo,
+        CASE 
+            WHEN LEN(ISNULL(MC.MobileNo,'')) >= 10 THEN RIGHT(MC.MobileNo, 10)
+            ELSE ISNULL(MC.MobileNo,'')
+        END AS MobileNo,
         MC.State, cc.Vrkabel_User_Type,
         MC.City,
         ISNULL(

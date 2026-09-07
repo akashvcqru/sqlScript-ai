@@ -223,8 +223,8 @@ BEGIN
         MAX(ISNULL(SST.Frequency, 1)) AS TotalFrequency,
         MAX(CAST(
             CASE 
-                WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
-                ELSE ISNULL(SST.IsCash, 0)
+                WHEN SST.Points IS NOT NULL AND TRY_CAST(SST.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(SST.Points AS DECIMAL(18,2))
+                ELSE ISNULL(TRY_CAST(SST.IsCash AS DECIMAL(18,2)), 0.00)
             END AS DECIMAL(18,2)
         )) AS ConfigPoints
     INTO #CodeConfigPoints
@@ -266,7 +266,11 @@ BEGIN
     SELECT 
         E.Comp_ID AS CompanyId,
         ISNULL(CR.Comp_Name, E.Comp_ID) AS CompanyName,
-        ISNULL(E.MobileNo, '') AS MobileNo,
+        CASE 
+            WHEN LEN(ISNULL(MC.MobileNo,'')) >= 10 THEN RIGHT(MC.MobileNo, 10)
+            WHEN LEN(ISNULL(E.MobileNo,'')) >= 10 THEN RIGHT(E.MobileNo, 10)
+            ELSE ISNULL(MC.MobileNo, ISNULL(E.MobileNo,''))
+        END AS MobileNo,
         E.UniqueCode,
         ISNULL(E.Pro_Name, 'Unknown Product') AS Pro_Name,
         E.Enq_Date,
@@ -300,9 +304,11 @@ BEGIN
     ) E
     LEFT JOIN dbo.Comp_Reg CR WITH (NOLOCK) 
         ON CR.Comp_ID = E.Comp_ID
+    LEFT JOIN dbo.M_Consumer MC WITH (NOLOCK)
+        ON (MC.MobileNo = E.MobileNo OR (LEN(E.MobileNo) >= 10 AND RIGHT(MC.MobileNo, 10) = RIGHT(E.MobileNo, 10))) AND MC.IsDelete = 0
     LEFT JOIN #Points P 
         ON P.M_Codeid = E.M_Codeid 
-       AND (P.MobileNo = E.MobileNo OR '91' + P.MobileNo = E.MobileNo OR P.MobileNo = '91' + E.MobileNo OR P.MobileNo IS NULL)
+       AND (P.MobileNo = E.MobileNo OR '91' + P.MobileNo = E.MobileNo OR P.MobileNo = '91' + E.MobileNo OR (LEN(P.MobileNo) >= 10 AND LEN(E.MobileNo) >= 10 AND RIGHT(P.MobileNo, 10) = RIGHT(E.MobileNo, 10)) OR P.MobileNo IS NULL)
     LEFT JOIN #CodeConfigPoints CP 
         ON CP.M_Codeid = E.M_Codeid
     WHERE (E.Is_Success != 1 OR E.rn <= ISNULL(CP.TotalFrequency, 1));
@@ -312,7 +318,10 @@ BEGIN
     SELECT 
         BL.compid AS CompanyId,
         ISNULL(CR.Comp_Name, BL.compid) AS CompanyName,
-        ISNULL(MC.MobileNo, '') AS MobileNo,
+        CASE 
+            WHEN LEN(ISNULL(MC.MobileNo,'')) >= 10 THEN RIGHT(MC.MobileNo, 10)
+            ELSE ISNULL(MC.MobileNo,'')
+        END AS MobileNo,
         '' AS UniqueCode,
         'Referral Bonus' AS Pro_Name,
         BL.UpdateDate AS Enq_Date,
@@ -341,7 +350,10 @@ BEGIN
     SELECT 
         BL.compid AS CompanyId,
         ISNULL(CR.Comp_Name, BL.compid) AS CompanyName,
-        ISNULL(MC.MobileNo, '') AS MobileNo,
+        CASE 
+            WHEN LEN(ISNULL(MC.MobileNo,'')) >= 10 THEN RIGHT(MC.MobileNo, 10)
+            ELSE ISNULL(MC.MobileNo,'')
+        END AS MobileNo,
         ISNULL(CAST(C.Code1 AS VARCHAR(50)) + CAST(C.Code2 AS VARCHAR(50)), '') AS UniqueCode,
         ISNULL(
             CASE 

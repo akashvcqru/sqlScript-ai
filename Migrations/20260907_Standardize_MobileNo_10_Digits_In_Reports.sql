@@ -1,5 +1,7 @@
 USE [Vcqru]
 GO
+
+/****** 1. SP_BL_GetBeneficiariesReport (Standardize MobileNo to 10 Digits) ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -7,9 +9,7 @@ GO
 
 -- ============================================================================
 -- [dbo].[SP_BL_GetBeneficiariesReport]
--- Logic isolated for Comp-1669 without modifying any other company logic
--- Author: Antigravity
--- Date: 2026-09-04
+-- Standardize MobileNo to 10 digits across all queries & mappings
 -- ============================================================================
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
 (
@@ -165,7 +165,7 @@ BEGIN
     FROM (
         SELECT M_consumerId AS M_ConsumerId FROM tbl_VendorViseKYCStatus WITH (NOLOCK) WHERE Comp_id IN (SELECT Comp_Id FROM @CompanyList)
         UNION
-        SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON CD.Mobileno = MC.MobileNo AND MC.IsDelete = 0 WHERE CD.Comp_Id IN (SELECT Comp_Id FROM @CompanyList)
+        SELECT MC.M_ConsumerId FROM ClaimDetails CD WITH (NOLOCK) INNER JOIN M_Consumer MC WITH (NOLOCK) ON (CD.Mobileno = MC.MobileNo OR (LEN(CD.Mobileno) >= 10 AND RIGHT(CD.Mobileno, 10) = RIGHT(MC.MobileNo, 10))) AND MC.IsDelete = 0 WHERE CD.Comp_Id IN (SELECT Comp_Id FROM @CompanyList)
         UNION
         SELECT M_Consumerid AS M_ConsumerId FROM BLoyaltyPointsEarned WITH (NOLOCK) WHERE compid IN (SELECT Comp_Id FROM @CompanyList)
         UNION
@@ -182,7 +182,7 @@ BEGIN
     CREATE CLUSTERED INDEX IX_Candidates_ConsumerId ON #Candidates(M_ConsumerId);
 
     ---------------------------------------------------------
-    -- 3. USERS + KYC
+    -- 3. USERS + KYC (Standardized to 10-digit MobileNo)
     ---------------------------------------------------------
     SELECT DISTINCT
         C.M_ConsumerId,
@@ -262,7 +262,7 @@ BEGIN
                 ORDER BY GE.Enq_Date DESC
             ) AS rn
         FROM #Users U
-        INNER JOIN GeoLocationData GE WITH (NOLOCK) ON GE.MobileNo = U.MobileNo
+        INNER JOIN GeoLocationData GE WITH (NOLOCK) ON (GE.MobileNo = U.MobileNo OR (LEN(GE.MobileNo) >= 10 AND RIGHT(GE.MobileNo, 10) = RIGHT(U.MobileNo, 10)))
         WHERE GE.Comp_Id IN (SELECT Comp_Id FROM @CompanyList)
     ) x
     WHERE rn = 1;
@@ -332,7 +332,7 @@ BEGIN
             M.Series_Serial,
             ROW_NUMBER() OVER (PARTITION BY PE.Received_Code1, PE.Received_Code2, PE.Is_Success ORDER BY PE.Enq_Date) as rn
         FROM Pro_Enq PE WITH (NOLOCK)
-        INNER JOIN #UserMobiles UM ON PE.MobileNo = UM.MobileNo
+        INNER JOIN #UserMobiles UM ON (PE.MobileNo = UM.MobileNo OR (LEN(PE.MobileNo) >= 10 AND RIGHT(PE.MobileNo, 10) = RIGHT(UM.MobileNo, 10)))
         INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
         INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
         INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
@@ -424,7 +424,7 @@ BEGIN
             SUM(CASE WHEN ISNULL(P.Points, 0) > 0 THEN P.Points ELSE ISNULL(CP.ConfigPoints, 0) END) AS PointsEarned,
             MAX(US.Enq_Date) AS LastScan
         FROM #UniqueScans US
-        INNER JOIN #UserMobiles UM ON US.MobileNo = UM.MobileNo
+        INNER JOIN #UserMobiles UM ON (US.MobileNo = UM.MobileNo OR (LEN(US.MobileNo) >= 10 AND RIGHT(US.MobileNo, 10) = RIGHT(UM.MobileNo, 10)))
         INNER JOIN #Users MC ON UM.M_ConsumerId = MC.M_ConsumerId
         LEFT JOIN #EarnedPoints P ON P.M_Codeid = US.M_Codeid
         LEFT JOIN #ConfigPoints CP ON CP.M_Codeid = US.M_Codeid
@@ -476,7 +476,7 @@ BEGIN
         SUM(CD.Amount) AS ClaimRedeem
     INTO #Claims
     FROM ClaimDetails CD WITH (NOLOCK)
-    INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
+    INNER JOIN #UserMobiles UM ON (CD.Mobileno = UM.MobileNo OR (LEN(CD.Mobileno) >= 10 AND RIGHT(CD.Mobileno, 10) = RIGHT(UM.MobileNo, 10)))
     INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     WHERE CD.Comp_id IN (SELECT Comp_Id FROM @CompanyList)
       AND CD.PaymentStatus = 'Success'
