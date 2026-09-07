@@ -199,7 +199,8 @@ BEGIN
                 WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash
                 ELSE 0.00
             END AS DECIMAL(18,2)
-        )) AS Points
+        )) AS Points,
+        MAX(ISNULL(MS.ServiceName, BL.ServiceName)) AS ServiceName
     INTO #Points
     FROM dbo.BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN dbo.BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
@@ -208,6 +209,12 @@ BEGIN
         ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
     INNER JOIN #Enq E
         ON MC.M_Codeid = E.M_Codeid
+    LEFT JOIN dbo.M_ServiceSubscriptionTrans SST WITH (NOLOCK)
+        ON SST.SST_Id = BL.SST_id
+    LEFT JOIN dbo.M_ServiceSubscription SS WITH (NOLOCK)
+        ON SS.Subscribe_Id = SST.Subscribe_Id
+    LEFT JOIN dbo.M_Service MS WITH (NOLOCK)
+        ON MS.Service_ID = SS.Service_ID
     WHERE (@Comp_Id IS NULL OR BL.compid = @Comp_Id OR BL.compid IS NULL)
     GROUP BY MC.M_Codeid, E.MobileNo;
 
@@ -226,13 +233,16 @@ BEGIN
                 WHEN SST.Points IS NOT NULL AND TRY_CAST(SST.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(SST.Points AS DECIMAL(18,2))
                 ELSE ISNULL(TRY_CAST(SST.IsCash AS DECIMAL(18,2)), 0.00)
             END AS DECIMAL(18,2)
-        )) AS ConfigPoints
+        )) AS ConfigPoints,
+        MAX(S.ServiceName) AS ServiceName
     INTO #CodeConfigPoints
     FROM (SELECT DISTINCT M_Codeid, Pro_ID, Comp_ID, Series_Order, Series_Serial FROM #Enq) E
     INNER JOIN dbo.M_ServiceSubscription SS WITH (NOLOCK) 
         ON SS.Pro_ID = E.Pro_ID AND SS.Comp_ID = E.Comp_ID
     INNER JOIN dbo.M_ServiceSubscriptionTrans SST WITH (NOLOCK) 
         ON SST.Subscribe_Id = SS.Subscribe_Id
+    LEFT JOIN dbo.M_Service S WITH (NOLOCK)
+        ON S.Service_ID = SS.Service_ID
     WHERE SS.IsActive = 1 AND SS.IsDelete = 0
       AND SST.IsActive = 1 AND SST.IsDelete = 0
       AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1028', 'SRV1029', 'SRV1023', 'SRV1024', 'SRV1027')
@@ -253,6 +263,7 @@ BEGIN
         MobileNo    VARCHAR(50),
         UniqueCode  VARCHAR(100),
         Pro_Name    NVARCHAR(200),
+        ServiceName NVARCHAR(200),
         Enq_Date    DATETIME,
         Dial_Mode   VARCHAR(50),
         Points      VARCHAR(50),
@@ -262,7 +273,7 @@ BEGIN
     );
 
     -- 5a. Insert Scan Enquiries
-    INSERT INTO #FinalReport (CompanyId, CompanyName, MobileNo, UniqueCode, Pro_Name, Enq_Date, Dial_Mode, Points, Result, Latitude, Longitude)
+    INSERT INTO #FinalReport (CompanyId, CompanyName, MobileNo, UniqueCode, Pro_Name, ServiceName, Enq_Date, Dial_Mode, Points, Result, Latitude, Longitude)
     SELECT 
         E.Comp_ID AS CompanyId,
         ISNULL(CR.Comp_Name, E.Comp_ID) AS CompanyName,
@@ -273,6 +284,7 @@ BEGIN
         END AS MobileNo,
         E.UniqueCode,
         ISNULL(E.Pro_Name, 'Unknown Product') AS Pro_Name,
+        ISNULL(NULLIF(P.ServiceName, ''), ISNULL(CP.ServiceName, '')) AS ServiceName,
         E.Enq_Date,
         ISNULL(E.Dial_Mode, '') AS Dial_Mode,
         CAST(
@@ -314,7 +326,7 @@ BEGIN
     WHERE (E.Is_Success != 1 OR E.rn <= ISNULL(CP.TotalFrequency, 1));
 
     -- 5b. Insert Registration Referrals (virtual rows)
-    INSERT INTO #FinalReport (CompanyId, CompanyName, MobileNo, UniqueCode, Pro_Name, Enq_Date, Dial_Mode, Points, Result, Latitude, Longitude)
+    INSERT INTO #FinalReport (CompanyId, CompanyName, MobileNo, UniqueCode, Pro_Name, ServiceName, Enq_Date, Dial_Mode, Points, Result, Latitude, Longitude)
     SELECT 
         BL.compid AS CompanyId,
         ISNULL(CR.Comp_Name, BL.compid) AS CompanyName,
@@ -324,6 +336,7 @@ BEGIN
         END AS MobileNo,
         '' AS UniqueCode,
         'Referral Bonus' AS Pro_Name,
+        ISNULL(BL.ServiceName, 'Referral') AS ServiceName,
         BL.UpdateDate AS Enq_Date,
         '' AS Dial_Mode,
         '0.00' AS Points,
@@ -343,10 +356,10 @@ BEGIN
           OR MC.ConsumerName LIKE '%' + @Search + '%'
           OR BL.compid LIKE '%' + @Search + '%'
       )
-    GROUP BY BL.compid, CR.Comp_Name, BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, BL.UpdateDate;
+    GROUP BY BL.compid, CR.Comp_Name, BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, BL.UpdateDate, BL.ServiceName;
 
     -- 5c. Insert Other/Extra Earn Point entries (Bonus, Repair, KYC, Invoice)
-    INSERT INTO #FinalReport (CompanyId, CompanyName, MobileNo, UniqueCode, Pro_Name, Enq_Date, Dial_Mode, Points, Result, Latitude, Longitude)
+    INSERT INTO #FinalReport (CompanyId, CompanyName, MobileNo, UniqueCode, Pro_Name, ServiceName, Enq_Date, Dial_Mode, Points, Result, Latitude, Longitude)
     SELECT 
         BL.compid AS CompanyId,
         ISNULL(CR.Comp_Name, BL.compid) AS CompanyName,
@@ -367,6 +380,7 @@ BEGIN
                 ELSE 'Bonus Point'
             END, 'Bonus Point'
         ) AS Pro_Name,
+        ISNULL(MS.ServiceName, ISNULL(NULLIF(BL.ServiceName, ''), 'Bonus')) AS ServiceName,
         BL.UpdateDate AS Enq_Date,
         '' AS Dial_Mode,
         CAST(SUM(CAST(
@@ -395,6 +409,9 @@ BEGIN
     LEFT JOIN dbo.M_Consumer_M_Code MCMC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MCMC.M_Consumer_MCodeid
     LEFT JOIN dbo.M_Code C WITH (NOLOCK) ON MCMC.M_Codeid = C.Row_ID
     LEFT JOIN dbo.Pro_Reg PR WITH (NOLOCK) ON C.Pro_ID = PR.Pro_ID
+    LEFT JOIN dbo.M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.SST_Id = BL.SST_id
+    LEFT JOIN dbo.M_ServiceSubscription SS WITH (NOLOCK) ON SS.Subscribe_Id = SST.Subscribe_Id
+    LEFT JOIN dbo.M_Service MS WITH (NOLOCK) ON MS.Service_ID = SS.Service_ID
     WHERE (@Comp_Id IS NULL OR BL.compid = @Comp_Id)
       AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
       AND (
@@ -413,7 +430,7 @@ BEGIN
           OR MC.ConsumerName LIKE '%' + @Search + '%'
           OR BL.compid LIKE '%' + @Search + '%'
       )
-    GROUP BY BL.compid, CR.Comp_Name, BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, BL.UpdateDate, BL.ServiceName, C.Code1, C.Code2, PR.Pro_Name;
+    GROUP BY BL.compid, CR.Comp_Name, BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, BL.UpdateDate, MS.ServiceName, BL.ServiceName, C.Code1, C.Code2, PR.Pro_Name;
 
     ----------------------------------------------------
     -- 6. TOTAL RECORDS (Result Set 1)
@@ -433,6 +450,7 @@ BEGIN
         OR FR.UniqueCode LIKE '%' + @Search + '%'
         OR FR.CompanyId LIKE '%' + @Search + '%'
         OR FR.CompanyName LIKE '%' + @Search + '%'
+        OR FR.ServiceName LIKE '%' + @Search + '%'
     );
 
     SELECT @TotalRecords AS TotalRecords;
@@ -446,6 +464,7 @@ BEGIN
         FR.MobileNo,
         FR.UniqueCode,
         FR.Pro_Name,
+        FR.ServiceName,
         FR.Enq_Date,
         FR.Dial_Mode,
         FR.Points,
@@ -464,6 +483,7 @@ BEGIN
         OR FR.UniqueCode LIKE '%' + @Search + '%'
         OR FR.CompanyId LIKE '%' + @Search + '%'
         OR FR.CompanyName LIKE '%' + @Search + '%'
+        OR FR.ServiceName LIKE '%' + @Search + '%'
     )
     ORDER BY FR.Enq_Date DESC
     OFFSET CASE WHEN @IsExport = 1 THEN 0 ELSE @Offset END ROWS
