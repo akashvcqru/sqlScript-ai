@@ -1,10 +1,11 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetNegativeBalancePendingUsers_AI]    Script Date: 7/24/2026 10:36:35 AM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetNegativeBalancePendingUsers_AI]    Script Date: 9/7/2026 3:23:21 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
 ALTER   PROCEDURE [dbo].[USP_GetNegativeBalancePendingUsers_AI]
 (
     @Comp_ID         NVARCHAR(50),
@@ -158,8 +159,8 @@ ClaimSummary AS
 		  
         SUM
         (
-            CAST(ISNULL(pointsvalue, 0) AS DECIMAL(18, 2))
-        ) AS TotalClaimAmountPointsValue,
+            CAST(ISNULL(RequestAmmount, ISNULL(pointsvalue, 0) + ISNULL(tdsAmount, 0)) - ISNULL(tdsAmount, 0) AS DECIMAL(18, 2))
+        ) AS TotalRsClaim,
 
 		SUM
         (
@@ -180,7 +181,7 @@ PayoutSummary AS
 		 SUM
         (
             CAST(ISNULL(FinalPayment, 0) AS DECIMAL(18, 2))
-        ) AS TotalPaidAmount ,
+        ) AS TotalRsPaid ,
 		 SUM
         (
             CAST(ISNULL(tdsAmount, 0) AS DECIMAL(18, 2))
@@ -256,7 +257,7 @@ FraudClaims AS
         ISNULL(P.AssingedPoints, 0) AS AssingedPoints,
         ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0) AS TotalClaimAmount,
         ISNULL(P.TotalPoints, 0) - (ISNULL(C.TotalClaimAmount, 0) + ISNULL(U.TotalPaidPoints, 0)) AS AvailableBalance,
-        (ISNULL(TotalClaimAmountPointsValue, 0) + ISNULL(TotalPaidAmount, 0)) AS PaidAmount,
+        (ISNULL(C.TotalRsClaim, 0) + ISNULL(U.TotalRsPaid, 0)) AS PaidAmount,
         (ISNULL(TotalClaimAmountPointsValuetds, 0) + ISNULL(TotalPaidtds, 0)) AS TDS,
         P.LastCodeCheckDate,
         CASE
