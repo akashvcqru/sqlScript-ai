@@ -42,6 +42,17 @@ BEGIN
     IF LTRIM(RTRIM(ISNULL(@CodeStatusFilter, ''))) = '' OR @CodeStatusFilter = 'null' OR UPPER(@CodeStatusFilter) = 'ALL' SET @CodeStatusFilter = NULL;
     IF LTRIM(RTRIM(ISNULL(@DialModeFilter, ''))) = '' OR @DialModeFilter = 'null' OR UPPER(@DialModeFilter) = 'ALL' SET @DialModeFilter = NULL;
 
+    DECLARE @SearchMobile NVARCHAR(30) = NULL;
+    IF @Search IS NOT NULL
+    BEGIN
+        DECLARE @CleanSearchDigits NVARCHAR(100) = REPLACE(REPLACE(REPLACE(REPLACE(@Search, '+', ''), '-', ''), ' ', ''), '(', '');
+        SET @CleanSearchDigits = REPLACE(@CleanSearchDigits, ')', '');
+        IF @CleanSearchDigits NOT LIKE '%[^0-9]%' AND LEN(@CleanSearchDigits) >= 10
+        BEGIN
+            SET @SearchMobile = RIGHT(@CleanSearchDigits, 10);
+        END
+    END
+
     ----------------------------------------------------
     -- 1. DATE RANGE CALCULATION (Matches BLReports datePreset logic)
     ----------------------------------------------------
@@ -177,7 +188,9 @@ BEGIN
       AND (
           @Search IS NULL 
           OR E.MobileNo LIKE '%' + @Search + '%'
+          OR (@SearchMobile IS NOT NULL AND E.MobileNo LIKE '%' + @SearchMobile + '%')
           OR (E.Received_Code1 + E.Received_Code2) LIKE '%' + @Search + '%'
+          OR (@SearchMobile IS NOT NULL AND (E.Received_Code1 + E.Received_Code2) LIKE '%' + @SearchMobile + '%')
           OR PR.Comp_ID LIKE '%' + @Search + '%'
       );
 
@@ -353,6 +366,7 @@ BEGIN
       AND (
           @Search IS NULL
           OR MC.MobileNo LIKE '%' + @Search + '%'
+          OR (@SearchMobile IS NOT NULL AND MC.MobileNo LIKE '%' + @SearchMobile + '%')
           OR MC.ConsumerName LIKE '%' + @Search + '%'
           OR BL.compid LIKE '%' + @Search + '%'
       )
@@ -427,6 +441,7 @@ BEGIN
       AND (
           @Search IS NULL
           OR MC.MobileNo LIKE '%' + @Search + '%'
+          OR (@SearchMobile IS NOT NULL AND MC.MobileNo LIKE '%' + @SearchMobile + '%')
           OR MC.ConsumerName LIKE '%' + @Search + '%'
           OR BL.compid LIKE '%' + @Search + '%'
       )
@@ -447,7 +462,9 @@ BEGIN
     AND (
         @Search IS NULL
         OR FR.MobileNo LIKE '%' + @Search + '%'
+        OR (@SearchMobile IS NOT NULL AND FR.MobileNo LIKE '%' + @SearchMobile + '%')
         OR FR.UniqueCode LIKE '%' + @Search + '%'
+        OR (@SearchMobile IS NOT NULL AND FR.UniqueCode LIKE '%' + @SearchMobile + '%')
         OR FR.CompanyId LIKE '%' + @Search + '%'
         OR FR.CompanyName LIKE '%' + @Search + '%'
         OR FR.ServiceName LIKE '%' + @Search + '%'
@@ -480,7 +497,9 @@ BEGIN
     AND (
         @Search IS NULL
         OR FR.MobileNo LIKE '%' + @Search + '%'
+        OR (@SearchMobile IS NOT NULL AND FR.MobileNo LIKE '%' + @SearchMobile + '%')
         OR FR.UniqueCode LIKE '%' + @Search + '%'
+        OR (@SearchMobile IS NOT NULL AND FR.UniqueCode LIKE '%' + @SearchMobile + '%')
         OR FR.CompanyId LIKE '%' + @Search + '%'
         OR FR.CompanyName LIKE '%' + @Search + '%'
         OR FR.ServiceName LIKE '%' + @Search + '%'

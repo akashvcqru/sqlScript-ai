@@ -116,6 +116,17 @@ BEGIN
     IF LTRIM(RTRIM(ISNULL(@StateFilter, ''))) = '' OR @StateFilter = 'null' SET @StateFilter = NULL;
     IF LTRIM(RTRIM(ISNULL(@DialModeFilter, ''))) = '' OR @DialModeFilter = 'null' SET @DialModeFilter = NULL;
 
+    DECLARE @SearchMobile NVARCHAR(30) = NULL;
+    IF @Search IS NOT NULL
+    BEGIN
+        DECLARE @CleanSearchDigits NVARCHAR(100) = REPLACE(REPLACE(REPLACE(REPLACE(@Search, '+', ''), '-', ''), ' ', ''), '(', '');
+        SET @CleanSearchDigits = REPLACE(@CleanSearchDigits, ')', '');
+        IF @CleanSearchDigits NOT LIKE '%[^0-9]%' AND LEN(@CleanSearchDigits) >= 10
+        BEGIN
+            SET @SearchMobile = RIGHT(@CleanSearchDigits, 10);
+        END
+    END
+
     ----------------------------------------------------
     -- ENQUIRIES (EARLY SEARCH SHRINKING)
     ----------------------------------------------------
@@ -147,7 +158,9 @@ BEGIN
       AND (
           @Search IS NULL 
           OR MobileNo LIKE '%' + @Search + '%'
+          OR (@SearchMobile IS NOT NULL AND MobileNo LIKE '%' + @SearchMobile + '%')
           OR (Received_Code1 + Received_Code2) LIKE '%' + @Search + '%'
+          OR (@SearchMobile IS NOT NULL AND (Received_Code1 + Received_Code2) LIKE '%' + @SearchMobile + '%')
       );
 
     CREATE INDEX IX_Enq_Code   ON #Enq(Received_Code1, Received_Code2);
@@ -636,6 +649,7 @@ BEGIN
       AND (
           @Search IS NULL
           OR MC.MobileNo LIKE '%' + @Search + '%'
+          OR (@SearchMobile IS NOT NULL AND MC.MobileNo LIKE '%' + @SearchMobile + '%')
           OR MC.ConsumerName LIKE '%' + @Search + '%'
       )
     GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate;
@@ -733,6 +747,7 @@ BEGIN
       AND (
           @Search IS NULL
           OR MC.MobileNo LIKE '%' + @Search + '%'
+          OR (@SearchMobile IS NOT NULL AND MC.MobileNo LIKE '%' + @SearchMobile + '%')
           OR MC.ConsumerName LIKE '%' + @Search + '%'
       )
     GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate, BL.ServiceName, C.Code1, C.Code2, PR.Pro_Name, MCd.LabelRequestId;
@@ -768,7 +783,9 @@ BEGIN
 			 @Search IS NULL
 			 OR LTRIM(RTRIM(@Search)) = ''
 			 OR FR.MobileNo LIKE '%' + @Search + '%'
+			 OR (@SearchMobile IS NOT NULL AND FR.MobileNo LIKE '%' + @SearchMobile + '%')
 			 OR FR.UniqueCode LIKE '%' + @Search + '%'
+			 OR (@SearchMobile IS NOT NULL AND FR.UniqueCode LIKE '%' + @SearchMobile + '%')
         )
         ORDER BY FR.Enq_Date DESC;
     END
@@ -800,7 +817,9 @@ BEGIN
 			 @Search IS NULL
 			 OR LTRIM(RTRIM(@Search)) = ''
 			 OR FR.MobileNo LIKE '%' + @Search + '%'
+			 OR (@SearchMobile IS NOT NULL AND FR.MobileNo LIKE '%' + @SearchMobile + '%')
 			 OR FR.UniqueCode LIKE '%' + @Search + '%'
+			 OR (@SearchMobile IS NOT NULL AND FR.UniqueCode LIKE '%' + @SearchMobile + '%')
         )
         ORDER BY FR.Enq_Date DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
@@ -823,7 +842,9 @@ BEGIN
 			 @Search IS NULL
 			 OR LTRIM(RTRIM(@Search)) = ''
 			 OR FR.MobileNo LIKE '%' + @Search + '%'
+			 OR (@SearchMobile IS NOT NULL AND FR.MobileNo LIKE '%' + @SearchMobile + '%')
 			 OR FR.UniqueCode LIKE '%' + @Search + '%'
+			 OR (@SearchMobile IS NOT NULL AND FR.UniqueCode LIKE '%' + @SearchMobile + '%')
         );
     END
 END
