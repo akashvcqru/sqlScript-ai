@@ -470,12 +470,13 @@ BEGIN
     ---------------------------------------------------------
     SELECT
         TRY_CAST(t.M_Consumerid AS INT) AS M_ConsumerId,
-        SUM(TRY_CAST(t.Amount AS DECIMAL(18,2))) AS UPIRedeem
+        SUM(TRY_CAST(ISNULL(t.Amount, t.Points_Val) AS DECIMAL(18,2))) AS UPIRedeem
     INTO #UPI
     FROM tblUPITransactionDetails t WITH (NOLOCK)
     WHERE t.Comp_Id IN (SELECT Comp_Id FROM @CompanyList)
-      AND t.M_Consumerid IN (SELECT M_ConsumerId FROM #Candidates)
       AND t.Status = 'Success'
+      AND LEN(ISNULL(t.Code1, '')) > 3
+      AND t.M_Consumerid IN (SELECT M_ConsumerId FROM #Candidates)
       AND (@StartDate IS NULL OR t.ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR t.ReqDate <  @EndDate)
     GROUP BY TRY_CAST(t.M_Consumerid AS INT);
