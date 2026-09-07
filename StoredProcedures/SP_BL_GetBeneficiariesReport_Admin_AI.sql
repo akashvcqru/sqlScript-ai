@@ -132,7 +132,7 @@ BEGIN
     END
 
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #SearchMatchingUsers, #Candidates, #Users, #UserMobiles, #State, #Benefit, #OtherEarnedPoints, #Referrals, #Claims, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints;
+    DROP TABLE IF EXISTS #SearchMatchingUsers, #Candidates, #Users, #UserMobiles, #ConsumerMapping, #State, #Benefit, #OtherEarnedPoints, #Referrals, #Claims, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints;
 
     -- Normalize filters early
     IF LTRIM(RTRIM(ISNULL(@Search, ''))) = '' OR @Search = 'null' SET @Search = NULL;
@@ -226,6 +226,23 @@ BEGIN
 
     CREATE INDEX IX_UserMobiles_Mobile ON #UserMobiles(MobileNo);
 
+    -- Map all M_ConsumerId records of the same MobileNo (including deleted/previous registrations) to the active M_ConsumerId
+    CREATE TABLE #ConsumerMapping 
+    (
+        M_ConsumerId INT,
+        Active_ConsumerId INT
+    );
+
+    INSERT INTO #ConsumerMapping (M_ConsumerId, Active_ConsumerId)
+    SELECT DISTINCT 
+        MC.M_ConsumerId, 
+        UM.M_ConsumerId AS Active_ConsumerId
+    FROM #UserMobiles UM
+    INNER JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = UM.MobileNo;
+
+    CREATE CLUSTERED INDEX IX_ConsumerMapping_ConsumerId ON #ConsumerMapping(M_ConsumerId);
+    CREATE INDEX IX_ConsumerMapping_Active ON #ConsumerMapping(Active_ConsumerId);
+
     ---------------------------------------------------------
     -- 4. LATEST STATE / CITY FROM GEOLOCATION
     ---------------------------------------------------------
@@ -272,7 +289,7 @@ BEGIN
         -- ISOLATED SPECIFICALLY FOR COMP-1669 (Multi-Service Head & Assistant Mechanics)
         INSERT INTO #Benefit (M_Consumerid, PointsEarned, LastScan)
         SELECT 
-            BL.M_Consumerid,
+            CM.Active_ConsumerId AS M_Consumerid,
             SUM(CAST(
                 CASE 
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
@@ -281,12 +298,12 @@ BEGIN
             AS DECIMAL(18,2))) AS PointsEarned,
             MAX(BL.UpdateDate) AS LastScan
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        INNER JOIN #ConsumerMapping CM ON BL.M_Consumerid = CM.M_ConsumerId
         WHERE BL.compid = 'Comp-1669'
-          AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #Candidates)
           AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
           AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
           AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
-        GROUP BY BL.M_Consumerid;
+        GROUP BY CM.Active_ConsumerId;
     END
     ELSE
     BEGIN
@@ -343,8 +360,8 @@ BEGIN
                 ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
             INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
                 ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+            INNER JOIN #ConsumerMapping CM ON MC.M_Consumerid = CM.M_ConsumerId
             WHERE BL.compid IN (SELECT Comp_Id FROM @CompanyList)
-              AND MC.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
 
             UNION ALL
 
@@ -366,9 +383,9 @@ BEGIN
                 ON MC.M_Codeid = M.Row_ID
             INNER JOIN Pro_Reg PR WITH (NOLOCK) 
                 ON M.Pro_ID = PR.Pro_ID
+            INNER JOIN #ConsumerMapping CM ON MC.M_Consumerid = CM.M_ConsumerId
             WHERE BL.compid IS NULL
               AND PR.Comp_ID IN (SELECT Comp_Id FROM @CompanyList)
-              AND MC.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
         ) x
         GROUP BY M_Codeid;
 
@@ -413,7 +430,7 @@ BEGIN
 
         INSERT INTO #OtherEarnedPoints (M_ConsumerId, OtherPoints)
         SELECT 
-            BL.M_Consumerid,
+            CM.Active_ConsumerId AS M_ConsumerId,
             SUM(CAST(
                 CASE 
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
@@ -422,20 +439,20 @@ BEGIN
                 END 
             AS DECIMAL(18,2))) AS OtherPoints
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        INNER JOIN #ConsumerMapping CM ON BL.M_Consumerid = CM.M_ConsumerId
         WHERE BL.compid IN (SELECT Comp_Id FROM @CompanyList)
           AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
           AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
-          AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #Users)
           AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
-          AND (@EndDate   IS NULL OR BL.UpdateDate < @EndDate)
-        GROUP BY BL.M_Consumerid;
+          AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
+        GROUP BY CM.Active_ConsumerId;
     END
 
     ---------------------------------------------------------
     -- 6. REFERRAL POINTS
     ---------------------------------------------------------
     SELECT 
-        BL.M_Consumerid,
+        CM.Active_ConsumerId AS M_Consumerid,
         SUM(CAST(
             CASE 
                 WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
@@ -445,12 +462,12 @@ BEGIN
         AS DECIMAL(18,2))) AS ReferralPoints
     INTO #Referrals
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+    INNER JOIN #ConsumerMapping CM ON BL.M_Consumerid = CM.M_ConsumerId
     WHERE BL.compid IN (SELECT Comp_Id FROM @CompanyList)
-      AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #Candidates)
       AND LOWER(ISNULL(BL.ServiceName, '')) IN ('refral', 'referral')
       AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
       AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
-    GROUP BY BL.M_Consumerid;
+    GROUP BY CM.Active_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_Referrals_ConsumerId ON #Referrals(M_Consumerid);
 
@@ -473,45 +490,45 @@ BEGIN
     CREATE CLUSTERED INDEX IX_Claims_ConsumerId ON #Claims(M_ConsumerId);
 
     SELECT 
-        TRY_CAST(t.M_Consumerid AS INT) AS M_ConsumerId,
+        CM.Active_ConsumerId AS M_ConsumerId,
         SUM(TRY_CAST(ISNULL(t.Amount, t.Points_Val) AS DECIMAL(18,2))) AS UPIAmount
     INTO #UPI
     FROM tblUPITransactionDetails t WITH (NOLOCK)
+    INNER JOIN #ConsumerMapping CM ON TRY_CAST(t.M_Consumerid AS INT) = CM.M_ConsumerId
     WHERE t.Comp_Id IN (SELECT Comp_Id FROM @CompanyList)
       AND t.Status = 'Success'
       AND LEN(ISNULL(t.Code1, '')) > 3
-      AND TRY_CAST(t.M_Consumerid AS INT) IN (SELECT M_ConsumerId FROM #Candidates)
       AND (@StartDate IS NULL OR t.ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR t.ReqDate <  @EndDate)
-    GROUP BY TRY_CAST(t.M_Consumerid AS INT);
+    GROUP BY CM.Active_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_UPI_ConsumerId ON #UPI(M_ConsumerId);
 
     SELECT 
-        BT.RedeemBy AS M_ConsumerId,
+        CM.Active_ConsumerId AS M_ConsumerId,
         SUM(TRY_CAST(ISNULL(BT.RedeemPoints, 0) AS DECIMAL(18,2))) AS BPointsDebited
     INTO #BPoints
     FROM BPointsTransaction BT WITH (NOLOCK)
+    INNER JOIN #ConsumerMapping CM ON BT.RedeemBy = CM.M_ConsumerId
     WHERE BT.companyid IN (SELECT Comp_Id FROM @CompanyList)
       AND BT.bpstatus IN ('Accepted', 'SUCCESS', 'Debit')
-      AND BT.RedeemBy IN (SELECT M_ConsumerId FROM #Candidates)
       AND (@StartDate IS NULL OR BT.Redeemdate >= @StartDate)
       AND (@EndDate   IS NULL OR BT.Redeemdate <  @EndDate)
-    GROUP BY BT.RedeemBy;
+    GROUP BY CM.Active_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_BPoints_ConsumerId ON #BPoints(M_ConsumerId);
 
     SELECT 
-        TRY_CAST(t.M_CounserID AS INT) AS M_ConsumerId,
+        CM.Active_ConsumerId AS M_ConsumerId,
         SUM(TRY_CAST(ISNULL(t.Amount, 0) AS DECIMAL(18,2))) AS TransactionsAmount
     INTO #Transactions
     FROM Transactions t WITH (NOLOCK)
+    INNER JOIN #ConsumerMapping CM ON TRY_CAST(t.M_CounserID AS INT) = CM.M_ConsumerId
     WHERE (t.CompId IN (SELECT REPLACE(Comp_Id, 'Comp-', '') FROM @CompanyList) OR t.CompId IN (SELECT Comp_Id FROM @CompanyList))
       AND t.Issuccess = 1
-      AND TRY_CAST(t.M_CounserID AS INT) IN (SELECT M_ConsumerId FROM #Candidates)
       AND (@StartDate IS NULL OR t.TransactionDate >= @StartDate)
       AND (@EndDate   IS NULL OR t.TransactionDate <  @EndDate)
-    GROUP BY TRY_CAST(t.M_CounserID AS INT);
+    GROUP BY CM.Active_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_Transactions_ConsumerId ON #Transactions(M_ConsumerId);
 
