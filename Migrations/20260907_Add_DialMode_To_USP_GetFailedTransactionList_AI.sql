@@ -1,15 +1,14 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetFailedTransactionList_AI]    Script Date: 9/1/2026 4:15:00 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetFailedTransactionList_AI]    Script Date: 9/7/2026 5:30:00 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
 -- ====================================================================
--- Stored Procedure: USP_GetFailedTransactionList_AI
--- Purpose: Retrieves detailed list of failed transactions for reporting.
--- Used By: ReprocessTransactionService (Failed Transaction List API)
+-- Migration: 20260907_Add_DialMode_To_USP_GetFailedTransactionList_AI.sql
+-- Purpose: Adds DialMode column to USP_GetFailedTransactionList_AI
 -- ====================================================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetFailedTransactionList_AI]
     @Comp_ID    VARCHAR(50)  = NULL,
