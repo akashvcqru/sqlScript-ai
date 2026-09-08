@@ -129,6 +129,17 @@ BEGIN
         RETURN;
     END
 
+    -- Fetch user_type from tbl_users_sp for Comp-1669 filtering
+    DECLARE @user_type VARCHAR(50) = NULL;
+
+    IF @Comp_ID = 'Comp-1669' OR @Comp_ID = 'comp-1669'
+    BEGIN
+        SELECT TOP 1 @user_type = CAST(User_Type AS VARCHAR(50))
+        FROM tbl_users_sp WITH (NOLOCK)
+        WHERE IsDelete = 0 
+          AND RIGHT(Mobile_Number, 10) = RIGHT(@MobileNo, 10);
+    END
+
     -- Get Config Points and Frequency for fallback
     IF OBJECT_ID('tempdb..#ConfigPoints') IS NOT NULL DROP TABLE #ConfigPoints;
 
@@ -148,7 +159,13 @@ BEGIN
       AND pr.Comp_ID = @Comp_ID
       AND SS.IsActive = 1 AND SS.IsDelete = 0
       AND SST.IsActive = 1 AND SST.IsDelete = 0
-      AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
+      AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023', 'SRV1028')
+      AND (
+          LOWER(@Comp_ID) <> 'comp-1669'
+          OR (@user_type = '7' AND SS.Service_ID IN ('SRV1028'))
+          OR (@user_type = '6' AND SS.Service_ID IN ('SRV1001'))
+          OR (ISNULL(@user_type, '') NOT IN ('6', '7'))
+      )
       AND (m.Series_Order > SS.start_order OR (m.Series_Order = SS.start_order AND m.Series_Serial >= SS.start_series))
       AND (m.Series_Order < SS.end_order OR (m.Series_Order = SS.end_order AND m.Series_Serial <= SS.end_series))
     GROUP BY m.Row_ID, SS.Service_ID;
@@ -250,9 +267,11 @@ BEGIN
 
     CREATE INDEX IX_TempSoftCode ON #TempSoftCode(TrackingId);
 
+    IF OBJECT_ID('tempdb..#FinalResult') IS NOT NULL DROP TABLE #FinalResult;
+
     SELECT   
         t2.Status,  
-        t2.Service_ID,  
+        ss.Service_ID,  
         t2.Enq_Date,  
        -- t2.Comp_Name,  
         t2.Pro_Name as Comp_Name,  '' as Pro_Name,
@@ -263,6 +282,17 @@ BEGIN
         t2.M_Consumerid,  
         t2.Sort_Date,
         CASE 
+            WHEN (LOWER(@Comp_ID) = 'comp-1669' OR @Comp_ID = 'Comp-1669') AND ss.Service_ID IN ('SRV1028') THEN 
+                CASE 
+                    WHEN ISNULL(sst.IsCash, 0) <> 0 THEN CONCAT('+', CAST(CAST(sst.IsCash AS DECIMAL(18,2)) AS VARCHAR(50)))
+                    ELSE '0'
+                END
+            WHEN (LOWER(@Comp_ID) = 'comp-1669' OR @Comp_ID = 'Comp-1669') AND ss.Service_ID IN ('SRV1001') THEN 
+                CASE 
+                    WHEN ISNULL(SST.Points, 0) > 0 THEN CONCAT('+', CAST(CAST(SST.Points AS DECIMAL(18,2)) AS VARCHAR(50)))
+                    WHEN sst.Points IS NOT NULL AND sst.Points <> 0 THEN CONCAT('+', CAST(sst.Points AS VARCHAR(50)))
+                    ELSE '0'
+                END
             WHEN ISNULL(P.Points, 0) > 0 THEN CONCAT('+', CAST(CAST(P.Points AS DECIMAL(18,2)) AS VARCHAR(50)))
             WHEN tsc.Point IS NOT NULL AND TRY_CAST(tsc.Point AS DECIMAL(18,2)) > 0 THEN CONCAT('+', CAST(CAST(tsc.Point AS DECIMAL(18,2)) AS VARCHAR(50)))
             WHEN sst.Points IS NOT NULL AND sst.Points <> 0 THEN CONCAT('+', CAST(sst.Points AS VARCHAR(50)))
@@ -273,6 +303,7 @@ BEGIN
         c.ServiceName AS ServiceNameNew,
         'Green' AS ColourCode,
         CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
+    INTO #FinalResult
     FROM #ConsumerData t2  
     INNER JOIN M_Code m 
         ON t2.Code1 = m.Code1
@@ -280,6 +311,12 @@ BEGIN
     INNER JOIN M_ServiceSubscription ss 
         ON m.Pro_id = ss.Pro_id 
         AND ss.IsActive = 1 AND ss.IsDelete = 0
+        AND (
+            LOWER(@Comp_ID) <> 'comp-1669'
+            OR (@user_type = '7' AND ss.Service_ID IN ('SRV1028'))
+            OR (@user_type = '6' AND ss.Service_ID IN ('SRV1001'))
+            OR (ISNULL(@user_type, '') NOT IN ('6', '7'))
+        )
         AND (m.Series_Order > ss.start_order OR (m.Series_Order = ss.start_order AND m.Series_Serial >= ss.start_series))
         AND (m.Series_Order < ss.end_order OR (m.Series_Order = ss.end_order AND m.Series_Serial <= ss.end_series))
     INNER JOIN M_ServiceSubscriptionTrans sst 
@@ -295,7 +332,7 @@ BEGIN
 
 	SELECT   
     t2.Status,  
-    t2.Service_ID,  
+    s.Service_ID,  
     t2.Enq_Date,  
   --  t2.Comp_Name,  
     t2.Pro_Name as Comp_Name,  '' as Pro_Name,
@@ -322,6 +359,12 @@ INNER JOIN M_ServiceSubscription ss
     ON m.Pro_id = ss.Pro_id 
     AND ss.IsActive = 1 
     AND ss.IsDelete = 0
+    AND (
+        LOWER(@Comp_ID) <> 'comp-1669'
+        OR (@user_type = '7' AND ss.Service_ID IN ('SRV1028'))
+        OR (@user_type = '6' AND ss.Service_ID IN ('SRV1001'))
+        OR (ISNULL(@user_type, '') NOT IN ('6', '7'))
+    )
 INNER JOIN M_Service s 
     ON ss.Service_ID = s.Service_ID
 WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
@@ -331,7 +374,7 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
   
     SELECT   
         t2.Status,  
-        t2.Service_ID,  
+        'SRV1001' AS Service_ID,  
         t2.Enq_Date,  
         -- t2.Comp_Name,  
         t2.Pro_Name as Comp_Name, '' AS Pro_Name,
@@ -352,6 +395,11 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
         CAST(NULL AS DECIMAL(18,2)) AS InvoiceAmount  
     FROM #ConsumerData t2  
     WHERE t2.Status IN ('Invalid', 'Unsuccess')  
+      AND (
+          LOWER(@Comp_ID) <> 'comp-1669'
+          OR (@user_type = '6')
+          OR (ISNULL(@user_type, '') NOT IN ('6', '7'))
+      )
   
     UNION  
   
@@ -410,6 +458,14 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
       AND bll.compid = @Comp_ID  
       AND (@Year IS NULL OR YEAR(bll.UpdateDate) = @Year)
       AND (@Month IS NULL OR MONTH(bll.UpdateDate) = @Month)
-  
-    ORDER BY Sort_Date DESC;  
+      AND (
+          LOWER(@Comp_ID) <> 'comp-1669'
+          OR (@user_type = '7' AND bll.ServiceName IN ('Instant Payout'))
+          OR (@user_type = '6' AND bll.ServiceName IN ('Build Loyalty', 'buildloyalty'))
+          OR (ISNULL(@user_type, '') NOT IN ('6', '7'))
+      );
+
+    SELECT * 
+    FROM #FinalResult 
+    ORDER BY Sort_Date DESC;
 END
