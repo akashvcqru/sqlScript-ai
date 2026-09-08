@@ -111,6 +111,7 @@ BEGIN
             b.OldBal AS OldBal,
             b.Amount AS Amount,
             b.NewBal AS NewBal,
+            ISNULL((SELECT TOP 1 pb.Amount FROM Paytm_balance pb WITH (NOLOCK) WHERE pb.Comp_ID = b.Comp_Id), 0) AS CurrentWalletBalance,
             b.Cr_Dr_Type AS Cr_Dr_Type,
             b.ReqDate AS ReqDate,
             ROW_NUMBER() OVER (
@@ -137,6 +138,7 @@ BEGIN
         OldBal,
         Amount,
         NewBal,
+        CurrentWalletBalance,
         Cr_Dr_Type,
         ReqDate
     INTO #TempUniqueReport
@@ -150,6 +152,7 @@ BEGIN
         OldBal,
         Amount,
         NewBal,
+        CurrentWalletBalance,
         Cr_Dr_Type,
         ReqDate
     FROM #TempUniqueReport
