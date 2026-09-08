@@ -1,11 +1,12 @@
 USE [Vcqru]
 GO
+/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 7/16/2026 11:17:48 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
+ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
     @CompID VARCHAR(50),
@@ -65,8 +66,7 @@ BEGIN
     INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
     INNER JOIN @CompanyList CL ON PR.Comp_Id = CL.Comp_Id
     WHERE RIGHT(PE.MobileNo, 10) = RIGHT(@MobileNo, 10)
-      AND PE.Is_Success = '1'
-      AND (@CompID <> 'Comp-1669' OR (ISNULL(PE.Received_Code1, '') <> '' AND ISNULL(PE.Received_Code2, '') <> ''));
+      AND PE.Is_Success = '1';
 
     -- Get Earned Points
     SELECT
@@ -75,6 +75,13 @@ BEGIN
         ISNULL(SS.Service_ID, 'SRV1001') AS Service_ID,
         CAST(
             CASE 
+                WHEN @CompID = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
+                WHEN @CompID = 'Comp-1669' THEN
+                    CASE
+                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
+                        WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                        ELSE 0.00
+                    END
                 WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
                 WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
                 ELSE NULL
@@ -95,7 +102,8 @@ BEGIN
     LEFT JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) 
         ON BL.SST_id = SST.SST_Id
     LEFT JOIN M_ServiceSubscription SS WITH (NOLOCK) 
-        ON SST.Subscribe_Id = SS.Subscribe_Id;
+        ON SST.Subscribe_Id = SS.Subscribe_Id
+    WHERE (@CompID <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001'));
 
     CREATE CLUSTERED INDEX IX_EarnedPoints_MCodeid ON #EarnedPoints(M_Codeid, rn);
 
@@ -105,6 +113,12 @@ BEGIN
         SS.Service_ID,
         MAX(CAST(
             CASE 
+                WHEN @CompID = 'Comp-1669' THEN
+                    CASE 
+                        WHEN SS.Service_ID = 'SRV1001' THEN ISNULL(SST.Points, 0)
+                        WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
+                        ELSE 0.00
+                    END
                 WHEN SST.Points IS NOT NULL AND SST.Points > 0 THEN SST.Points
                 ELSE ISNULL(SST.IsCash, 0) * @Multiplier
             END 
@@ -171,8 +185,8 @@ BEGIN
     INTO #ReferralStats
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON (BL.compid = CL.Comp_Id OR ISNULL(BL.compid, '') = '')
-    WHERE (BL.M_Consumerid = @M_Consumerid)
-      AND (BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL OR LOWER(BL.ServiceName) IN ('refral', 'referral'));
+    WHERE BL.M_Consumerid = @M_Consumerid 
+      AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL;
 
     ---------------------------------------------------------
     -- Calculate specific totals for this consumer
@@ -200,7 +214,7 @@ BEGIN
     WHERE Comp_Id = @CompID
       AND Status = 'Success'
       AND LEN(Code1) > 3
-      AND (M_Consumerid = CAST(@M_Consumerid AS VARCHAR(50)) OR RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10));
+      AND M_Consumerid = CAST(@M_Consumerid AS VARCHAR(50));
 
     DECLARE @ClaimsAmount DECIMAL(18,2) = 0;
     SELECT @ClaimsAmount = ISNULL(SUM(CASE WHEN ISNULL(Amount, 0) > 0 THEN Amount ELSE ISNULL(TRY_CONVERT(NUMERIC(18,2), PointsValue), 0) END), 0)
@@ -231,8 +245,7 @@ BEGIN
     WHERE RIGHT(pe.MobileNo, 10) = RIGHT(@MobileNo, 10)
       AND PR.Comp_ID = @CompID
       -- Count ONLY 'Already Scanned' (Is_Success = '2')
-      AND pe.Is_Success = '2'
-      AND (@CompID <> 'Comp-1669' OR (ISNULL(pe.Received_Code1, '') <> '' AND ISNULL(pe.Received_Code2, '') <> ''));
+      AND pe.Is_Success = '2';
 
     DECLARE @InvalidCodeCount INT = 0;
     SELECT @InvalidCodeCount = COUNT(pe.Received_Code1)
@@ -241,8 +254,7 @@ BEGIN
     INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
     WHERE RIGHT(pe.MobileNo, 10) = RIGHT(@MobileNo, 10)
       AND PR.Comp_ID = @CompID
-      AND pe.Is_Success NOT IN ('1', '2')
-      AND (@CompID <> 'Comp-1669' OR (ISNULL(pe.Received_Code1, '') <> '' AND ISNULL(pe.Received_Code2, '') <> ''));
+      AND pe.Is_Success NOT IN ('1', '2');
 
     -- Result Set 1: Overall Stats
     SELECT 
@@ -252,12 +264,11 @@ BEGIN
         @UnsuccessCodeCount as UnsuccessCode,
         CASE 
             WHEN @CompID = 'Comp-1274' THEN @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
-            WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(cash AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
+            WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(cash AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
             ELSE @TotalConfigCash + (SELECT RefCash FROM #ReferralStats)
         END as TotalCash,
         CASE 
-            WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = @MobileNo and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
-            WHEN @CompID = 'Comp-1669' THEN (SELECT ISNULL(SUM(TRY_CAST(ISNULL(BL.Cash, BL.Points) AS DECIMAL(18,2))), 0) FROM BLoyaltyPointsEarned BL WITH (NOLOCK) INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid WHERE BL.compid = @CompID AND MC.M_Consumerid = @M_Consumerid) + (SELECT RefPoints + RefCash FROM #ReferralStats)
+            WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
             ELSE @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
         END as TotalPoints,
         @HasServiceWiseGifts as HasServiceWiseGifts,
@@ -315,4 +326,3 @@ BEGIN
     ) t
     GROUP BY Service_ID;
 END
-GO
