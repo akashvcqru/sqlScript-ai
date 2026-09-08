@@ -200,7 +200,7 @@ BEGIN
         ELSE IF (@DatePreset = 'LASTYEAR')
         BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
-            SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
         ELSE IF (@DatePreset = 'LAST7DAYS')
         BEGIN
@@ -225,9 +225,6 @@ BEGIN
     DROP TABLE IF EXISTS #FilteredScrap;
     SELECT 
         m.Row_ID,
-        p.Comp_ID,
-        m.Code1,
-        m.Code2,
         CONCAT(
             RIGHT('00000' + CAST(m.Code1 AS VARCHAR(5)), 5),
             RIGHT('00000000' + CAST(m.Code2 AS VARCHAR(8)), 8)
@@ -236,9 +233,7 @@ BEGIN
         m.Pro_ID AS ProId,
         p.Pro_Name AS ProductName,
         m.ScrapeFlag,
-        m.Block_Code_Date AS BlockCodeDate,
-        m.Print_Date AS PrintDate,
-        m.Gen_Date AS GenDate
+        m.Block_Code_Date AS ScrapeDate
     INTO #FilteredScrap
     FROM M_Code m WITH (NOLOCK)
     LEFT JOIN Pro_Reg p WITH (NOLOCK) ON m.Pro_ID = p.Pro_ID
@@ -264,19 +259,14 @@ BEGIN
     BEGIN
         SELECT 
             Row_ID,
-            Comp_ID,
-            Code1,
-            Code2,
             CompleteCode,
             BatchNo,
             ProId,
             ProductName,
             ScrapeFlag,
-            BlockCodeDate,
-            PrintDate,
-            GenDate
+            ScrapeDate
         FROM #FilteredScrap
-        ORDER BY BlockCodeDate DESC, Row_ID DESC;
+        ORDER BY ScrapeDate DESC, Row_ID DESC;
 
         DROP TABLE #FilteredScrap;
         RETURN;
@@ -293,19 +283,14 @@ BEGIN
     -- Result Set 1: Paginated Rows
     SELECT 
         Row_ID,
-        Comp_ID,
-        Code1,
-        Code2,
         CompleteCode,
         BatchNo,
         ProId,
         ProductName,
         ScrapeFlag,
-        BlockCodeDate,
-        PrintDate,
-        GenDate
+        ScrapeDate
     FROM #FilteredScrap
-    ORDER BY BlockCodeDate DESC, Row_ID DESC
+    ORDER BY ScrapeDate DESC, Row_ID DESC
     OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
     -- Result Set 2: Pagination Summary
