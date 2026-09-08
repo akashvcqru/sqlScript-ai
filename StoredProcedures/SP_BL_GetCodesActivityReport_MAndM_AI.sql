@@ -67,6 +67,17 @@ BEGIN
     IF (@Search IS NULL OR LTRIM(RTRIM(@Search)) = '' OR @Search = 'NULL')
         SET @Search = NULL;
 
+    DECLARE @SearchMobile NVARCHAR(30) = NULL;
+    IF @Search IS NOT NULL
+    BEGIN
+        DECLARE @CleanSearchDigits NVARCHAR(100) = REPLACE(REPLACE(REPLACE(REPLACE(@Search, '+', ''), '-', ''), ' ', ''), '(', '');
+        SET @CleanSearchDigits = REPLACE(@CleanSearchDigits, ')', '');
+        IF @CleanSearchDigits NOT LIKE '%[^0-9]%' AND LEN(@CleanSearchDigits) >= 10
+        BEGIN
+            SET @SearchMobile = RIGHT(@CleanSearchDigits, 10);
+        END
+    END
+
     IF (@Scheme IS NULL OR LTRIM(RTRIM(@Scheme)) = '' OR @Scheme = 'NULL')
         SET @Scheme = NULL;
 
@@ -298,7 +309,9 @@ BEGIN
         AND (
             @Search IS NULL
             OR pc.MobileNo LIKE '%' + @Search + '%'
+            OR (@SearchMobile IS NOT NULL AND pc.MobileNo LIKE '%' + @SearchMobile + '%')
             OR (pc.Code1 + pc.Code2) LIKE '%' + @Search + '%'
+            OR (@SearchMobile IS NOT NULL AND (pc.Code1 + pc.Code2) LIKE '%' + @SearchMobile + '%')
         )
         AND (
             @Lot IS NULL
@@ -377,6 +390,7 @@ BEGIN
       AND (
           @Search IS NULL
           OR MC.MobileNo LIKE '%' + @Search + '%'
+          OR (@SearchMobile IS NOT NULL AND MC.MobileNo LIKE '%' + @SearchMobile + '%')
       )
     GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, MC.City, MC.PinCode, MC.Address, BL.compid, BL.UpdateDate;
 
