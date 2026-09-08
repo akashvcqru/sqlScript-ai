@@ -36,7 +36,7 @@ BEGIN
         SET @MobileNo = '91' + @MobileNo;
     END
 
-    -- 2. Validate Code
+    -- 2. Validate Code (Ignore Scrapped Codes)
     SELECT TOP 1 
         @RowID = mc.Row_ID, 
         @UseCount = mc.Use_Count, 
@@ -45,7 +45,9 @@ BEGIN
         @Batch_No = mc.Batch_No
     FROM M_Code mc
     INNER JOIN Pro_Reg pr ON mc.Pro_ID = pr.Pro_ID
-    WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0));
+    WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) 
+      AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0))
+      AND (mc.ScrapeFlag IS NULL OR mc.ScrapeFlag = 0);
 
     -- Fallback to M_Code_PFL if not found in M_Code (e.g. for Patanjali)
     IF @RowID IS NULL
@@ -58,7 +60,9 @@ BEGIN
             @Batch_No = mc.Batch_No
         FROM M_Code_PFL mc
         INNER JOIN Pro_Reg pr ON mc.Pro_ID = pr.Pro_ID
-        WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0));
+        WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) 
+          AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0))
+          AND (mc.ScrapeFlag IS NULL OR mc.ScrapeFlag = 0);
     END
 
     IF @RowID IS NULL
