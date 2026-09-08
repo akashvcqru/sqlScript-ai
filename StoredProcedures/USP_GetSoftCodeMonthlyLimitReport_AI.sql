@@ -93,15 +93,36 @@ BEGIN
           AND (@EndDate IS NULL OR s.Req_Date < @EndDate);
     END
 
+    DECLARE @CurMonthStart DATETIME = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
+    DECLARE @CurMonthEnd   DATETIME = DATEADD(MONTH, 1, @CurMonthStart);
+
     -- Query for limits report list
     SELECT 
         s.Row_ID,
         s.Comp_ID,
         cr.Comp_Name AS CompName,
-        s.MonthlyLimit,
-        s.Req_Date
+        ISNULL(s.MonthlyLimit, 0) AS MonthlyLimit,
+        s.Req_Date,
+        P.LastPrintCodeDate,
+        ISNULL(P.CurrentMonthTotalPrintCode, 0) AS CurrentMonthTotalPrintCode,
+        CASE 
+            WHEN (ISNULL(s.MonthlyLimit, 0) - ISNULL(P.CurrentMonthTotalPrintCode, 0)) < 0 THEN 0 
+            ELSE (ISNULL(s.MonthlyLimit, 0) - ISNULL(P.CurrentMonthTotalPrintCode, 0)) 
+        END AS RemainingLimit
     FROM SetRequestLabelLimit s WITH (NOLOCK)
     LEFT JOIN Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = s.Comp_ID
+    OUTER APPLY (
+        SELECT 
+            MAX(lr.Entry_Date) AS LastPrintCodeDate,
+            SUM(CASE 
+                    WHEN lr.Entry_Date >= @CurMonthStart AND lr.Entry_Date < @CurMonthEnd 
+                    THEN ISNULL(lr.Qty, 0) 
+                    ELSE 0 
+                END) AS CurrentMonthTotalPrintCode
+        FROM M_Label_Request lr WITH (NOLOCK)
+        INNER JOIN Pro_Reg pr WITH (NOLOCK) ON pr.Pro_ID = lr.Pro_ID
+        WHERE pr.Comp_ID = s.Comp_ID
+    ) P
     WHERE (@Search IS NULL OR s.Comp_ID LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
       AND (@StartDate IS NULL OR s.Req_Date >= @StartDate)
       AND (@EndDate IS NULL OR s.Req_Date < @EndDate)
