@@ -256,6 +256,16 @@ BEGIN
       AND PR.Comp_ID = @CompID
       AND pe.Is_Success NOT IN ('1', '2');
 
+    DECLARE @Vrkabel_User_Type INT = NULL;
+    IF LOWER(@CompID) = 'comp-1669'
+    BEGIN
+        SELECT TOP 1 @Vrkabel_User_Type = TRY_CAST(Vrkabel_User_Type AS INT)
+        FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+        WHERE M_consumerId = @M_Consumerid 
+          AND LOWER(Comp_id) = 'comp-1669'
+          AND IsDelete = 0;
+    END
+
     -- Result Set 1: Overall Stats
     SELECT 
         (@SuccessCodeCount + @UnsuccessCodeCount + @InvalidCodeCount) as TotalCode,
@@ -269,6 +279,7 @@ BEGIN
         END as TotalCash,
         CASE 
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
+            WHEN LOWER(@CompID) = 'comp-1669' AND @Vrkabel_User_Type = 164 THEN @TotalConfigCash + (SELECT RefCash FROM #ReferralStats)
             ELSE @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
         END as TotalPoints,
         @HasServiceWiseGifts as HasServiceWiseGifts,
