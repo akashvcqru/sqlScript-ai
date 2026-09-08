@@ -34,7 +34,7 @@ BEGIN
         SST.Comments,
         SST.IsActive,
         CASE 
-            WHEN SST.IsActive = 0 THEN 'Activated' 
+            WHEN SST.IsActive = 1 THEN 'Activated' 
             ELSE 'De-Activated' 
         END AS StatusText,
         SST.IsDelete,

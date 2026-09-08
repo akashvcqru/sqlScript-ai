@@ -1,10 +1,11 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_FillTempUPIPayoutReport_AllCompanies]    Script Date: 7/22/2026 2:39:05 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_FillTempUPIPayoutReport_AllCompanies]    Script Date: 9/7/2026 4:05:17 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
 ALTER   PROCEDURE [dbo].[USP_FillTempUPIPayoutReport_AllCompanies]
 AS
 BEGIN
@@ -79,6 +80,7 @@ BEGIN
 
                 INSERT INTO dbo.TempUPIPayoutReport
                 (
+                    tblUPITransactionDetailsID,
                     Comp_ID,
                     Comp_Name,
                     ConsumerName,

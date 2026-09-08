@@ -1,16 +1,16 @@
 -- ============================================================
 -- Stored Procedure: USP_InsertServiceSettingAnticounterfit_AI
 -- Purpose        : Ultra-fast insert for Anticounterfit service setting
---                  (Optimized to execute in < 1s to prevent timeout)
+--                  (Optimized to execute in milliseconds without timeouts)
 -- ============================================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingAnticounterfit_AI]
-    @Comp_ID      VARCHAR(50),
-    @Pro_ID       VARCHAR(50),
-    @Service_ID   VARCHAR(50),
-    @Subscribe_Id VARCHAR(50)   = NULL,
+    @Comp_ID      NVARCHAR(50),
+    @Pro_ID       NVARCHAR(50),
+    @Service_ID   NVARCHAR(50),
+    @Subscribe_Id NVARCHAR(50)   = NULL,
 
-    @DateFrom     DATETIME      = NULL,
-    @DateTo       DATETIME      = NULL,
+    @DateFrom     DATETIME       = NULL,
+    @DateTo       DATETIME       = NULL,
 
     @Comments     NVARCHAR(1000) = NULL,
     @EntryDate    DATETIME       = NULL,
@@ -30,7 +30,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingAnticounterfit_AI]
     @MRP            NUMERIC(18, 2) = 0,
     @Mfd_Date       VARCHAR(50)    = NULL,
     @Exp_Date       VARCHAR(50)    = NULL,
-    @Batch_No       VARCHAR(100)   = NULL,
+    @Batch_No       NVARCHAR(100)  = NULL,
     @BatchSize      INT            = NULL
 AS
 BEGIN
@@ -73,13 +73,19 @@ BEGIN
 
         DECLARE @NewSST_Id BIGINT;
 
-        -- 2. Insert into M_ServiceSubscriptionTrans (keep single record if already exists)
+        -- 2. Insert or update M_ServiceSubscriptionTrans (keep single record if already exists)
         IF @Service_ID = 'SRV1018' AND EXISTS (SELECT 1 FROM M_ServiceSubscriptionTrans WITH (NOLOCK) WHERE Subscribe_Id = @Subscribe_Id)
         BEGIN
             SELECT TOP 1 @NewSST_Id = SST_Id 
             FROM M_ServiceSubscriptionTrans WITH (NOLOCK)
             WHERE Subscribe_Id = @Subscribe_Id 
             ORDER BY Entry_Date DESC;
+
+            UPDATE M_ServiceSubscriptionTrans
+            SET DateFrom = ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE DateFrom END),
+                DateTo = ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE DateTo END),
+                Comments = ISNULL(@Comments, Comments)
+            WHERE SST_Id = @NewSST_Id;
         END
         ELSE
         BEGIN
@@ -111,43 +117,110 @@ BEGIN
         BEGIN
             DECLARE @NewTPro_RowID BIGINT;
 
-            INSERT INTO T_Pro
-            (
-                Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date
-            )
-            VALUES
-            (
-                @Pro_ID, @Batch_No, ISNULL(@MRP, 0), 
-                CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
-                CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
-                @Comments, ISNULL(@EntryDate, GETDATE())
-            );
-            SET @NewTPro_RowID = SCOPE_IDENTITY();
+            SELECT TOP 1 @NewTPro_RowID = Row_ID 
+            FROM T_Pro WITH (NOLOCK) 
+            WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
 
-            -- 4. Fast batch assignment in M_Code
-            DECLARE @Qty INT = 0;
-            IF ISNULL(@BatchSize, 0) > 0
+            IF @NewTPro_RowID IS NULL
             BEGIN
-                ;WITH CTE AS (
-                    SELECT TOP (@BatchSize) Batch_No
-                    FROM M_Code WITH (ROWLOCK)
-                    WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                INSERT INTO T_Pro
+                (
+                    Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date
                 )
-                UPDATE CTE
-                SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50));
-
-                SET @Qty = @@ROWCOUNT;
+                VALUES
+                (
+                    @Pro_ID, @Batch_No, ISNULL(@MRP, 0), 
+                    CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
+                    CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
+                    @Comments, ISNULL(@EntryDate, GETDATE())
+                );
+                SET @NewTPro_RowID = SCOPE_IDENTITY();
             END
             ELSE
             BEGIN
-                UPDATE M_Code WITH (ROWLOCK)
-                SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50))
-                WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '');
-
-                SET @Qty = @@ROWCOUNT;
+                UPDATE T_Pro
+                SET MRP = ISNULL(@MRP, MRP),
+                    Mfd_Date = CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE Mfd_Date END,
+                    Exp_Date = CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE Exp_Date END,
+                    Comments = ISNULL(@Comments, Comments)
+                WHERE Row_ID = @NewTPro_RowID;
             END
 
-            -- 5. Update Series_Limit in T_Pro with fast aggregate calculation (NO full-table ORDER BY scans)
+            -- Fallback BatchSize from Pro_Reg if not explicitly provided
+            IF ISNULL(@BatchSize, 0) <= 0
+            BEGIN
+                SELECT @BatchSize = ISNULL(BatchSize, 0)
+                FROM Pro_Reg WITH (NOLOCK)
+                WHERE Pro_ID = @Pro_ID;
+            END
+
+            -- 4. Fast batch assignment in M_Code / M_Code_PFL with in-memory capture
+            DECLARE @Qty INT = 0;
+            DECLARE @UpdatedCodes TABLE (
+                Series_Order INT,
+                Series_Serial INT
+            );
+
+            IF @Comp_ID = 'Comp-1693'
+            BEGIN
+                IF ISNULL(@BatchSize, 0) > 0
+                BEGIN
+                    ;WITH CTE AS (
+                        SELECT TOP (@BatchSize) Batch_No, Series_Order, Series_Serial
+                        FROM M_Code_PFL WITH (ROWLOCK)
+                        WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                    )
+                    UPDATE CTE
+                    SET Batch_No = CAST(@NewTPro_RowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes;
+
+                    SET @Qty = @@ROWCOUNT;
+                END
+                ELSE
+                BEGIN
+                    ;WITH CTE AS (
+                        SELECT TOP (50000) Batch_No, Series_Order, Series_Serial
+                        FROM M_Code_PFL WITH (ROWLOCK)
+                        WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                    )
+                    UPDATE CTE
+                    SET Batch_No = CAST(@NewTPro_RowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes;
+
+                    SET @Qty = @@ROWCOUNT;
+                END
+            END
+            ELSE
+            BEGIN
+                IF ISNULL(@BatchSize, 0) > 0
+                BEGIN
+                    ;WITH CTE AS (
+                        SELECT TOP (@BatchSize) Batch_No, Series_Order, Series_Serial
+                        FROM M_Code WITH (ROWLOCK)
+                        WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                    )
+                    UPDATE CTE
+                    SET Batch_No = CAST(@NewTPro_RowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes;
+
+                    SET @Qty = @@ROWCOUNT;
+                END
+                ELSE
+                BEGIN
+                    ;WITH CTE AS (
+                        SELECT TOP (50000) Batch_No, Series_Order, Series_Serial
+                        FROM M_Code WITH (ROWLOCK)
+                        WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                    )
+                    UPDATE CTE
+                    SET Batch_No = CAST(@NewTPro_RowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes;
+
+                    SET @Qty = @@ROWCOUNT;
+                END
+            END
+
+            -- 5. Update Series_Limit in T_Pro from in-memory @UpdatedCodes (Zero M_Code table scans!)
             IF @Qty > 0
             BEGIN
                 DECLARE @MinOrder INT, @MaxOrder INT, @MinSerial INT, @MaxSerial INT;
@@ -157,8 +230,7 @@ BEGIN
                     @MaxOrder = MAX(Series_Order),
                     @MinSerial = MIN(Series_Serial),
                     @MaxSerial = MAX(Series_Serial)
-                FROM M_Code WITH (NOLOCK)
-                WHERE Pro_ID = @Pro_ID AND Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50));
+                FROM @UpdatedCodes;
 
                 IF @MinOrder IS NOT NULL
                 BEGIN

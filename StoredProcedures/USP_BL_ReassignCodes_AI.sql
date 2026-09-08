@@ -348,11 +348,34 @@ BEGIN
 
         -- 5b. Create entries in M_ServiceSubscription and M_ServiceSubscriptionTrans
         DECLARE @LastSubscribeId NVARCHAR(50) = NULL;
-        SELECT TOP 1 @LastSubscribeId = Subscribe_Id
-        FROM M_ServiceSubscription WITH (NOLOCK)
-        WHERE Pro_ID = @TargetProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
-        ORDER BY EntryDate DESC, Subscribe_Id DESC;
 
+        -- 1. Try to find subscription for TargetProId that has an entry in M_ServiceSubscriptionTrans
+        SELECT TOP 1 @LastSubscribeId = ss.Subscribe_Id
+        FROM M_ServiceSubscription ss WITH (NOLOCK)
+        INNER JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON ss.Subscribe_Id = sst.Subscribe_Id
+        WHERE ss.Pro_ID = @TargetProId AND ss.IsActive = 1 AND ISNULL(ss.IsDelete, 0) = 0
+        ORDER BY ss.EntryDate DESC, ss.Subscribe_Id DESC;
+
+        -- 2. If not found, try for OrigProId that has an entry in M_ServiceSubscriptionTrans
+        IF @LastSubscribeId IS NULL
+        BEGIN
+            SELECT TOP 1 @LastSubscribeId = ss.Subscribe_Id
+            FROM M_ServiceSubscription ss WITH (NOLOCK)
+            INNER JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON ss.Subscribe_Id = sst.Subscribe_Id
+            WHERE ss.Pro_ID = @OrigProId AND ss.IsActive = 1 AND ISNULL(ss.IsDelete, 0) = 0
+            ORDER BY ss.EntryDate DESC, ss.Subscribe_Id DESC;
+        END
+
+        -- 3. If still not found, check any active subscription for TargetProId
+        IF @LastSubscribeId IS NULL
+        BEGIN
+            SELECT TOP 1 @LastSubscribeId = Subscribe_Id
+            FROM M_ServiceSubscription WITH (NOLOCK)
+            WHERE Pro_ID = @TargetProId AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
+            ORDER BY EntryDate DESC, Subscribe_Id DESC;
+        END
+
+        -- 4. If still not found, check any active subscription for OrigProId
         IF @LastSubscribeId IS NULL
         BEGIN
             SELECT TOP 1 @LastSubscribeId = Subscribe_Id
@@ -375,8 +398,8 @@ BEGIN
 
                 SET @NewSubscribeId = CONCAT(@Prefix, CAST(@StartVal AS NVARCHAR(50)));
 
-                -- Check if Subscribe_Id already exists in M_ServiceSubscriptiontrans or M_ServiceSubscription
-                IF EXISTS (SELECT 1 FROM M_ServiceSubscriptiontrans WITH (NOLOCK) WHERE Subscribe_Id = @NewSubscribeId)
+                -- Check if Subscribe_Id already exists in M_ServiceSubscriptionTrans or M_ServiceSubscription
+                IF EXISTS (SELECT 1 FROM M_ServiceSubscriptionTrans WITH (NOLOCK) WHERE Subscribe_Id = @NewSubscribeId)
                    OR EXISTS (SELECT 1 FROM M_ServiceSubscription WITH (NOLOCK) WHERE Subscribe_Id = @NewSubscribeId)
                 BEGIN
                     UPDATE Code_Gen
@@ -404,21 +427,36 @@ BEGIN
             FROM [dbo].[M_ServiceSubscription] WITH (NOLOCK)
             WHERE Subscribe_Id = @LastSubscribeId;
 
-            -- Insert into M_ServiceSubscriptiontrans replicating the configuration of the last subscription
-            INSERT INTO [dbo].[M_ServiceSubscriptionTrans] (
-                [Subscribe_Id], [Points], [IsCashConvert], [IsCash], [DateFrom], [DateTo],
-                [Entry_Date], [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
-                [IsActive], [IsDelete], [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
-                [AmtType], [Minval], [Maxval], [totalamont]
-            )
-            SELECT TOP 1
-                @NewSubscribeId, @Point, [IsCashConvert], [IsCash], [DateFrom], ISNULL(@TargetExpDate, [DateTo]),
-                GETDATE(), [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
-                1, 0, [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
-                [AmtType], [Minval], [Maxval], [totalamont]
-            FROM [dbo].[M_ServiceSubscriptionTrans] WITH (NOLOCK)
-            WHERE Subscribe_Id = @LastSubscribeId
-            ORDER BY SST_Id DESC;
+            -- Check if source SST exists to copy template fields from
+            IF EXISTS (SELECT 1 FROM [dbo].[M_ServiceSubscriptionTrans] WITH (NOLOCK) WHERE Subscribe_Id = @LastSubscribeId)
+            BEGIN
+                INSERT INTO [dbo].[M_ServiceSubscriptionTrans] (
+                    [Subscribe_Id], [Points], [IsCashConvert], [IsCash], [DateFrom], [DateTo],
+                    [Entry_Date], [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
+                    [IsActive], [IsDelete], [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
+                    [AmtType], [Minval], [Maxval], [totalamont]
+                )
+                SELECT TOP 1
+                    @NewSubscribeId, @Point, [IsCashConvert], [IsCash], [DateFrom], ISNULL(@TargetExpDate, [DateTo]),
+                    GETDATE(), [Update_Flag_H], [Update_Flag_E], [Comments], [Frequency],
+                    1, 0, [IsDraw], [IsReferral], [DrawDate], [WarrantyPeriod],
+                    [AmtType], [Minval], [Maxval], [totalamont]
+                FROM [dbo].[M_ServiceSubscriptionTrans] WITH (NOLOCK)
+                WHERE Subscribe_Id = @LastSubscribeId
+                ORDER BY SST_Id DESC;
+            END
+            ELSE
+            BEGIN
+                -- Direct fallback insert when no template transaction exists
+                INSERT INTO [dbo].[M_ServiceSubscriptionTrans] (
+                    [Subscribe_Id], [Points], [IsCashConvert], [IsCash], [DateFrom], [DateTo],
+                    [Entry_Date], [Comments], [Frequency], [IsActive], [IsDelete], [AmtType]
+                )
+                VALUES (
+                    @NewSubscribeId, @Point, 1, 0, @TargetMfdDate, @TargetExpDate,
+                    GETDATE(), 'BL Reassigned from ' + @OrigProId, 1, 1, 0, 'Fixed'
+                );
+            END
 
             -- After creating record in this table, then +1 increment PrStart value
             UPDATE Code_Gen

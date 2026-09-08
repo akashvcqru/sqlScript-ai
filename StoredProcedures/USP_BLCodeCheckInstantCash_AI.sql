@@ -204,6 +204,74 @@ BEGIN
             SET @Comp_ID = @ActualComp_ID;
         END
 
+    -- =========================================================================
+    -- VENDOR-WISE DAILY SCAN LIMIT & TIME WINDOW CHECK
+    -- =========================================================================
+    IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'tbl_VendorScanLimitSetting')
+    BEGIN
+        DECLARE @VendorDailyLimit INT = NULL;
+        DECLARE @VendorScanStartTime TIME(0) = NULL;
+        DECLARE @VendorScanEndTime TIME(0) = NULL;
+        DECLARE @VendorCustomLimitMsg NVARCHAR(500) = NULL;
+        DECLARE @TargetCompID VARCHAR(50) = ISNULL(NULLIF(@Comp_ID, ''), @ActualComp_ID);
+
+        SELECT TOP 1 
+            @VendorDailyLimit = DailyUserScanLimit,
+            @VendorScanStartTime = ISNULL(ScanStartTime, '00:00:00'),
+            @VendorScanEndTime = ISNULL(ScanEndTime, '23:59:59'),
+            @VendorCustomLimitMsg = CustomLimitMessage
+        FROM [dbo].[tbl_VendorScanLimitSetting] WITH (NOLOCK)
+        WHERE Comp_Id = @TargetCompID 
+          AND IsActive = 1;
+
+        IF @VendorDailyLimit IS NOT NULL AND @VendorDailyLimit > 0
+        BEGIN
+            DECLARE @CurrentTimeVal TIME(0) = CAST(GETDATE() AS TIME(0));
+
+            -- Check Time Window
+            IF (@VendorScanStartTime IS NOT NULL AND @VendorScanEndTime IS NOT NULL)
+            BEGIN
+                IF @CurrentTimeVal < @VendorScanStartTime OR @CurrentTimeVal > @VendorScanEndTime
+                BEGIN
+                    ROLLBACK TRANSACTION;
+                    SELECT 
+                        3 AS ResultCode, 
+                        CONCAT('Code scanning is allowed only between ', 
+                               FORMAT(CAST(@VendorScanStartTime AS DATETIME), 'hh:mm tt'), ' and ', 
+                               FORMAT(CAST(@VendorScanEndTime AS DATETIME), 'hh:mm tt'), '.') AS Message,
+                        0 AS Amount,
+                        '' AS ServiceID,
+                        @TargetCompID AS Comp_ID;
+                    RETURN;
+                END
+            END
+
+            -- Check User Daily Limit (if MobileNo is provided)
+            IF @MobileNo IS NOT NULL AND LTRIM(RTRIM(@MobileNo)) <> ''
+            BEGIN
+                DECLARE @TodayScanCountVal INT = 0;
+                SELECT @TodayScanCountVal = COUNT(1)
+                FROM [dbo].[Pro_Enq] WITH (NOLOCK)
+                WHERE Comp_ID = @TargetCompID
+                  AND RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
+                  AND CAST(Enq_Date AS DATE) = CAST(GETDATE() AS DATE)
+                  AND Is_Success = '1';
+
+                IF @TodayScanCountVal >= @VendorDailyLimit
+                BEGIN
+                    ROLLBACK TRANSACTION;
+                    SELECT 
+                        3 AS ResultCode, 
+                        ISNULL(NULLIF(LTRIM(RTRIM(@VendorCustomLimitMsg)), ''), 'You have reached your daily scan limit for today. Please try again tomorrow.') AS Message,
+                        0 AS Amount,
+                        '' AS ServiceID,
+                        @TargetCompID AS Comp_ID;
+                    RETURN;
+                END
+            END
+        END
+    END
+
         -------------------------------------------------------------------
         -- 2. UPSERT M_Consumer
         -------------------------------------------------------------------
@@ -528,7 +596,7 @@ BEGIN
                         FROM ClaimDetails CD WITH (NOLOCK)
                         WHERE CD.Comp_id = @ActualComp_ID 
                           AND CD.Mobileno IN (SELECT MobileNo FROM @ConsumerMobiles)
-                          AND (CD.Isapproved = 1 OR CD.IsPaid = 1 OR CD.PaymentStatus = 'Paid');
+                          AND CD.Isapproved = 1;
 
                         -- 4. Total UPI Transferred
                         DECLARE @TotalUPI DECIMAL(18,2) = 0;

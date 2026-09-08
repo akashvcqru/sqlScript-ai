@@ -51,9 +51,83 @@ BEGIN
     DECLARE @CurrentScanCount INT = 0;
     DECLARE @ReferrerReferralSST_ID INT = 0;
     DECLARE @ServiceID NVARCHAR(50) = NULL;
+    DECLARE @Points INT = 0;
+    DECLARE @Cash DECIMAL(18,2) = 0;
 
     -- Normalize mobile number (last 10 digits)
     SET @CleanMobile = RIGHT(@MobileNo, 10);
+
+    -- =========================================================================
+    -- STEP 0: VENDOR-WISE DAILY USER SCAN LIMIT & TIME WINDOW CHECK
+    -- =========================================================================
+    IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'tbl_VendorScanLimitSetting')
+    BEGIN
+        DECLARE @DailyUserLimit INT = NULL;
+        DECLARE @ScanStartTime TIME(0) = NULL;
+        DECLARE @ScanEndTime TIME(0) = NULL;
+        DECLARE @CustomLimitMsg NVARCHAR(500) = NULL;
+
+        SELECT TOP 1 
+            @DailyUserLimit = DailyUserScanLimit,
+            @ScanStartTime = ISNULL(ScanStartTime, '00:00:00'),
+            @ScanEndTime = ISNULL(ScanEndTime, '23:59:59'),
+            @CustomLimitMsg = CustomLimitMessage
+        FROM [dbo].[tbl_VendorScanLimitSetting] WITH (NOLOCK)
+        WHERE Comp_Id = @Comp_ID 
+          AND IsActive = 1;
+
+        IF @DailyUserLimit IS NOT NULL AND @DailyUserLimit > 0
+        BEGIN
+            DECLARE @CurrentTime TIME(0) = CAST(GETDATE() AS TIME(0));
+
+            -- Check A: Time window check
+            IF (@ScanStartTime IS NOT NULL AND @ScanEndTime IS NOT NULL)
+            BEGIN
+                IF @CurrentTime < @ScanStartTime OR @CurrentTime > @ScanEndTime
+                BEGIN
+                    -- Stop immediately: No writes to any table
+                    SELECT 
+                        3 AS ResultCode, 
+                        CONCAT('Code scanning is allowed only between ', 
+                               FORMAT(CAST(@ScanStartTime AS DATETIME), 'hh:mm tt'), ' and ', 
+                               FORMAT(CAST(@ScanEndTime AS DATETIME), 'hh:mm tt'), '.') AS Message,
+                        @Comp_ID AS Comp_ID,
+                        NULL AS Pro_ID,
+                        0 AS Amount,
+                        0 AS Points,
+                        '' AS ServiceID,
+                        @ConsumerName AS ConsumerName,
+                        @Email AS ConsumerEmail;
+                    RETURN;
+                END
+            END
+
+            -- Check B: Daily scan limit count check
+            DECLARE @TodayScanCount INT = 0;
+            SELECT @TodayScanCount = COUNT(1)
+            FROM [dbo].[Pro_Enq] WITH (NOLOCK)
+            WHERE Comp_ID = @Comp_ID
+              AND RIGHT(MobileNo, 10) = @CleanMobile
+              AND CAST(Enq_Date AS DATE) = CAST(GETDATE() AS DATE)
+              AND Is_Success = '1';
+
+            IF @TodayScanCount >= @DailyUserLimit
+            BEGIN
+                -- Stop immediately: No writes to any table
+                SELECT 
+                    3 AS ResultCode, 
+                    ISNULL(NULLIF(LTRIM(RTRIM(@CustomLimitMsg)), ''), 'You have reached your daily scan limit for today. Please try again tomorrow.') AS Message,
+                    @Comp_ID AS Comp_ID,
+                    NULL AS Pro_ID,
+                    0 AS Amount,
+                    0 AS Points,
+                    '' AS ServiceID,
+                    @ConsumerName AS ConsumerName,
+                    @Email AS ConsumerEmail;
+                RETURN;
+            END
+        END
+    END
 
     BEGIN TRY
         BEGIN TRANSACTION;
@@ -171,9 +245,13 @@ BEGIN
                     END
                 END
 
-                -- Check if already scanned based on Frequency limit
-                DECLARE @ExistingEnqCount INT;
-                SELECT @ExistingEnqCount = COUNT(*) FROM Pro_Enq WHERE Received_Code1 = CAST(@Code1 AS VARCHAR(5)) AND Received_Code2 = CAST(@Code2 AS VARCHAR(8)) AND Is_Success = '1';
+                -- Check if already scanned based on dynamic Frequency limit (supports 1, 2, 3, ... N)
+                DECLARE @ExistingEnqCount INT = 0;
+                SELECT @ExistingEnqCount = COUNT(1) 
+                FROM Pro_Enq WITH (NOLOCK)
+                WHERE Received_Code1 = CAST(@Code1 AS VARCHAR(5)) 
+                  AND Received_Code2 = CAST(@Code2 AS VARCHAR(8)) 
+                  AND Is_Success = '1';
 
                 DECLARE @CodeFrequencyLimit INT = 1;
                 SELECT TOP 1 @CodeFrequencyLimit = ISNULL(sst.Frequency, 1)
@@ -181,6 +259,18 @@ BEGIN
                 INNER JOIN M_ServiceSubscription ss WITH (NOLOCK) ON sst.Subscribe_Id = ss.Subscribe_Id
                 WHERE ss.Pro_ID = @Pro_ID AND ss.IsActive = 1 AND sst.IsActive = 1 AND sst.Frequency IS NOT NULL AND sst.Frequency > 0
                 ORDER BY sst.SST_Id DESC;
+
+                -- Check role/code-specific frequency override if tbl_M_Code_USERFrequency exists
+                IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'tbl_M_Code_USERFrequency')
+                BEGIN
+                    DECLARE @UserFreqCount INT = NULL;
+                    SELECT TOP 1 @UserFreqCount = Frequency
+                    FROM dbo.tbl_M_Code_USERFrequency WITH (NOLOCK)
+                    WHERE Code1 = @Code1 AND Code2 = @Code2 AND ISNULL(Isdelete, 0) = 0;
+
+                    IF @UserFreqCount IS NOT NULL AND @UserFreqCount > 0
+                        SET @CodeFrequencyLimit = @UserFreqCount;
+                END
 
                 -- A. Insert Scan History
                 DECLARE @Is_Success_Val VARCHAR(5) = '1';
@@ -207,8 +297,8 @@ BEGIN
                         SELECT @MConsumerMCodeid = M_Consumer_MCodeid FROM M_Consumer_M_Code WHERE M_Consumerid = @M_Consumerid AND M_Codeid = @M_Codeid;
                     END
 
-                    -- D. Loyalty Awarding logic with Phase 2 enhancements
-                    -- Find the SST_ID for loyalty services (SRV1001 or SRV1005)
+                    -- D. Loyalty Awarding logic
+                    -- Find the SST_ID for loyalty services (SRV1001, SRV1005, SRV1023, SRV1029)
                     SELECT TOP 1 @SST_ID = sst.SST_Id, @ServiceID = ss.Service_ID
                     FROM M_ServiceSubscriptionTrans sst
                     INNER JOIN M_ServiceSubscription ss ON sst.Subscribe_Id = ss.Subscribe_Id
@@ -218,37 +308,6 @@ BEGIN
 
                     IF @SST_ID > 0 AND @MConsumerMCodeid > 0
                     BEGIN
-                        -- Phase 2: Check Frequency-Based Loyalty Caps
-                        -- Get frequency limit from M_ServiceSubscriptionTrans
-                        SELECT @FrequencyLimit = ISNULL([Frequency], 0) 
-                        FROM M_ServiceSubscriptionTrans 
-                        WHERE SST_Id = @SST_ID;
-
-                        -- If frequency limit is set (>0), check current scan count
-                        IF @FrequencyLimit > 0
-                        BEGIN
-                            -- Count scans in last period (Frequency = days)
-                            DECLARE @FrequencyStartDate DATETIME = DATEADD(DAY, -@FrequencyLimit, GETDATE());
-                            
-                            SELECT @CurrentScanCount = COUNT(1)
-                            FROM Pro_Enq pe
-                            INNER JOIN M_Code mc ON pe.Received_Code1 = CAST(mc.Code1 AS VARCHAR(5)) AND pe.Received_Code2 = CAST(mc.Code2 AS VARCHAR(8))
-                            WHERE RIGHT(pe.MobileNo, 10) = @CleanMobile
-                            AND pe.Is_Success = 1
-                            AND pe.Enq_Date >= @FrequencyStartDate
-                            AND mc.Pro_ID = @Pro_ID;
-
-                            -- If frequency limit exceeded, block and return error
-                            IF @CurrentScanCount >= @FrequencyLimit
-                            BEGIN
-                                SET @ResultCode = 3; -- Frequency limit exceeded
-                                SET @Message = 'You have reached the maximum number of code scans for this service in the specified period. Please try again later.';
-                                ROLLBACK TRANSACTION;
-                                SELECT @ResultCode AS ResultCode, @Message AS Message, @Comp_ID AS Comp_ID, @Pro_ID AS Pro_ID;
-                                RETURN;
-                            END
-                        END
-
                         -- Insert BuiltLoyaltyMCodeCheck
                         INSERT INTO BuiltLoyaltyMCodeCheck (sst_id, M_Consumer_MCOdeid, M_Cunsumerid, Createdate, IsPointsAssigned)
                         VALUES (@SST_ID, @MConsumerMCodeid, @M_Consumerid, GETDATE(), 1);
@@ -256,7 +315,6 @@ BEGIN
                         DECLARE @LoyaltyCheckID BIGINT = SCOPE_IDENTITY();
 
                         -- Calculate Points/Cash from SST
-                        DECLARE @Points INT, @Cash DECIMAL(18,2);
                         SELECT @Points = ISNULL(Points, 0), @Cash = ISNULL(IsCash, 0) FROM M_ServiceSubscriptionTrans WHERE SST_Id = @SST_ID;
 
                         -- Insert BLoyaltyPointsEarned for main consumer
@@ -335,6 +393,7 @@ BEGIN
             @Comp_ID AS Comp_ID,
             @Pro_ID AS Pro_ID,
             @Cash AS Amount,
+            @Points AS Points,
             @ServiceID AS ServiceID,
             @ConsumerName AS ConsumerName,
             @Email AS ConsumerEmail;
@@ -344,7 +403,7 @@ BEGIN
             ROLLBACK TRANSACTION;
 
         SET @ResultCode = 0;
-        SET @Message = 'Error: ' + ERROR_MESSAGE();
+        SET @Message = 'Error+: ' + ERROR_MESSAGE();
         
         SELECT 
             @ResultCode AS ResultCode, 
@@ -352,6 +411,7 @@ BEGIN
             @Comp_ID AS Comp_ID, 
             @Pro_ID AS Pro_ID,
             0 AS Amount,
+            0 AS Points,
             '' AS ServiceID,
             @ConsumerName AS ConsumerName,
             @Email AS ConsumerEmail;

@@ -113,14 +113,16 @@ begin
     where v.Comp_id=@Comp_id
       AND (@StartDate IS NULL OR v.Entry_date >= @StartDate)
       AND (@EndDate IS NULL OR v.Entry_date < @EndDate)
-      AND (
+         AND (
           @Search IS NULL OR LTRIM(RTRIM(@Search)) = '' OR
           M.MobileNo LIKE '%' + @Search + '%' OR
           M.ConsumerName LIKE '%' + @Search + '%' OR
           M.sur_name LIKE '%' + @Search + '%' OR
           v.userpin LIKE '%' + @Search + '%' OR
           u.User_Type LIKE '%' + @Search + '%' OR
-          v.Vrkabel_User_Type LIKE '%' + @Search + '%'
+          v.Vrkabel_User_Type LIKE '%' + @Search + '%' OR
+          M.City LIKE '%' + @Search + '%' OR
+          M.state LIKE '%' + @Search + '%'
       )
       AND (@MobileNo IS NULL OR LTRIM(RTRIM(@MobileNo)) = '' OR M.MobileNo LIKE '%' + @MobileNo + '%')
       AND (@UserType IS NULL OR LTRIM(RTRIM(@UserType)) = '' OR u.User_Type LIKE '%' + @UserType + '%' OR v.Vrkabel_User_Type LIKE '%' + @UserType + '%')

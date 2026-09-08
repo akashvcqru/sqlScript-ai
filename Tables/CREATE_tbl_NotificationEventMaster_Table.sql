@@ -62,5 +62,12 @@ BEGIN
     -- Instant Broadcast Events
     IF NOT EXISTS (SELECT 1 FROM tbl_NotificationEventMaster WHERE event_id = 'instant_broadcast')
         INSERT INTO tbl_NotificationEventMaster (event_id, event_name, notification_type) VALUES ('instant_broadcast', 'Instant Broadcast Notification', 'Instant');
+
+    -- Payment Events
+    IF NOT EXISTS (SELECT 1 FROM tbl_NotificationEventMaster WHERE event_id = 'successfullpayment')
+        INSERT INTO tbl_NotificationEventMaster (event_id, event_name, notification_type) VALUES ('successfullpayment', 'Successful Payment', 'VCQRUEvent');
+
+    IF NOT EXISTS (SELECT 1 FROM tbl_NotificationEventMaster WHERE event_id = 'failpayment')
+        INSERT INTO tbl_NotificationEventMaster (event_id, event_name, notification_type) VALUES ('failpayment', 'Payment Failed', 'VCQRUEvent');
 END
 GO

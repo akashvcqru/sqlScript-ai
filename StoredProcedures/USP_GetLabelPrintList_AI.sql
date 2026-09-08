@@ -9,21 +9,19 @@ GO
 -- =============================================
 -- Author:      Antigravity
 -- Create date: 2026-05-22
--- Description: Get Label Print List with pagination and filters (optimized with CROSS APPLY)
+-- Update date: 2026-08-31
+-- Description: Get Label Print List with pagination and filters (optimized using M_Label_Request and paginated OUTER APPLY)
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetLabelPrintList_AI]
     @Comp_ID NVARCHAR(50),
     @Pro_ID NVARCHAR(50) = NULL,
     @DateFrom DATETIME = NULL,
     @DateTo DATETIME = NULL,
-    @Offset INT,
-    @Limit INT
+    @Offset INT = 0,
+    @Limit INT = 10
 AS
 BEGIN
     SET NOCOUNT ON;
-
-    DECLARE @RegDate DATETIME;
-    SELECT TOP 1 @RegDate = Reg_Date FROM Comp_Reg WHERE Comp_ID = @Comp_ID AND Status = 1;
 
     DECLARE @SettingsExist INT = 0;
     IF EXISTS (SELECT 1 FROM M_QRCode_Print_Settings WHERE Comp_ID = @Comp_ID)
@@ -37,123 +35,123 @@ BEGIN
 
     IF @Comp_ID = 'Comp-1693'
     BEGIN
-        ;WITH UniqueBatches AS (
+        ;WITH FilteredBatches AS (
             SELECT 
-                MC.LabelRequestId, 
-                MC.Pro_ID,
-                MAX(MC.Row_ID) as MaxRowID,
-                MAX(MC.Print_Date) as Print_DateTime
-            FROM M_Code_PFL MC 
-            INNER JOIN Pro_Reg B ON MC.Pro_ID = B.Pro_ID
-            WHERE MC.[Use_Type]='L' 
-              AND B.Comp_ID = @Comp_ID 
-              AND MC.Print_Date >= @RegDate
-              AND (@Pro_ID IS NULL OR MC.Pro_ID = @Pro_ID)
-              AND (@DateFrom IS NULL OR MC.Print_Date >= @DateFrom)
-              AND (@DateTo IS NULL OR MC.Print_Date <= @DateTo)
-              AND MC.LabelRequestId IS NOT NULL
-            GROUP BY MC.LabelRequestId, MC.Pro_ID
-        ),
-        NumberedBatches AS (
-            SELECT 
-                LabelRequestId,
-                Pro_ID,
-                Print_DateTime,
-                ROW_NUMBER() OVER(ORDER BY MaxRowID ASC) AS ID,
-                COUNT(*) OVER() as TotalRecords
-            FROM UniqueBatches
+                LR.Row_ID,
+                CAST(LR.Tracking_No AS NVARCHAR(50)) AS Tracking_No,
+                LR.Pro_ID,
+                LR.Entry_Date,
+                LR.Qty,
+                LR.PrintType,
+                B.Pro_Name,
+                B.Display_Product,
+                B.Display_Series,
+                COUNT(*) OVER() AS TotalRecords
+            FROM M_Label_Request LR WITH (NOLOCK)
+            INNER JOIN Pro_Reg B WITH (NOLOCK) ON LR.Pro_ID = B.Pro_ID
+            WHERE B.Comp_ID = @Comp_ID
+              AND LR.Tracking_No IS NOT NULL
+              AND (LR.Flag = 1 OR LR.Flag IS NULL)
+              AND (@Pro_ID IS NULL OR LR.Pro_ID = @Pro_ID)
+              AND (@DateFrom IS NULL OR LR.Entry_Date >= CAST(@DateFrom AS DATE))
+              AND (@DateTo IS NULL OR LR.Entry_Date < DATEADD(DAY, 1, CAST(@DateTo AS DATE)))
         ),
         PaginatedBatches AS (
-            SELECT LabelRequestId, Pro_ID, Print_DateTime, ID, TotalRecords
-            FROM NumberedBatches
-            ORDER BY ID DESC
+            SELECT *
+            FROM FilteredBatches
+            ORDER BY Entry_Date DESC, Row_ID DESC
             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
         )
         SELECT 
-            PB.ID,
-            CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex % 10000, 0)), 4) AS SerFr,
-            CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex % 10000, 0)), 4) AS SerTo,
-            S.Codes,
-            ISNULL(B.Display_Series, PB.Pro_ID) AS pro_id,
-            PB.Pro_ID + '*' + CONVERT(NVARCHAR, PB.Print_DateTime, 105) + '*' + PB.LabelRequestId AS DownFl,
-            ISNULL(B.Display_Product, B.Pro_Name) AS Pro_Name,
-            CAST(PB.Print_DateTime AS DATE) AS print_date,
-            S.IsDispatched,
-            CASE WHEN @SettingsExist = 1 AND LR.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType,
+            PB.Row_ID AS ID,
+            ISNULL(
+                CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex % 10000, 0)), 4),
+                CONVERT(NVARCHAR, PB.Pro_ID) + '-0000-0000'
+            ) AS SerFr,
+            ISNULL(
+                CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex % 10000, 0)), 4),
+                CONVERT(NVARCHAR, PB.Pro_ID) + '-0000-0000'
+            ) AS SerTo,
+            ISNULL(S.Codes, ISNULL(PB.Qty, 0)) AS Codes,
+            ISNULL(PB.Display_Series, PB.Pro_ID) AS Pro_ID,
+            PB.Pro_ID + '*' + CONVERT(NVARCHAR, PB.Entry_Date, 105) + '*' + ISNULL(PB.Tracking_No, '') AS DownFl,
+            ISNULL(PB.Display_Product, PB.Pro_Name) AS Pro_Name,
+            CAST(PB.Entry_Date AS DATE) AS print_date,
+            ISNULL(S.IsDispatched, 0) AS IsDispatched,
+            CASE WHEN @SettingsExist = 1 AND PB.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType,
             PB.TotalRecords
         FROM PaginatedBatches PB
-        INNER JOIN Pro_Reg B ON PB.Pro_ID = B.Pro_ID
-        LEFT JOIN M_Label_Request LR ON PB.LabelRequestId = LR.Tracking_No
-        CROSS APPLY (
+        OUTER APPLY (
             SELECT 
                 MIN(CAST(MC.Series_Order AS BIGINT) * 10000 + CAST(MC.Series_Serial AS BIGINT)) as MinIndex,
                 MAX(CAST(MC.Series_Order AS BIGINT) * 10000 + CAST(MC.Series_Serial AS BIGINT)) as MaxIndex,
                 COUNT(MC.Row_ID) as Codes,
                 MAX(CAST(ISNULL(MC.DispatchFlag, 0) AS INT)) as IsDispatched
-            FROM M_Code_PFL MC
-            WHERE MC.LabelRequestId = PB.LabelRequestId AND MC.Pro_ID = PB.Pro_ID AND MC.[Use_Type]='L'
+            FROM M_Code_PFL MC WITH (NOLOCK)
+            WHERE MC.LabelRequestId = PB.Tracking_No AND MC.Pro_ID = PB.Pro_ID
         ) S
-        ORDER BY PB.ID DESC;
+        ORDER BY PB.Entry_Date DESC, PB.Row_ID DESC
+        OPTION (RECOMPILE);
     END
     ELSE
     BEGIN
-        ;WITH UniqueBatches AS (
+        ;WITH FilteredBatches AS (
             SELECT 
-                MC.LabelRequestId, 
-                MC.Pro_ID,
-                MAX(MC.Row_ID) as MaxRowID,
-                MAX(MC.Print_Date) as Print_DateTime
-            FROM M_Code MC 
-            INNER JOIN Pro_Reg B ON MC.Pro_ID = B.Pro_ID
-            WHERE MC.[Use_Type]='L' 
-              AND B.Comp_ID = @Comp_ID 
-              AND MC.Print_Date >= @RegDate
-              AND (@Pro_ID IS NULL OR MC.Pro_ID = @Pro_ID)
-              AND (@DateFrom IS NULL OR MC.Print_Date >= @DateFrom)
-              AND (@DateTo IS NULL OR MC.Print_Date <= @DateTo)
-              AND MC.LabelRequestId IS NOT NULL
-            GROUP BY MC.LabelRequestId, MC.Pro_ID
-        ),
-        NumberedBatches AS (
-            SELECT 
-                LabelRequestId,
-                Pro_ID,
-                Print_DateTime,
-                ROW_NUMBER() OVER(ORDER BY MaxRowID ASC) AS ID,
-                COUNT(*) OVER() as TotalRecords
-            FROM UniqueBatches
+                LR.Row_ID,
+                CAST(LR.Tracking_No AS NVARCHAR(50)) AS Tracking_No,
+                LR.Pro_ID,
+                LR.Entry_Date,
+                LR.Qty,
+                LR.PrintType,
+                B.Pro_Name,
+                B.Display_Product,
+                B.Display_Series,
+                COUNT(*) OVER() AS TotalRecords
+            FROM M_Label_Request LR WITH (NOLOCK)
+            INNER JOIN Pro_Reg B WITH (NOLOCK) ON LR.Pro_ID = B.Pro_ID
+            WHERE B.Comp_ID = @Comp_ID
+              AND LR.Tracking_No IS NOT NULL
+              AND (LR.Flag = 1 OR LR.Flag IS NULL)
+              AND (@Pro_ID IS NULL OR LR.Pro_ID = @Pro_ID)
+              AND (@DateFrom IS NULL OR LR.Entry_Date >= CAST(@DateFrom AS DATE))
+              AND (@DateTo IS NULL OR LR.Entry_Date < DATEADD(DAY, 1, CAST(@DateTo AS DATE)))
         ),
         PaginatedBatches AS (
-            SELECT LabelRequestId, Pro_ID, Print_DateTime, ID, TotalRecords
-            FROM NumberedBatches
-            ORDER BY ID DESC
+            SELECT *
+            FROM FilteredBatches
+            ORDER BY Entry_Date DESC, Row_ID DESC
             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
         )
         SELECT 
-            PB.ID,
-            CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex % 10000, 0)), 4) AS SerFr,
-            CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex % 10000, 0)), 4) AS SerTo,
-            S.Codes,
-            ISNULL(B.Display_Series, PB.Pro_ID) AS pro_id,
-            PB.Pro_ID + '*' + CONVERT(NVARCHAR, PB.Print_DateTime, 105) + '*' + PB.LabelRequestId AS DownFl,
-            B.Pro_Name,
-            CAST(PB.Print_DateTime AS DATE) AS print_date,
-            S.IsDispatched,
-            CASE WHEN @SettingsExist = 1 AND LR.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType,
+            PB.Row_ID AS ID,
+            ISNULL(
+                CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MinIndex % 10000, 0)), 4),
+                CONVERT(NVARCHAR, PB.Pro_ID) + '-0000-0000'
+            ) AS SerFr,
+            ISNULL(
+                CONVERT(NVARCHAR, PB.Pro_ID) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex / 10000, 0)), 4) + '-' + RIGHT('0000' + CONVERT(NVARCHAR, ISNULL(S.MaxIndex % 10000, 0)), 4),
+                CONVERT(NVARCHAR, PB.Pro_ID) + '-0000-0000'
+            ) AS SerTo,
+            ISNULL(S.Codes, ISNULL(PB.Qty, 0)) AS Codes,
+            ISNULL(PB.Display_Series, PB.Pro_ID) AS Pro_ID,
+            PB.Pro_ID + '*' + CONVERT(NVARCHAR, PB.Entry_Date, 105) + '*' + ISNULL(PB.Tracking_No, '') AS DownFl,
+            ISNULL(PB.Display_Product, PB.Pro_Name) AS Pro_Name,
+            CAST(PB.Entry_Date AS DATE) AS print_date,
+            ISNULL(S.IsDispatched, 0) AS IsDispatched,
+            CASE WHEN @SettingsExist = 1 AND PB.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType,
             PB.TotalRecords
         FROM PaginatedBatches PB
-        INNER JOIN Pro_Reg B ON PB.Pro_ID = B.Pro_ID
-        LEFT JOIN M_Label_Request LR ON PB.LabelRequestId = LR.Tracking_No
-        CROSS APPLY (
+        OUTER APPLY (
             SELECT 
                 MIN(CAST(MC.Series_Order AS BIGINT) * 10000 + CAST(MC.Series_Serial AS BIGINT)) as MinIndex,
                 MAX(CAST(MC.Series_Order AS BIGINT) * 10000 + CAST(MC.Series_Serial AS BIGINT)) as MaxIndex,
                 COUNT(MC.Row_ID) as Codes,
                 MAX(CAST(ISNULL(MC.DispatchFlag, 0) AS INT)) as IsDispatched
-            FROM M_Code MC
-            WHERE MC.LabelRequestId = PB.LabelRequestId AND MC.Pro_ID = PB.Pro_ID AND MC.[Use_Type]='L'
+            FROM M_Code MC WITH (NOLOCK)
+            WHERE MC.LabelRequestId = PB.Tracking_No AND MC.Pro_ID = PB.Pro_ID
         ) S
-        ORDER BY PB.ID DESC;
+        ORDER BY PB.Entry_Date DESC, PB.Row_ID DESC
+        OPTION (RECOMPILE);
     END
 END
 GO

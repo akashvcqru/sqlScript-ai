@@ -80,15 +80,31 @@ BEGIN
         END
     END
 
+    -- Search Pattern Normalization
+    DECLARE @SearchPattern NVARCHAR(252) = NULL;
+    IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
+    BEGIN
+        SET @SearchPattern = '%' + LTRIM(RTRIM(@Search)) + '%';
+    END
+
     -- Query for total count (only if not exporting)
     IF @IsExport = 0
     BEGIN
-        SELECT COUNT(DISTINCT t.TicketId) AS TotalRecords
-        FROM Tickets t  
-        LEFT JOIN Comp_Reg cr ON cr.Comp_ID = t.Comp_id
-        WHERE (@Search IS NULL OR t.Comp_id LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
-          AND (@StartDate IS NULL OR t.CreatedAt >= @StartDate)
-          AND (@EndDate IS NULL OR t.CreatedAt < @EndDate);
+        SELECT COUNT(1) AS TotalRecords
+        FROM Tickets t WITH (NOLOCK)
+        LEFT JOIN M_Consumer mc WITH (NOLOCK) ON mc.M_Consumerid = TRY_CAST(t.M_Consumerid AS INT)
+        LEFT JOIN Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = t.Comp_id
+        WHERE (@StartDate IS NULL OR t.CreatedAt >= @StartDate)
+          AND (@EndDate IS NULL OR t.CreatedAt < @EndDate)
+          AND (@SearchPattern IS NULL OR 
+               CAST(t.TicketId AS NVARCHAR(50)) LIKE @SearchPattern OR
+               t.Comp_id LIKE @SearchPattern OR
+               cr.Comp_Name LIKE @SearchPattern OR
+               mc.MobileNo LIKE @SearchPattern OR
+               mc.ConsumerName LIKE @SearchPattern OR
+               t.Description LIKE @SearchPattern OR
+               t.Category LIKE @SearchPattern OR
+               t.Status LIKE @SearchPattern);
     END
 
     -- Query for ticket list
@@ -101,25 +117,27 @@ BEGIN
         t.Category,
         t.Comp_id AS CompId,
         cr.Comp_Name AS CompName,
-        STRING_AGG(i.ImagePath, ',') AS ImagePaths
-    FROM Tickets t  
-    LEFT JOIN TicketImages i ON t.TicketId = i.TicketId  
-    LEFT JOIN M_Consumer mc ON mc.M_Consumerid = TRY_CAST(t.M_Consumerid AS INT)
-    LEFT JOIN Comp_Reg cr ON cr.Comp_ID = t.Comp_id
-    WHERE (@Search IS NULL OR t.Comp_id LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
-      AND (@StartDate IS NULL OR t.CreatedAt >= @StartDate)
+        img.ImagePaths
+    FROM Tickets t WITH (NOLOCK)
+    LEFT JOIN M_Consumer mc WITH (NOLOCK) ON mc.M_Consumerid = TRY_CAST(t.M_Consumerid AS INT)
+    LEFT JOIN Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = t.Comp_id
+    OUTER APPLY (
+        SELECT STRING_AGG(i.ImagePath, ',') AS ImagePaths
+        FROM TicketImages i WITH (NOLOCK)
+        WHERE i.TicketId = t.TicketId
+    ) img
+    WHERE (@StartDate IS NULL OR t.CreatedAt >= @StartDate)
       AND (@EndDate IS NULL OR t.CreatedAt < @EndDate)
-    GROUP BY 
-        t.TicketId,  
-        t.M_Consumerid,  
-        t.Description,  
-        t.CreatedAt,  
-        t.Status,  
-        t.Category,
-        t.Comp_id,
-        cr.Comp_Name,
-        mc.MobileNo
-    ORDER BY t.CreatedAt DESC
+      AND (@SearchPattern IS NULL OR 
+           CAST(t.TicketId AS NVARCHAR(50)) LIKE @SearchPattern OR
+           t.Comp_id LIKE @SearchPattern OR
+           cr.Comp_Name LIKE @SearchPattern OR
+           mc.MobileNo LIKE @SearchPattern OR
+           mc.ConsumerName LIKE @SearchPattern OR
+           t.Description LIKE @SearchPattern OR
+           t.Category LIKE @SearchPattern OR
+           t.Status LIKE @SearchPattern)
+    ORDER BY t.CreatedAt DESC, t.TicketId DESC
     OFFSET (CASE WHEN @IsExport = 1 THEN 0 ELSE @Offset END) ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 100000000 ELSE @Limit END) ROWS ONLY;
 END

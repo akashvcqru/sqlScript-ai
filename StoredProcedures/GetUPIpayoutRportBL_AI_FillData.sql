@@ -122,6 +122,7 @@ BEGIN
     -- Final dataset
     -------------------------------------------------
     SELECT
+        p.Id AS tblUPITransactionDetailsID,
         p.Comp_Id AS Comp_ID,
         c.Comp_Name,
         m.ConsumerName,
