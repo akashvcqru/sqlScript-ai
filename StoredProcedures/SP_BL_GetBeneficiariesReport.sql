@@ -241,7 +241,7 @@ BEGIN
         MC.M_ConsumerId, 
         UM.M_ConsumerId AS Active_ConsumerId
     FROM #UserMobiles UM
-    INNER JOIN M_Consumer MC WITH (NOLOCK) ON (MC.MobileNo = UM.MobileNo OR (LEN(MC.MobileNo) >= 10 AND RIGHT(MC.MobileNo, 10) = RIGHT(UM.MobileNo, 10)));
+    INNER JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = UM.MobileNo;
 
     CREATE CLUSTERED INDEX IX_ConsumerMapping_ConsumerId ON #ConsumerMapping(M_ConsumerId);
     CREATE INDEX IX_ConsumerMapping_Active ON #ConsumerMapping(Active_ConsumerId);
