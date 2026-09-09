@@ -5,20 +5,37 @@ BEGIN
     SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
     BEGIN TRY
-        ;WITH VolumeInfo AS
+        -- Table variable to capture xp_cmdshell output
+        DECLARE @DriveInfo TABLE
         (
-            SELECT DISTINCT
-                UPPER(LTRIM(RTRIM(vs.volume_mount_point))) AS [VolumeMountPoint],
-                vs.total_bytes AS [TotalBytes],
-                vs.available_bytes AS [FreeBytes]
-            FROM sys.master_files mf
-            CROSS APPLY sys.dm_os_volume_stats(mf.database_id, mf.file_id) vs
+            OutputLine NVARCHAR(4000)
+        );
+
+        -- Execute PowerShell via xp_cmdshell to query all fixed logical drives (DriveType=3)
+        INSERT INTO @DriveInfo (OutputLine)
+        EXEC master..xp_cmdshell 
+        'powershell -NoProfile -Command "Get-CimInstance Win32_LogicalDisk -Filter ''DriveType=3'' | ForEach-Object { Write-Output ($_.DeviceID + ''|'' + $_.Size + ''|'' + $_.FreeSpace) }"';
+
+        ;WITH RawData AS
+        (
+            SELECT
+                LTRIM(RTRIM(OutputLine)) AS OutputLine,
+                CHARINDEX('|', OutputLine) AS P1,
+                CHARINDEX('|', OutputLine, CHARINDEX('|', OutputLine) + 1) AS P2
+            FROM @DriveInfo
+            WHERE OutputLine IS NOT NULL
+              AND OutputLine LIKE '%|%|%'
+        ),
+        DriveData AS
+        (
+            SELECT
+                LEFT(OutputLine, P1 - 1) AS [Drive],
+                TRY_CONVERT(DECIMAL(38,0), LTRIM(RTRIM(SUBSTRING(OutputLine, P1 + 1, P2 - P1 - 1)))) AS [TotalBytes],
+                TRY_CONVERT(DECIMAL(38,0), LTRIM(RTRIM(SUBSTRING(OutputLine, P2 + 1, LEN(OutputLine))))) AS [FreeBytes]
+            FROM RawData
         )
         SELECT
-            CASE 
-                WHEN RIGHT([VolumeMountPoint], 1) = '\' THEN LEFT([VolumeMountPoint], LEN([VolumeMountPoint]) - 1)
-                ELSE [VolumeMountPoint]
-            END AS [Drive],
+            [Drive],
             
             /* Total Space in GB */
             CAST(TotalBytes / 1073741824.0 AS DECIMAL(18, 2)) AS [TotalSpace_GB],
@@ -34,7 +51,7 @@ BEGIN
             
             /* Free Percentage */
             CAST((FreeBytes * 100.0) / NULLIF(TotalBytes, 0) AS DECIMAL(10, 2)) AS [FreePercent]
-        FROM VolumeInfo
+        FROM DriveData
         WHERE TotalBytes IS NOT NULL 
           AND FreeBytes IS NOT NULL
         ORDER BY [Drive];
