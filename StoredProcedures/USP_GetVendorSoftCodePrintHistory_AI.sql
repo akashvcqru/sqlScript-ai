@@ -53,9 +53,9 @@ BEGIN
         PR.Pro_Name,
         ISNULL(SD.NOOfLabelRequest, 0) AS CodesPrinted,
         SD.MRP,
-        SD.Frequency,
+        CAST(SD.Frequency AS VARCHAR(50)) AS Frequency,
         SD.ProductRange,
-        SD.ProductQTY,
+        CAST(SD.ProductQTY AS VARCHAR(50)) AS ProductQTY,
         SD.Entry_date AS PrintDate,
         CASE WHEN LR.PrintType = '2' THEN 'QR Code Only' ELSE '13 Digit Code Only' END AS QrCodeType
     FROM tbl_SoftCodegenrate_Details SD WITH (NOLOCK)

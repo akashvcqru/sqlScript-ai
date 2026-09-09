@@ -132,7 +132,7 @@ BEGIN
 
         SET @planPeriod = ISNULL(@planPeriod, 6);
 
-        DECLARE @calcDateFrom DATETIME = CAST(@MfdDate AS DATETIME);
+        DECLARE @calcDateFrom DATETIME = COALESCE(TRY_CONVERT(DATETIME, @MfdDate, 120), TRY_CONVERT(DATETIME, @MfdDate, 23), TRY_CONVERT(DATETIME, @MfdDate, 106), TRY_CAST(@MfdDate AS DATETIME), GETDATE());
         DECLARE @calcDateTo DATETIME = DATEADD(month, @planPeriod, @calcDateFrom);
 
         IF @ServiceID = 'SRV1018'
@@ -381,7 +381,7 @@ BEGIN
         END
         
         INSERT INTO T_Pro (Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date, Series_Limit)
-        VALUES (@ProID, @LatestBatchNo, @Mrp, CAST(@MfdDate AS DATETIME), @transDtTo, 'Soft Code Batch', GETDATE(), @seriesLimitStr);
+        VALUES (@ProID, @LatestBatchNo, @Mrp, @calcDateFrom, @transDtTo, 'Soft Code Batch', GETDATE(), @seriesLimitStr);
         
         SET @newTProRowId = SCOPE_IDENTITY();
 
@@ -452,7 +452,7 @@ BEGIN
         INSERT INTO tbl_SoftCodegenrate_Details 
         (Pro_id, Comp_id, NOOfLabelRequest, Frequency, ProductRange, ProductQTY, Manufacture_date, TrackingId, chkdiffrentpoint, pointsdata, datefrom, dateto, MRP, Isdefault)
         VALUES 
-        (@ProID, @CompID, @Qty, @Frequency, @ProductRange, ISNULL(@ProductQTY, @Qty), CAST(@MfdDate AS DATETIME), @TrackingNo, @ChkDiffPoint, @PointsData, @transDtFrom, @transDtTo, @Mrp, @IsDefault);
+        (@ProID, @CompID, @Qty, @Frequency, @ProductRange, ISNULL(@ProductQTY, @Qty), @calcDateFrom, @TrackingNo, @ChkDiffPoint, @PointsData, @transDtFrom, @transDtTo, @Mrp, @IsDefault);
 
         -- 11. Update Code_Gen for LabelTracking seed
         UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'LabelTracking';
