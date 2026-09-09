@@ -1,12 +1,8 @@
-USE [Vcqru]
-GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 24-08-2026 17:02:29 ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
+-- Migration: 20260909_Add_ServiceName_To_SP_BL_GetCodesActivityReport_AI.sql
+-- Purpose: Adds ServiceName column to SP_BL_GetCodesActivityReport_AI
+--          Includes ServiceName in #Points, #CodeConfigPoints, #FinalReport and final output result sets.
 
-ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
      @FromDate DATE  = NULL,                -- NEW
