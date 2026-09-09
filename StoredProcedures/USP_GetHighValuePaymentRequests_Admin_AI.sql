@@ -43,7 +43,8 @@ BEGIN
         VendorComment NVARCHAR(MAX) NULL,
         PaymentRemarks NVARCHAR(MAX) NULL,
         PaymentStatus VARCHAR(50) NULL,
-        ClaimMode NVARCHAR(200) NULL,
+        tdsAmount DECIMAL(18, 2) NULL,
+        tdsper DECIMAL(18, 2) NULL,
         VendorWalletBalance DECIMAL(18, 2) NULL,
         TotalEarnedPoints DECIMAL(18, 2) NULL,
         TotalRedeemedPoints DECIMAL(18, 2) NULL,
@@ -96,7 +97,7 @@ BEGIN
     END
 
     -- Fetch high value claims prioritizing company threshold or falling back to default threshold
-    INSERT INTO #FinalData (ClaimId, ClaimDate, MobileNo, UserName, Amount, RequestAmmount, ClaimPoints, PointConversion, CompName, CompId, IsApproved, VendorComment, PaymentRemarks, PaymentStatus, ClaimMode, VendorWalletBalance, TotalEarnedPoints, TotalRedeemedPoints, BalancePoints, IFSCCode, AccountNumber, BankName, KycStatus)
+    INSERT INTO #FinalData (ClaimId, ClaimDate, MobileNo, UserName, Amount, RequestAmmount, ClaimPoints, PointConversion, CompName, CompId, IsApproved, VendorComment, PaymentRemarks, PaymentStatus, tdsAmount, tdsper, VendorWalletBalance, TotalEarnedPoints, TotalRedeemedPoints, BalancePoints, IFSCCode, AccountNumber, BankName, KycStatus)
     SELECT
         cd.Row_id AS ClaimId,
         cd.Claim_date AS ClaimDate,
@@ -106,6 +107,12 @@ BEGIN
         CAST(ISNULL(cd.RequestAmmount, cd.Amount) AS DECIMAL(18,2)) AS RequestAmmount,
         CAST(ISNULL(cd.Points_Redeemed, cd.Amount) AS DECIMAL(18,2)) AS ClaimPoints,
         CASE 
+            WHEN pcr.PointValue IS NOT NULL AND pcr.CashValue IS NOT NULL THEN
+                CONCAT(
+                    CAST(CAST(pcr.PointValue AS DECIMAL(10,2)) AS VARCHAR(20)),
+                    CASE WHEN pcr.PointValue = 1.00 THEN ' Pt = ₹' ELSE ' Pts = ₹' END,
+                    CAST(CAST(pcr.CashValue AS DECIMAL(10,2)) AS VARCHAR(20))
+                )
             WHEN TRY_CAST(ISNULL(cd.Points_Redeemed, cd.Amount) AS DECIMAL(18,2)) > 0 
                  AND TRY_CAST(ISNULL(cd.RequestAmmount, cd.Amount) AS DECIMAL(18,2)) > 0 
                  AND TRY_CAST(ISNULL(cd.Points_Redeemed, cd.Amount) AS DECIMAL(18,2)) <> TRY_CAST(ISNULL(cd.RequestAmmount, cd.Amount) AS DECIMAL(18,2)) THEN
@@ -121,7 +128,8 @@ BEGIN
         cd.vendor_comment AS VendorComment,
         cd.PaymentRemarks AS PaymentRemarks,
         CASE WHEN cd.Isapproved = 1 THEN 'Approved' WHEN cd.Isapproved = 2 THEN 'Rejected' ELSE 'Pending' END AS PaymentStatus,
-        cd.Claim_mode AS ClaimMode,
+        ISNULL(TRY_CAST(cd.tdsAmount AS DECIMAL(18,2)), 0.00) AS tdsAmount,
+        ISNULL(TRY_CAST(cd.tdsper AS DECIMAL(18,2)), 0.00) AS tdsper,
         0.00 AS VendorWalletBalance,
         0.00 AS TotalEarnedPoints,
         0.00 AS TotalRedeemedPoints,
@@ -136,6 +144,14 @@ BEGIN
         END AS KycStatus
     FROM ClaimDetails cd WITH (NOLOCK)
     LEFT JOIN Comp_Reg c WITH (NOLOCK) ON c.Comp_ID = cd.Comp_id
+    OUTER APPLY (
+        SELECT TOP 1 PointValue, CashValue 
+        FROM PointConversionRate WITH (NOLOCK)
+        WHERE Comp_ID = cd.Comp_id 
+          AND (Service_ID = cd.Service_ID OR Service_ID IS NULL OR Service_ID = '')
+          AND IsActive = 1
+        ORDER BY CASE WHEN Service_ID = cd.Service_ID THEN 0 ELSE 1 END, ConversionID DESC
+    ) pcr
     OUTER APPLY (
         SELECT TOP 1 M_Consumerid, ConsumerName
         FROM M_Consumer WITH (NOLOCK)
