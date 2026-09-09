@@ -1,3 +1,10 @@
+/****** Migration: 20260909_Update_USP_GetHighValuePaymentRequests_Admin_AI_PaymentStatus_Success.sql ******/
+-- Date: 2026-09-09
+-- Purpose:
+--   1. Align Claims calculation in USP_GetHighValuePaymentRequests_Admin_AI to filter by CD.PaymentStatus = 'Success'
+--   2. Align Instant UPI Transfers to filter by LEN(ISNULL(t.Code1, '')) > 3
+--   3. Synchronizes TotalRedeemedPoints and BalancePoints with SP_BL_GetBeneficiariesReport
+
 USE [vcqru]
 GO
 
@@ -9,6 +16,7 @@ GO
 -- =============================================
 -- Author:      Antigravity
 -- Create date: 2026-07-03
+-- Update date: 2026-09-09
 -- Description: Retrieves high value payment requests from ClaimDetails with fallback to DEFAULT limit.
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetHighValuePaymentRequests_Admin_AI]
