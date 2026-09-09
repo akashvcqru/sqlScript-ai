@@ -1,12 +1,14 @@
+-- Migration: Align USP_GetDashboardSummary_AI points calculation for Comp-1669 with SP_BL_GetCodesActivityReport_AI
+-- Date: 2026-09-08
+
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 7/16/2026 11:17:48 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
     @CompID VARCHAR(50),
@@ -34,11 +36,6 @@ BEGIN
     DECLARE @CompanyList TABLE (Comp_Id VARCHAR(50) PRIMARY KEY);
         INSERT INTO @CompanyList VALUES (@CompID);
 
-    --IF @CompID IN ('Comp-1567','Comp-1650')
-    --    INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
-    --ELSE
-    --    INSERT INTO @CompanyList VALUES (@CompID);
-
     DECLARE @Multiplier DECIMAL(18,2) = 1.00;
     SELECT TOP 1 @Multiplier = 1.00 + (calculation_value / 100.0) 
     FROM loyalty_calculation 
@@ -48,6 +45,7 @@ BEGIN
     -- Use Temp Tables instead of CTEs to support multiple result sets
     ---------------------------------------------------------
     IF OBJECT_ID('tempdb..#UserScans') IS NOT NULL DROP TABLE #UserScans;
+    IF OBJECT_ID('tempdb..#EarnedPointsRaw') IS NOT NULL DROP TABLE #EarnedPointsRaw;
     IF OBJECT_ID('tempdb..#EarnedPoints') IS NOT NULL DROP TABLE #EarnedPoints;
     IF OBJECT_ID('tempdb..#ConfigPoints') IS NOT NULL DROP TABLE #ConfigPoints;
     IF OBJECT_ID('tempdb..#ScanServices') IS NOT NULL DROP TABLE #ScanServices;
@@ -398,3 +396,4 @@ BEGIN
     ) t
     GROUP BY Service_ID;
 END
+GO
