@@ -1,23 +1,25 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 24-08-2026 17:02:29 ******/
+
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 08-09-2026 ******/
+-- Migration: Fix SP_BL_GetCodesActivityReport_AI search points mismatch (preserve global scan ranking and align with Beneficiaries Report 27,870.00)
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
-     @FromDate DATE  = NULL,                -- NEW
+    @FromDate DATE  = NULL,                -- NEW
     @ToDate DATE  = NULL,                  -- NEW
     @CodeStatusFilter NVARCHAR(20) = NULL,     -- NEW (Verified, Already Scanned, Invalid)
-     @StateFilter NVARCHAR(100) = NULL,       -- âœ… NEW
-    @DialModeFilter NVARCHAR(50) = NULL,     -- âœ… NEW
-    @Page INT = NULL,                        -- âœ… NEW
-    @Limit INT = NULL,                      -- âœ… NEW
-     @IsExport BIT =NULL,
-       @Search nvarchar(30) = null
+    @StateFilter NVARCHAR(100) = NULL,       -- ✅ NEW
+    @DialModeFilter NVARCHAR(50) = NULL,     -- ✅ NEW
+    @Page INT = NULL,                        -- ✅ NEW
+    @Limit INT = NULL,                      -- ✅ NEW
+    @IsExport BIT =NULL,
+    @Search nvarchar(30) = null
 AS
 BEGIN
   SET NOCOUNT ON;
@@ -379,7 +381,7 @@ BEGIN
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
                     WHEN @Comp_Id = 'Comp-1669' THEN
                         CASE
-                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
                         END
@@ -392,7 +394,7 @@ BEGIN
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
                     WHEN @Comp_Id = 'Comp-1669' THEN
                         CASE
-                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
                         END
@@ -422,7 +424,7 @@ BEGIN
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
                     WHEN @Comp_Id = 'Comp-1669' THEN
                         CASE
-                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
                         END
@@ -435,7 +437,7 @@ BEGIN
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
                     WHEN @Comp_Id = 'Comp-1669' THEN
                         CASE
-                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
                         END
@@ -747,7 +749,7 @@ BEGIN
             CASE 
                 WHEN @Comp_Id = 'Comp-1669' THEN
                     CASE
-                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
                         WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                         ELSE 0.00
                     END
@@ -773,7 +775,7 @@ BEGIN
             CASE 
                 WHEN @Comp_Id = 'Comp-1669' THEN
                     CASE
-                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
                         WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                         ELSE 0.00
                     END
@@ -912,3 +914,4 @@ BEGIN
         );
     END
 END
+GO
