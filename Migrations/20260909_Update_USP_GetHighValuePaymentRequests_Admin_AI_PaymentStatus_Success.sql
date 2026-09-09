@@ -4,6 +4,8 @@
 --   1. Align Claims calculation in USP_GetHighValuePaymentRequests_Admin_AI to filter by CD.PaymentStatus = 'Success'
 --   2. Align Instant UPI Transfers to filter by LEN(ISNULL(t.Code1, '')) > 3
 --   3. Synchronizes TotalRedeemedPoints and BalancePoints with SP_BL_GetBeneficiariesReport
+--   4. Add ClaimPoints, RequestAmmount, and PointConversion for point-to-cash conversion transparency
+--   5. Populate clean AccountNumber with fallback to ClaimDetails BankRefID/UPIID
 
 USE [vcqru]
 GO
@@ -42,11 +44,13 @@ BEGIN
         MobileNo VARCHAR(15) NULL,
         UserName NVARCHAR(150) NULL,
         Amount DECIMAL(18, 2) NULL,
+        RequestAmmount DECIMAL(18, 2) NULL,
+        ClaimPoints DECIMAL(18, 2) NULL,
+        PointConversion NVARCHAR(50) NULL,
         CompName NVARCHAR(150) NULL,
         CompId VARCHAR(50) NULL,
         IsApproved INT NOT NULL,
         VendorComment NVARCHAR(MAX) NULL,
-        [UpiId/AC] VARCHAR(100) NULL,
         PaymentRemarks NVARCHAR(MAX) NULL,
         PaymentStatus VARCHAR(50) NULL,
         ClaimMode NVARCHAR(200) NULL,
@@ -102,18 +106,29 @@ BEGIN
     END
 
     -- Fetch high value claims prioritizing company threshold or falling back to default threshold
-    INSERT INTO #FinalData (ClaimId, ClaimDate, MobileNo, UserName, Amount, CompName, CompId, IsApproved, VendorComment, [UpiId/AC], PaymentRemarks, PaymentStatus, ClaimMode, VendorWalletBalance, TotalEarnedPoints, TotalRedeemedPoints, BalancePoints, IFSCCode, AccountNumber, BankName, KycStatus)
+    INSERT INTO #FinalData (ClaimId, ClaimDate, MobileNo, UserName, Amount, RequestAmmount, ClaimPoints, PointConversion, CompName, CompId, IsApproved, VendorComment, PaymentRemarks, PaymentStatus, ClaimMode, VendorWalletBalance, TotalEarnedPoints, TotalRedeemedPoints, BalancePoints, IFSCCode, AccountNumber, BankName, KycStatus)
     SELECT
         cd.Row_id AS ClaimId,
         cd.Claim_date AS ClaimDate,
         cd.Mobileno AS MobileNo,
         mc.ConsumerName AS UserName,
-        CAST(cd.RequestAmmount AS DECIMAL(18,2)) AS Amount,
+        CAST(ISNULL(cd.RequestAmmount, cd.Amount) AS DECIMAL(18,2)) AS Amount,
+        CAST(ISNULL(cd.RequestAmmount, cd.Amount) AS DECIMAL(18,2)) AS RequestAmmount,
+        CAST(ISNULL(cd.Points_Redeemed, cd.Amount) AS DECIMAL(18,2)) AS ClaimPoints,
+        CASE 
+            WHEN TRY_CAST(ISNULL(cd.Points_Redeemed, cd.Amount) AS DECIMAL(18,2)) > 0 
+                 AND TRY_CAST(ISNULL(cd.RequestAmmount, cd.Amount) AS DECIMAL(18,2)) > 0 
+                 AND TRY_CAST(ISNULL(cd.Points_Redeemed, cd.Amount) AS DECIMAL(18,2)) <> TRY_CAST(ISNULL(cd.RequestAmmount, cd.Amount) AS DECIMAL(18,2)) THEN
+                CONCAT(
+                    CAST(CAST(ROUND(TRY_CAST(cd.Points_Redeemed AS DECIMAL(18,2)) / TRY_CAST(cd.RequestAmmount AS DECIMAL(18,2)), 2) AS DECIMAL(10,2)) AS VARCHAR(20)),
+                    ' Pts = ₹1.00'
+                )
+            ELSE '1 Pt = ₹1.00'
+        END AS PointConversion,
         ISNULL(c.Comp_Name, 'Unknown') AS CompName,
         cd.Comp_id AS CompId,
         cd.Isapproved AS IsApproved,
         cd.vendor_comment AS VendorComment,
-        ISNULL(cd.UPIID, cd.BankRefID) AS [UpiId/AC],
         cd.PaymentRemarks AS PaymentRemarks,
         CASE WHEN cd.Isapproved = 1 THEN 'Approved' WHEN cd.Isapproved = 2 THEN 'Rejected' ELSE 'Pending' END AS PaymentStatus,
         cd.Claim_mode AS ClaimMode,
@@ -162,9 +177,10 @@ BEGIN
     UPDATE f
     SET 
         f.IFSCCode = ISNULL(mba.IFSC_Code, ISNULL(audit.IFSC_Code, '')),
-        f.AccountNumber = ISNULL(mba.Account_No, ISNULL(audit.Account_Number, '')),
+        f.AccountNumber = ISNULL(mba.Account_No, ISNULL(audit.Account_Number, CASE WHEN cd.UPIID NOT LIKE '%@%' THEN ISNULL(cd.BankRefID, cd.UPIID) ELSE cd.BankRefID END)),
         f.BankName = ISNULL(mba.Bank_Name, '')
     FROM #FinalData f
+    INNER JOIN ClaimDetails cd WITH (NOLOCK) ON cd.Row_id = f.ClaimId
     LEFT JOIN M_Consumer mc WITH (NOLOCK) ON RIGHT(mc.MobileNo, 10) = RIGHT(f.MobileNo, 10) AND mc.IsDelete = 0
     OUTER APPLY (
         SELECT TOP 1 Account_No, IFSC_Code, Bank_Name 
