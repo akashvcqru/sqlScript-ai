@@ -11,220 +11,115 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    ---------------------------------------------------------
+    -- 1. Get List of Child Users for Dealer
+    ---------------------------------------------------------
+    IF OBJECT_ID('tempdb..#ChildUsers') IS NOT NULL DROP TABLE #ChildUsers;
+
     SELECT 
         mc.M_Consumerid, 
         mc.ConsumerName, 
         mc.Email, 
-        mc.MobileNo,
-        -- Total Points
-        CASE 
-            WHEN @comp_id IN ('comp-1152', 'Comp-1152') THEN 
-                ISNULL((SELECT SUM(TRY_CAST(points AS DECIMAL(18,2))) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = mc.MobileNo), 0)
-            ELSE
-                -- Scan Points + Referral Points
-                ISNULL((
-                    SELECT SUM(ISNULL(CP.ConfigPoints, ISNULL(EP.Points, 0)))
-                    FROM (
-                        SELECT 
-                            M.Row_ID as M_Codeid,
-                            M.Pro_ID,
-                            M.Series_Order,
-                            M.Series_Serial,
-                            ROW_NUMBER() OVER (PARTITION BY PE.Received_Code1, PE.Received_Code2 ORDER BY PE.Enq_Date) as rn
-                        FROM Pro_Enq PE WITH (NOLOCK)
-                        INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
-                        INNER JOIN Pro_Reg pr ON pr.Pro_ID = M.Pro_ID
-                        WHERE PE.MobileNo = mc.MobileNo 
-                          AND PE.Is_Success = '1'
-                          AND (pr.Comp_ID = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND pr.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-                    ) US
-                    LEFT JOIN (
-                        SELECT
-                            MC.M_Codeid,
-                            MAX(CAST(
-                                CASE 
-                                    WHEN @comp_id = 'Comp-1274' THEN ISNULL(BL.Cash, 0) * 1.10
-                                    ELSE ISNULL(BL.Points, 0)
-                                END 
-                            AS DECIMAL(18,2))) AS Points
-                        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-                        INNER JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
-                        INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-                        WHERE BL.M_Consumerid = mc.M_Consumerid
-                          AND (BL.compid = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND BL.compid IN ('Comp-1650', 'Comp-1567')))
-                        GROUP BY MC.M_Codeid
-                    ) EP ON EP.M_Codeid = US.M_Codeid
-                    LEFT JOIN (
-                        SELECT 
-                            M.Row_ID as M_Codeid,
-                            MAX(CAST(
-                                CASE 
-                                    WHEN @comp_id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
-                                    ELSE CASE WHEN SST.Points IS NULL OR SST.Points = 0 THEN ISNULL(SST.IsCash, 0) ELSE SST.Points END
-                                END 
-                            AS DECIMAL(18,2))) AS ConfigPoints
-                        FROM Pro_Enq PE WITH (NOLOCK)
-                        INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
-                        INNER JOIN Pro_Reg pr ON pr.Pro_ID = M.Pro_ID
-                        INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = M.Pro_ID
-                        INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
-                        WHERE PE.MobileNo = mc.MobileNo
-                          AND PE.Is_Success = '1'
-                          AND SS.IsActive = 1 AND SS.IsDelete = 0
-                          AND SST.IsActive = 1 AND SST.IsDelete = 0
-                          AND (SS.Comp_ID = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND SS.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-                          AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
-                          AND (M.Series_Order > SS.start_order OR (M.Series_Order = SS.start_order AND M.Series_Serial >= SS.start_series))
-                          AND (M.Series_Order < SS.end_order OR (M.Series_Order = SS.end_order AND M.Series_Serial <= SS.end_series))
-                        GROUP BY M.Row_ID
-                    ) CP ON CP.M_Codeid = US.M_Codeid
-                    WHERE US.rn = 1
-                ), 0)
-                +
-                ISNULL((
-                    SELECT SUM(CAST(Points AS DECIMAL(18,2)))
-                    FROM BLoyaltyPointsEarned WITH (NOLOCK)
-                    WHERE M_Consumerid = mc.M_Consumerid 
-                      AND (compid = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567')))
-                      AND ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards')
-                ), 0)
-        END AS totalPoints,
-        -- Redeem Points
-        ISNULL((
-            SELECT ISNULL(SUM(TRY_CAST(RedeemPoints AS INT)), 0) 
-            FROM BPointsTransaction WHERE RedeemBy = mc.M_Consumerid AND bpstatus <> 'FAILURE'
-        ), 0)
-        + 
-        ISNULL((
-            SELECT ISNULL(SUM(Amount), 0) 
-            FROM ClaimDetails cl 
-            WHERE RIGHT(cl.Mobileno, 10) = RIGHT(mc.MobileNo, 10) AND cl.Isapproved <> 2
-              AND (cl.Comp_id = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND cl.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-        ), 0)
-        +
-        ISNULL((
-            SELECT ISNULL(SUM(ISNULL(Points_Val, Amount)), 0) 
-            FROM tblUPITransactionDetails 
-            WHERE RIGHT(Mobileno, 10) = RIGHT(mc.MobileNo, 10) AND Status IN ('Pending','Success') AND Comp_id = @comp_id AND Code2 > 0
-        ), 0)
-        +
-        ISNULL((
-            SELECT ISNULL(SUM(Amount), 0)
-            FROM Transactions WITH (NOLOCK)
-            WHERE IsSuccess = 1
-              AND M_CounserID = mc.M_Consumerid
-              AND 'Comp-' + CAST(CompId AS VARCHAR) = @comp_id
-              AND TransactionDate >= '2022-11-25 00:00:00.000'
-              AND TransactionDate < GETDATE()
-        ), 0) AS claimPoint,
-        -- Pending Points
-        (
-            CASE 
-                WHEN @comp_id IN ('comp-1152', 'Comp-1152') THEN 
-                    ISNULL((SELECT SUM(TRY_CAST(points AS DECIMAL(18,2))) FROM [dbo].[ConsumerPointsCashDetails] WHERE MobileNo = mc.MobileNo), 0)
-                ELSE
-                    -- Scan Points + Referral Points
-                    ISNULL((
-                        SELECT SUM(ISNULL(CP.ConfigPoints, ISNULL(EP.Points, 0)))
-                        FROM (
-                            SELECT 
-                                M.Row_ID as M_Codeid,
-                                M.Pro_ID,
-                                M.Series_Order,
-                                M.Series_Serial,
-                                ROW_NUMBER() OVER (PARTITION BY PE.Received_Code1, PE.Received_Code2 ORDER BY PE.Enq_Date) as rn
-                            FROM Pro_Enq PE WITH (NOLOCK)
-                            INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
-                            INNER JOIN Pro_Reg pr ON pr.Pro_ID = M.Pro_ID
-                            WHERE PE.MobileNo = mc.MobileNo 
-                              AND PE.Is_Success = '1'
-                              AND (pr.Comp_ID = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND pr.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-                        ) US
-                        LEFT JOIN (
-                            SELECT
-                                MC.M_Codeid,
-                                MAX(CAST(
-                                    CASE 
-                                        WHEN @comp_id = 'Comp-1274' THEN ISNULL(BL.Cash, 0) * 1.10
-                                        ELSE ISNULL(BL.Points, 0)
-                                    END 
-                                AS DECIMAL(18,2))) AS Points
-                            FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-                            INNER JOIN BuiltLoyaltyMCodeCheck BMC ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
-                            INNER JOIN M_Consumer_M_Code MC ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-                            WHERE BL.M_Consumerid = mc.M_Consumerid
-                              AND (BL.compid = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND BL.compid IN ('Comp-1650', 'Comp-1567')))
-                            GROUP BY MC.M_Codeid
-                        ) EP ON EP.M_Codeid = US.M_Codeid
-                        LEFT JOIN (
-                            SELECT 
-                                M.Row_ID as M_Codeid,
-                                MAX(CAST(
-                                    CASE 
-                                        WHEN @comp_id = 'Comp-1274' THEN ISNULL(SST.IsCash, 0) * 1.10
-                                        ELSE CASE WHEN SST.Points IS NULL OR SST.Points = 0 THEN ISNULL(SST.IsCash, 0) ELSE SST.Points END
-                                    END 
-                                AS DECIMAL(18,2))) AS ConfigPoints
-                            FROM Pro_Enq PE WITH (NOLOCK)
-                            INNER JOIN M_Code M WITH (NOLOCK) ON PE.Received_Code1 = M.Code1 AND PE.Received_Code2 = M.Code2
-                            INNER JOIN Pro_Reg pr ON pr.Pro_ID = M.Pro_ID
-                            INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = M.Pro_ID
-                            INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
-                            WHERE PE.MobileNo = mc.MobileNo
-                              AND PE.Is_Success = '1'
-                              AND SS.IsActive = 1 AND SS.IsDelete = 0
-                              AND SST.IsActive = 1 AND SST.IsDelete = 0
-                              AND (SS.Comp_ID = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND SS.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-                              AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
-                              AND (M.Series_Order > SS.start_order OR (M.Series_Order = SS.start_order AND M.Series_Serial >= SS.start_series))
-                              AND (M.Series_Order < SS.end_order OR (M.Series_Order = SS.end_order AND M.Series_Serial <= SS.end_series))
-                            GROUP BY M.Row_ID
-                        ) CP ON CP.M_Codeid = US.M_Codeid
-                        WHERE US.rn = 1
-                    ), 0)
-                    +
-                    ISNULL((
-                        SELECT SUM(CAST(Points AS DECIMAL(18,2)))
-                        FROM BLoyaltyPointsEarned WITH (NOLOCK)
-                        WHERE M_Consumerid = mc.M_Consumerid 
-                          AND (compid = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND compid IN ('Comp-1650', 'Comp-1567')))
-                          AND ServiceName IN ('Referral', 'KYCRewards', 'Supervisor', 'InvoiceBenifit', 'InvoiceRewards')
-                    ), 0)
-            END
-        )
-        -
-        (
-            ISNULL((
-                SELECT ISNULL(SUM(TRY_CAST(RedeemPoints AS INT)), 0) 
-                FROM BPointsTransaction WHERE RedeemBy = mc.M_Consumerid AND bpstatus <> 'FAILURE'
-            ), 0)
-            + 
-            ISNULL((
-                SELECT ISNULL(SUM(Amount), 0) 
-                FROM ClaimDetails cl 
-                WHERE RIGHT(cl.Mobileno, 10) = RIGHT(mc.MobileNo, 10) AND cl.Isapproved <> 2
-                  AND (cl.Comp_id = @comp_id OR (@comp_id IN ('Comp-1650', 'Comp-1567') AND cl.Comp_ID IN ('Comp-1650', 'Comp-1567')))
-            ), 0)
-            +
-            ISNULL((
-                SELECT ISNULL(SUM(ISNULL(Points_Val, Amount)), 0) 
-                FROM tblUPITransactionDetails 
-                WHERE RIGHT(Mobileno, 10) = RIGHT(mc.MobileNo, 10) AND Status IN ('Pending','Success') AND Comp_id = @comp_id AND Code2 > 0
-            ), 0)
-            +
-            ISNULL((
-                SELECT ISNULL(SUM(Amount), 0)
-                FROM Transactions WITH (NOLOCK)
-                WHERE IsSuccess = 1
-                  AND M_CounserID = mc.M_Consumerid
-                  AND 'Comp-' + CAST(CompId AS VARCHAR) = @comp_id
-                  AND TransactionDate >= '2022-11-25 00:00:00.000'
-                  AND TransactionDate < GETDATE()
-            ), 0)
-        ) AS availablePoints
-    FROM M_Consumer mc 
-    INNER JOIN tbl_Vendorvisekycstatus vc ON mc.M_Consumerid = vc.M_consumerId 
+        mc.MobileNo
+    INTO #ChildUsers
+    FROM M_Consumer mc WITH (NOLOCK)
+    INNER JOIN tbl_Vendorvisekycstatus vc WITH (NOLOCK) 
+        ON mc.M_Consumerid = vc.M_consumerId 
     WHERE vc.Comp_id = @comp_id 
       AND vc.Dealer_M_consumerid = @dealerid
+      AND vc.IsDelete = 0;
+
+    -- Result Table
+    IF OBJECT_ID('tempdb..#FinalResult') IS NOT NULL DROP TABLE #FinalResult;
+
+    CREATE TABLE #FinalResult (
+        M_Consumerid INT,
+        ConsumerName VARCHAR(250),
+        Email VARCHAR(250),
+        MobileNo VARCHAR(50),
+        totalPoints DECIMAL(18,2),
+        claimPoint DECIMAL(18,2),
+        availablePoints DECIMAL(18,2)
+    );
+
+    IF NOT EXISTS (SELECT 1 FROM #ChildUsers)
+    BEGIN
+        SELECT * FROM #FinalResult;
+        RETURN;
+    END
+
+    ---------------------------------------------------------
+    -- 2. Temp Table to Capture Output of USP_GetDashboardSummary_AI
+    ---------------------------------------------------------
+    IF OBJECT_ID('tempdb..#OverallStats') IS NOT NULL DROP TABLE #OverallStats;
+
+    CREATE TABLE #OverallStats (
+        TotalCode INT,
+        ReedemPoints DECIMAL(18,2),
+        SuccessCode INT,
+        UnsuccessCode INT,
+        TotalCash DECIMAL(18,2),
+        TotalPoints DECIMAL(18,2),
+        HasServiceWiseGifts BIT,
+        InvalidCode INT
+    );
+
+    ---------------------------------------------------------
+    -- 3. Loop Child Users and Call USP_GetDashboardSummary_AI
+    ---------------------------------------------------------
+    DECLARE @curr_M_Consumerid INT, 
+            @curr_ConsumerName VARCHAR(250), 
+            @curr_Email VARCHAR(250), 
+            @curr_MobileNo VARCHAR(50);
+
+    DECLARE child_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT M_Consumerid, ConsumerName, Email, MobileNo FROM #ChildUsers;
+
+    OPEN child_cursor;
+    FETCH NEXT FROM child_cursor INTO @curr_M_Consumerid, @curr_ConsumerName, @curr_Email, @curr_MobileNo;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        TRUNCATE TABLE #OverallStats;
+
+        BEGIN TRY
+            INSERT INTO #OverallStats
+            EXEC [dbo].[USP_GetDashboardSummary_AI] 
+                @M_Consumerid = @curr_M_Consumerid, 
+                @CompID = @comp_id, 
+                @OverallStatsOnly = 1;
+
+            INSERT INTO #FinalResult (M_Consumerid, ConsumerName, Email, MobileNo, totalPoints, claimPoint, availablePoints)
+            SELECT 
+                @curr_M_Consumerid,
+                @curr_ConsumerName,
+                @curr_Email,
+                @curr_MobileNo,
+                ISNULL(TotalPoints, 0),
+                ISNULL(ReedemPoints, 0),
+                ISNULL(TotalPoints, 0) - ISNULL(ReedemPoints, 0)
+            FROM #OverallStats;
+        END TRY
+        BEGIN CATCH
+            INSERT INTO #FinalResult (M_Consumerid, ConsumerName, Email, MobileNo, totalPoints, claimPoint, availablePoints)
+            VALUES (@curr_M_Consumerid, @curr_ConsumerName, @curr_Email, @curr_MobileNo, 0, 0, 0);
+        END CATCH
+
+        FETCH NEXT FROM child_cursor INTO @curr_M_Consumerid, @curr_ConsumerName, @curr_Email, @curr_MobileNo;
+    END
+
+    CLOSE child_cursor;
+    DEALLOCATE child_cursor;
+
+    ---------------------------------------------------------
+    -- 4. Final Selection & Cleanup
+    ---------------------------------------------------------
+    SELECT * FROM #FinalResult;
+
+    DROP TABLE IF EXISTS #ChildUsers;
+    DROP TABLE IF EXISTS #FinalResult;
+    DROP TABLE IF EXISTS #OverallStats;
 END
 GO
+
+
