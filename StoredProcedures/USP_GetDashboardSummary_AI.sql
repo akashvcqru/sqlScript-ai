@@ -284,8 +284,18 @@ BEGIN
     WHERE Isapproved <> 2
       AND RIGHT(CD.Mobileno, 10) = RIGHT(@MobileNo, 10);
 
+    DECLARE @PaytmAmount DECIMAL(18,2) = 0;
+    SELECT @PaytmAmount = ISNULL(SUM(ISNULL(CAST(Amount AS DECIMAL(18,2)), 0)), 0)
+    FROM paytmtransaction PT WITH (NOLOCK)
+    INNER JOIN @CompanyList CL ON PT.compId = CL.Comp_Id
+    WHERE PT.pstatus IN ('ACCEPTED', '1', 'Success', 'SUCCESS')
+      AND (
+          PT.M_consumerid = CAST(@M_Consumerid AS VARCHAR(50)) 
+          OR RIGHT(PT.mobileno, 10) = RIGHT(@MobileNo, 10)
+      );
+
     DECLARE @RedeemAmount DECIMAL(18,2) = 0;
-    SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount;
+    SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount + @PaytmAmount;
 
     -- Calculate precise counts using SP_BL_GetCodesActivityReport_AI logic
     DECLARE @SuccessCodeCount INT = 0;
