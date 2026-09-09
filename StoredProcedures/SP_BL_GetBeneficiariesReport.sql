@@ -131,7 +131,7 @@ BEGIN
     END
 
     ---------------------------------------------------------
-    DROP TABLE IF EXISTS #SearchMatchingUsers, #Candidates, #Users, #UserMobiles, #ConsumerMapping, #State, #Benefit, #OtherEarnedPoints, #Referrals, #Claims, #UPI, #BPoints, #Transactions, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints;
+    DROP TABLE IF EXISTS #SearchMatchingUsers, #Candidates, #Users, #UserMobiles, #ConsumerMapping, #State, #Benefit, #OtherEarnedPoints, #Referrals, #Claims, #UPI, #BPoints, #Transactions, #Paytm, #FinalData, #UniqueScans, #EarnedPoints, #ConfigPoints;
 
     -- Normalize filters early
     IF LTRIM(RTRIM(ISNULL(@Search, ''))) = '' OR @Search = 'null' SET @Search = NULL;
@@ -174,6 +174,8 @@ BEGIN
         SELECT TRY_CAST(M_CounserID AS INT) AS M_ConsumerId FROM Transactions WITH (NOLOCK) WHERE (CompId IN (SELECT REPLACE(Comp_Id, 'Comp-', '') FROM @CompanyList) OR CompId IN (SELECT Comp_Id FROM @CompanyList)) AND Issuccess = 1
         UNION
         SELECT TRY_CAST(t.M_Consumerid AS INT) AS M_ConsumerId FROM tblUPITransactionDetails t WITH (NOLOCK) WHERE t.Comp_Id IN (SELECT Comp_Id FROM @CompanyList) AND t.Status = 'Success'
+        UNION
+        SELECT pt.M_Consumerid AS M_ConsumerId FROM paytmtransaction pt WITH (NOLOCK) WHERE @Comp_Id = 'Comp-1669' AND pt.compid = 'Comp-1669' AND pt.pStatus IN ('Success', 'Accepted', 'ACCEPTED', 'SUCCESS')
     ) x
     INNER JOIN M_Consumer MC WITH (NOLOCK) ON x.M_ConsumerId = MC.M_ConsumerId AND MC.IsDelete = 0
     WHERE x.M_ConsumerId IS NOT NULL
@@ -293,12 +295,10 @@ BEGIN
         INSERT INTO #Benefit (M_Consumerid, PointsEarned, LastScan)
         SELECT 
             CM.Active_ConsumerId AS M_Consumerid,
-            SUM(CAST(
-                CASE 
-                    WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
-                    ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
-                END 
-            AS DECIMAL(18,2))) AS PointsEarned,
+            CAST(
+                ISNULL([dbo].[fnPointSp](SUM(ISNULL(BL.Points, 0))), 0.00) 
+                + ISNULL(SUM(CAST(ISNULL(BL.Cash, 0) AS DECIMAL(18,2))), 0.00)
+            AS DECIMAL(18,2)) AS PointsEarned,
             MAX(BL.UpdateDate) AS LastScan
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
         INNER JOIN #ConsumerMapping CM ON BL.M_Consumerid = CM.M_ConsumerId
@@ -536,6 +536,30 @@ BEGIN
     CREATE CLUSTERED INDEX IX_Transactions_ConsumerId ON #Transactions(M_ConsumerId);
 
     ---------------------------------------------------------
+    -- 9b. REDEEM AMOUNT (PAYTM - ISOLATED FOR COMP-1669 ONLY)
+    ---------------------------------------------------------
+    CREATE TABLE #Paytm
+    (
+        M_ConsumerId INT PRIMARY KEY,
+        PaytmAmount DECIMAL(18,2)
+    );
+
+    IF @Comp_Id = 'Comp-1669'
+    BEGIN
+        INSERT INTO #Paytm (M_ConsumerId, PaytmAmount)
+        SELECT 
+            CM.Active_ConsumerId AS M_ConsumerId,
+            SUM(TRY_CAST(ISNULL(pt.Amount, 0) AS DECIMAL(18,2))) AS PaytmAmount
+        FROM paytmtransaction pt WITH (NOLOCK)
+        INNER JOIN #ConsumerMapping CM ON pt.M_Consumerid = CM.M_ConsumerId
+        WHERE pt.compid = 'Comp-1669'
+          AND pt.pStatus IN ('Success', 'Accepted', 'ACCEPTED', 'SUCCESS')
+          AND (@StartDate IS NULL OR pt.pdate >= @StartDate)
+          AND (@EndDate   IS NULL OR pt.pdate <  @EndDate)
+        GROUP BY CM.Active_ConsumerId;
+    END
+
+    ---------------------------------------------------------
     -- 10. COMBINE FINAL DATA
     ---------------------------------------------------------
     SELECT
@@ -547,9 +571,15 @@ BEGIN
         U.KYCStatus,
         (ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00)) AS PointsEarned,
         ISNULL(R.RefralAmount, 0.00) AS RefralAmount,
-        (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00)) AS RedeemAmount,
+        CASE 
+            WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(PT.PaytmAmount, 0.00)
+            ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
+        END AS RedeemAmount,
         ((ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00) + ISNULL(R.RefralAmount, 0.00)) - 
-         (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))) AS BalanceAmount,
+         CASE 
+            WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(PT.PaytmAmount, 0.00)
+            ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
+         END) AS BalanceAmount,
         B.LastScan
     INTO #FinalData
     FROM #Users U
@@ -561,6 +591,7 @@ BEGIN
     LEFT JOIN #UPI UPI ON U.M_ConsumerId = UPI.M_ConsumerId
     LEFT JOIN #BPoints BP ON U.M_ConsumerId = BP.M_ConsumerId
     LEFT JOIN #Transactions T ON U.M_ConsumerId = T.M_ConsumerId
+    LEFT JOIN #Paytm PT ON U.M_ConsumerId = PT.M_ConsumerId
     WHERE (
         @KYCStatusFilter IS NULL OR
         (@KYCStatusFilter = 'Approved' AND U.KYCStatus = 'Approved') OR
@@ -574,7 +605,10 @@ BEGIN
     AND (
         (ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00)) > 0
         OR ISNULL(R.RefralAmount, 0.00) > 0
-        OR (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00)) > 0
+        OR (CASE 
+                WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(PT.PaytmAmount, 0.00)
+                ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
+            END) > 0
     );
 
     ---------------------------------------------------------

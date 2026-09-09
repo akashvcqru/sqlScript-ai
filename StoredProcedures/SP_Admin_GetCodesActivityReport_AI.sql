@@ -208,6 +208,7 @@ BEGIN
         E.MobileNo,
         MAX(CAST(
             CASE 
+                WHEN BL.compid = 'Comp-1669' AND BL.Points IS NOT NULL AND BL.Points > 0 THEN [dbo].[fnPointSp](BL.Points)
                 WHEN BL.Points IS NOT NULL AND BL.Points > 0 THEN BL.Points
                 WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash
                 ELSE 0.00
@@ -399,6 +400,7 @@ BEGIN
         '' AS Dial_Mode,
         CAST(SUM(CAST(
             CASE 
+                WHEN BL.compid = 'Comp-1669' AND BL.Points IS NOT NULL AND BL.Points > 0 THEN [dbo].[fnPointSp](BL.Points)
                 WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash
                 ELSE ISNULL(BL.Points, 0)
             END AS DECIMAL(18,2)
