@@ -356,6 +356,7 @@ BEGIN
         CASE 
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
             WHEN LOWER(@CompID) = 'comp-1669' AND @Vrkabel_User_Type = 164 THEN @TotalConfigCash + (SELECT RefCash FROM #ReferralStats)
+            WHEN LOWER(@CompID) = 'comp-1669'  AND @Vrkabel_User_Type = 166 THEN (@TotalConfigPoints + (SELECT RefCash FROM #ReferralStats)) / 10 
             ELSE @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
         END as TotalPoints,
         @HasServiceWiseGifts as HasServiceWiseGifts,
