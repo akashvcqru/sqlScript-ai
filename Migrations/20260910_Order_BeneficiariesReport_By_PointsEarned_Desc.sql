@@ -1,3 +1,6 @@
+-- Migration: Update SP_BL_GetBeneficiariesReport to sort records by PointsEarned DESC, LastScan DESC and include LastScan in SELECT output
+-- Date: 2026-09-10
+
 USE [Vcqru]
 GO
 SET ANSI_NULLS ON
@@ -9,7 +12,7 @@ GO
 -- [dbo].[SP_BL_GetBeneficiariesReport]
 -- Logic isolated for Comp-1669 without modifying any other company logic
 -- Author: Antigravity
--- Date: 2026-09-04
+-- Date: 2026-09-10
 -- ============================================================================
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
 (
