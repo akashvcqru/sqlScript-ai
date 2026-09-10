@@ -1,68 +1,71 @@
+USE [Vcqru];
+GO
+
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetServerDiskSpaceInfo_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
     SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
-    BEGIN TRY
-        -- Table variable to capture xp_cmdshell output
-        DECLARE @DriveInfo TABLE
-        (
-            OutputLine NVARCHAR(4000)
-        );
+    DECLARE @XpCmdShellEnabled INT = 0;
+    SELECT @XpCmdShellEnabled = CAST(value_in_use AS INT) 
+    FROM sys.configurations 
+    WHERE name = 'xp_cmdshell';
 
-        -- Execute PowerShell via xp_cmdshell to query all fixed logical drives (DriveType=3)
-        INSERT INTO @DriveInfo (OutputLine)
-        EXEC master..xp_cmdshell 
-        'powershell -NoProfile -Command "Get-CimInstance Win32_LogicalDisk -Filter ''DriveType=3'' | ForEach-Object { Write-Output ($_.DeviceID + ''|'' + $_.Size + ''|'' + $_.FreeSpace) }"';
+    IF OBJECT_ID('tempdb..#DriveRaw') IS NOT NULL DROP TABLE #DriveRaw;
+    CREATE TABLE #DriveRaw ( OutputLine NVARCHAR(4000) );
 
-        ;WITH RawData AS
-        (
-            SELECT
-                LTRIM(RTRIM(OutputLine)) AS OutputLine,
-                CHARINDEX('|', OutputLine) AS P1,
-                CHARINDEX('|', OutputLine, CHARINDEX('|', OutputLine) + 1) AS P2
-            FROM @DriveInfo
-            WHERE OutputLine IS NOT NULL
-              AND OutputLine LIKE '%|%|%'
-        ),
-        DriveData AS
-        (
-            SELECT
-                LEFT(OutputLine, P1 - 1) AS [Drive],
-                TRY_CONVERT(DECIMAL(38,0), LTRIM(RTRIM(SUBSTRING(OutputLine, P1 + 1, P2 - P1 - 1)))) AS [TotalBytes],
-                TRY_CONVERT(DECIMAL(38,0), LTRIM(RTRIM(SUBSTRING(OutputLine, P2 + 1, LEN(OutputLine))))) AS [FreeBytes]
-            FROM RawData
-        )
+    IF @XpCmdShellEnabled = 1
+    BEGIN
+        INSERT INTO #DriveRaw (OutputLine)
+        EXEC master.dbo.xp_cmdshell
+        'powershell -NoProfile -Command "Get-CimInstance Win32_LogicalDisk -Filter ''DriveType=3'' | ForEach-Object { $Total=[math]::Round($_.Size/1GB,2); $Free=[math]::Round($_.FreeSpace/1GB,2); $Used=[math]::Round($Total-$Free,2); $UsedPct=[math]::Round(($Used/$Total)*100,2); $FreePct=[math]::Round(($Free/$Total)*100,2); [PSCustomObject]@{Drive=$_.DeviceID;TotalGB=$Total;UsedGB=$Used;FreeGB=$Free;UsedPercent=$UsedPct;FreePercent=$FreePct} | ConvertTo-Json -Compress }"';
+
         SELECT
-            [Drive],
-            
-            /* Total Space in GB */
-            CAST(TotalBytes / 1073741824.0 AS DECIMAL(18, 2)) AS [TotalSpace_GB],
-            
-            /* Used Space in GB */
-            CAST((TotalBytes - FreeBytes) / 1073741824.0 AS DECIMAL(18, 2)) AS [UsedSpace_GB],
-            
-            /* Free Space in GB */
-            CAST(FreeBytes / 1073741824.0 AS DECIMAL(18, 2)) AS [FreeSpace_GB],
-            
-            /* Used Percentage */
-            CAST(((TotalBytes - FreeBytes) * 100.0) / NULLIF(TotalBytes, 0) AS DECIMAL(10, 2)) AS [UsedPercent],
-            
-            /* Free Percentage */
-            CAST((FreeBytes * 100.0) / NULLIF(TotalBytes, 0) AS DECIMAL(10, 2)) AS [FreePercent]
-        FROM DriveData
-        WHERE TotalBytes IS NOT NULL 
-          AND FreeBytes IS NOT NULL
+            j.Drive AS [Drive],
+            j.TotalGB AS [Total Space GB],
+            j.UsedGB AS [Used Space GB],
+            j.FreeGB AS [Free Space GB],
+            j.UsedPercent AS [Used %],
+            j.FreePercent AS [Free %],
+            CASE
+                WHEN j.FreePercent < 10 THEN 'CRITICAL'
+                WHEN j.FreePercent < 20 THEN 'WARNING'
+                ELSE 'HEALTHY'
+            END AS [Disk Status]
+        FROM #DriveRaw r
+        CROSS APPLY OPENJSON(r.OutputLine)
+        WITH
+        (
+            Drive       VARCHAR(10)   '$.Drive',
+            TotalGB     DECIMAL(18,2) '$.TotalGB',
+            UsedGB      DECIMAL(18,2) '$.UsedGB',
+            FreeGB      DECIMAL(18,2) '$.FreeGB',
+            UsedPercent DECIMAL(10,2) '$.UsedPercent',
+            FreePercent DECIMAL(10,2) '$.FreePercent'
+        ) j
+        WHERE ISJSON(r.OutputLine) = 1
+        ORDER BY j.Drive;
+
+        DROP TABLE #DriveRaw;
+    END
+    ELSE
+    BEGIN
+        SELECT DISTINCT
+            UPPER(vs.volume_mount_point) AS [Drive],
+            CAST(vs.total_bytes / (1024.0 * 1024 * 1024) AS DECIMAL(18,2)) AS [Total Space GB],
+            CAST((vs.total_bytes - vs.available_bytes) / (1024.0 * 1024 * 1024) AS DECIMAL(18,2)) AS [Used Space GB],
+            CAST(vs.available_bytes / (1024.0 * 1024 * 1024) AS DECIMAL(18,2)) AS [Free Space GB],
+            CAST(((vs.total_bytes - vs.available_bytes) * 100.0 / vs.total_bytes) AS DECIMAL(10,2)) AS [Used %],
+            CAST((vs.available_bytes * 100.0 / vs.total_bytes) AS DECIMAL(10,2)) AS [Free %],
+            CASE
+                WHEN (vs.available_bytes * 100.0 / vs.total_bytes) < 10 THEN 'CRITICAL'
+                WHEN (vs.available_bytes * 100.0 / vs.total_bytes) < 20 THEN 'WARNING'
+                ELSE 'HEALTHY'
+            END AS [Disk Status]
+        FROM sys.master_files AS f
+        CROSS APPLY sys.dm_os_volume_stats(f.database_id, f.file_id) AS vs
         ORDER BY [Drive];
-
-    END TRY
-    BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
-        DECLARE @ErrorState INT = ERROR_STATE();
-
-        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
-    END CATCH
+    END
 END;
 GO
