@@ -83,7 +83,6 @@ BEGIN
         [state] = COALESCE(@state, [state]),                                
         [country] = COALESCE(@country, [country]),                                
         [Role_Id] = COALESCE(@role_id, [Role_Id]),                                
-        [Comp_id] = COALESCE(@Comp_id, [Comp_id]),                                
         [Created_by] = COALESCE(@Created_by, [Created_by]),                                
         [Per_Address] = COALESCE(@permanemt, [Per_Address]),                                
         [SellerName] = COALESCE(@SellerName, [SellerName]),                                
