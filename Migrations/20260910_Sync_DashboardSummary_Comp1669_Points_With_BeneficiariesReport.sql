@@ -1,4 +1,14 @@
-ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
+-- Migration: Align USP_GetDashboardSummary_AI points calculation for Comp-1669 with SP_BL_GetBeneficiariesReport
+-- Date: 2026-09-10
+
+USE [Vcqru]
+GO
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
     @CompID VARCHAR(50),
@@ -25,11 +35,6 @@ BEGIN
     ---------------------------------------------------------
     DECLARE @CompanyList TABLE (Comp_Id VARCHAR(50) PRIMARY KEY);
         INSERT INTO @CompanyList VALUES (@CompID);
-
-    --IF @CompID IN ('Comp-1567','Comp-1650')
-    --    INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
-    --ELSE
-    --    INSERT INTO @CompanyList VALUES (@CompID);
 
     DECLARE @Multiplier DECIMAL(18,2) = 1.00;
     SELECT TOP 1 @Multiplier = 1.00 + (calculation_value / 100.0) 
@@ -336,8 +341,6 @@ BEGIN
       AND PR.Comp_ID = @CompID
       AND pe.Is_Success NOT IN ('1', '2');
 
-    
-
     DECLARE @Comp1669TotalPoints DECIMAL(18,2) = 0;
     IF LOWER(@CompID) = 'comp-1669'
     BEGIN
@@ -371,7 +374,6 @@ BEGIN
         CASE 
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
             WHEN LOWER(@CompID) = 'comp-1669' THEN @Comp1669TotalPoints
-            --WHEN LOWER(@CompID) = 'comp-1669'  AND @Vrkabel_User_Type = 166 THEN (@TotalConfigPoints + (SELECT RefCash FROM #ReferralStats)) 
             ELSE @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
         END as TotalPoints,
         @HasServiceWiseGifts as HasServiceWiseGifts,
@@ -429,3 +431,4 @@ BEGIN
     ) t
     GROUP BY Service_ID;
 END
+GO
