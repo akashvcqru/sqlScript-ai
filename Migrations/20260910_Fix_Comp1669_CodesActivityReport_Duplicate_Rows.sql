@@ -1,23 +1,27 @@
+-- Migration: 20260910_Fix_Comp1669_CodesActivityReport_Duplicate_Rows.sql
+-- Purpose: Fix Comp-1669 duplicate rows in SP_BL_GetCodesActivityReport_AI by:
+--          1. Including 'srv1028' and 'instant payout' in #Points (Section 1) for Comp-1669.
+--          2. Ensuring Section 3 checks NOT EXISTS in #Enq so that scan-linked rewards are not duplicated as a second row.
+
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 24-08-2026 17:02:29 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
-     @FromDate DATE  = NULL,                -- NEW
+    @FromDate DATE  = NULL,                -- NEW
     @ToDate DATE  = NULL,                  -- NEW
     @CodeStatusFilter NVARCHAR(20) = NULL,     -- NEW (Verified, Already Scanned, Invalid)
-     @StateFilter NVARCHAR(100) = NULL,       -- âœ… NEW
+    @StateFilter NVARCHAR(100) = NULL,       -- âœ… NEW
     @DialModeFilter NVARCHAR(50) = NULL,     -- âœ… NEW
     @Page INT = NULL,                        -- âœ… NEW
     @Limit INT = NULL,                      -- âœ… NEW
-     @IsExport BIT =NULL,
-       @Search nvarchar(30) = null
+    @IsExport BIT =NULL,
+    @Search nvarchar(30) = null
 AS
 BEGIN
   SET NOCOUNT ON;
@@ -95,7 +99,7 @@ BEGIN
         ELSE IF (@datePreset = 'LASTYEAR')
         BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
-            SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            SET @EndDate   = DATEADD(MONTH, 0, DATEFROMPARTS(YEAR(GETDATE()), 1, 1));
         END
         ELSE IF (@datePreset = 'ALL' OR @datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR @datePreset = 'NULL')
         BEGIN
@@ -950,3 +954,4 @@ BEGIN
         );
     END
 END
+GO

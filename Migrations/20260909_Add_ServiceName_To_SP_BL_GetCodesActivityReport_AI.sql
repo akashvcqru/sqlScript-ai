@@ -1,12 +1,8 @@
-USE [Vcqru]
-GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 24-08-2026 17:02:29 ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
+-- Migration: 20260909_Add_ServiceName_To_SP_BL_GetCodesActivityReport_AI.sql
+-- Purpose: Adds ServiceName column to SP_BL_GetCodesActivityReport_AI
+--          Includes ServiceName in #Points, #CodeConfigPoints, #FinalReport and final output result sets.
 
-ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
      @FromDate DATE  = NULL,                -- NEW
@@ -418,7 +414,7 @@ BEGIN
         LEFT JOIN M_Consumer Cons WITH (NOLOCK)
             ON BL.M_Consumerid = Cons.M_Consumerid
         WHERE BL.compid = @Comp_Id
-          AND (@Comp_Id <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout'))
+          AND (@Comp_Id <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001'))
 
         UNION ALL
 
@@ -471,7 +467,7 @@ BEGIN
             ON BL.M_Consumerid = Cons.M_Consumerid
         WHERE BL.compid IS NULL
           AND PR.Comp_ID = @Comp_Id
-          AND (@Comp_Id <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout'))
+          AND (@Comp_Id <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001'))
     ) x
     GROUP BY M_Codeid, MobileNo;
 
@@ -831,12 +827,16 @@ BEGIN
     WHERE BL.compid = @Comp_Id
       AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
       AND (
-          BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
-          OR NOT EXISTS (
-              SELECT 1 FROM #Enq E 
-              WHERE E.M_Codeid = MCMC.M_Codeid 
-                AND (E.MobileNo = MC.MobileNo OR '91' + E.MobileNo = MC.MobileNo OR E.MobileNo = '91' + MC.MobileNo)
-          )
+          (@Comp_Id = 'Comp-1669' AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('buildloyalty', 'srv1001'))
+          OR
+          (@Comp_Id <> 'Comp-1669' AND (
+              BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+              OR NOT EXISTS (
+                  SELECT 1 FROM #Enq E 
+                  WHERE E.M_Codeid = MCMC.M_Codeid 
+                    AND (E.MobileNo = MC.MobileNo OR '91' + E.MobileNo = MC.MobileNo OR E.MobileNo = '91' + MC.MobileNo)
+              )
+          ))
       )
       AND BL.UpdateDate >= @StartDate
       AND BL.UpdateDate < @EndDate
