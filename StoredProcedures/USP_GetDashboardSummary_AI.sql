@@ -1,11 +1,3 @@
-USE [Vcqru]
-GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 7/16/2026 11:17:48 AM ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-
 ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
@@ -70,7 +62,7 @@ BEGIN
 
     -- Get Earned Points
     SELECT
-        MC.M_Codeid,
+        MC.M_Codeid,BL.UpdateDate,
         CASE WHEN @CompID = 'Comp-1669' THEN 'SRV1001' ELSE ISNULL(SS.Service_ID, 'SRV1001') END AS Service_ID,
         CAST(
             CASE 
@@ -112,28 +104,28 @@ BEGIN
         M_Codeid BIGINT,
         rn BIGINT,
         Service_ID VARCHAR(50),
-        Points DECIMAL(18,2)
+        Points DECIMAL(18,2),UpdateDate DATETIME
     );
 
     IF @CompID = 'Comp-1669'
     BEGIN
-        INSERT INTO #EarnedPoints (M_Codeid, rn, Service_ID, Points)
+        INSERT INTO #EarnedPoints (M_Codeid, rn, Service_ID, Points,UpdateDate)
         SELECT
             M_Codeid,
             1 AS rn,
             Service_ID,
-            SUM(Points) AS Points
+            SUM(Points) AS Points,UpdateDate
         FROM #EarnedPointsRaw
-        GROUP BY M_Codeid, Service_ID;
+        GROUP BY M_Codeid, Service_ID,UpdateDate;
     END
     ELSE
     BEGIN
-        INSERT INTO #EarnedPoints (M_Codeid, rn, Service_ID, Points)
+        INSERT INTO #EarnedPoints (M_Codeid, rn, Service_ID, Points,UpdateDate)
         SELECT
             M_Codeid,
             ROW_NUMBER() OVER (PARTITION BY M_Codeid ORDER BY BLoyalty_PointEarnedID ASC) AS rn,
             Service_ID,
-            Points
+            Points,UpdateDate
         FROM #EarnedPointsRaw;
     END
 
@@ -180,11 +172,23 @@ BEGIN
     UNION
     SELECT M_Codeid, Service_ID FROM #EarnedPoints;
 
+
+	DECLARE @Vrkabel_User_Type INT = NULL;
+    IF LOWER(@CompID) = 'comp-1669'
+    BEGIN
+        SELECT TOP 1 @Vrkabel_User_Type = TRY_CAST(Vrkabel_User_Type AS INT)
+        FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
+        WHERE M_consumerId = @M_Consumerid 
+          AND LOWER(Comp_id) = 'comp-1669'
+          AND IsDelete = 0;
+    END
     -- Aggregate into #ConfiguredPoints
     SELECT
         COALESCE(SS.Service_ID, 'SRV1001') AS Service_ID,
         SUM(
             CASE 
+                WHEN @CompID = 'Comp-1669' and  @Vrkabel_User_Type = 166 and UpdateDate < '2026-09-03 00:00:00.000' THEN ISNULL(EP.Points, 0) / 10.0
+                WHEN @CompID = 'Comp-1669' and  @Vrkabel_User_Type = 166  THEN ISNULL(EP.Points, 0)
                 WHEN @CompID = 'Comp-1669' THEN ISNULL(EP.Points, 0)
                 ELSE ISNULL(EP.Points, ISNULL(CP.ConfigPoints, 0))
             END
@@ -286,7 +290,7 @@ BEGIN
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
     WHERE Isapproved <> 2
       AND RIGHT(CD.Mobileno, 10) = RIGHT(@MobileNo, 10)
-      AND (@CompID <> 'Comp-1669' OR CD.Claim_date >= '2026-09-03 00:00:00.000');
+      and @CompID = cl.comp_id AND ( @CompID <> 'Comp-1669' or  (@CompID = 'Comp-1669' and CD.Claim_date >= '2026-09-03 00:00:00.000'));
 
     DECLARE @PaytmAmount DECIMAL(18,2) = 0;
     SELECT @PaytmAmount = ISNULL(SUM(ISNULL(CAST(Amount AS DECIMAL(18,2)), 0)), 0)
@@ -332,15 +336,7 @@ BEGIN
       AND PR.Comp_ID = @CompID
       AND pe.Is_Success NOT IN ('1', '2');
 
-    DECLARE @Vrkabel_User_Type INT = NULL;
-    IF LOWER(@CompID) = 'comp-1669'
-    BEGIN
-        SELECT TOP 1 @Vrkabel_User_Type = TRY_CAST(Vrkabel_User_Type AS INT)
-        FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
-        WHERE M_consumerId = @M_Consumerid 
-          AND LOWER(Comp_id) = 'comp-1669'
-          AND IsDelete = 0;
-    END
+    
 
     -- Result Set 1: Overall Stats
     SELECT 
@@ -356,7 +352,7 @@ BEGIN
         CASE 
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
             WHEN LOWER(@CompID) = 'comp-1669' AND @Vrkabel_User_Type = 164 THEN @TotalConfigCash + (SELECT RefCash FROM #ReferralStats)
-            WHEN LOWER(@CompID) = 'comp-1669'  AND @Vrkabel_User_Type = 166 THEN (@TotalConfigPoints + (SELECT RefCash FROM #ReferralStats)) / 10 
+            WHEN LOWER(@CompID) = 'comp-1669'  AND @Vrkabel_User_Type = 166 THEN (@TotalConfigPoints + (SELECT RefCash FROM #ReferralStats)) 
             ELSE @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
         END as TotalPoints,
         @HasServiceWiseGifts as HasServiceWiseGifts,
