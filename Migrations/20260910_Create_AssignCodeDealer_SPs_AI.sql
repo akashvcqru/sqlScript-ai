@@ -1,12 +1,61 @@
 -- Migration: 20260910_Create_AssignCodeDealer_SPs_AI.sql
--- Description: Ensure Comp_ID on DealerDetailMiniMax and create USP_AssignCodeDealer_AI
+-- Description: Ensure Comp_ID on DealerDetailMiniMax, handle unique index per (Comp_ID, Dealer_Name), and create USP_AssignCodeDealer_AI
 
 USE [Vcqru]
 GO
 
+-- 1. Ensure Comp_ID column exists
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.DealerDetailMiniMax') AND name = 'Comp_ID')
 BEGIN
     ALTER TABLE [dbo].[DealerDetailMiniMax] ADD [Comp_ID] VARCHAR(50) NULL;
+END
+GO
+
+-- 2. Drop old single-column unique constraint/index on Dealer_Name if exists
+DECLARE @ConstraintName NVARCHAR(200);
+SELECT @ConstraintName = name 
+FROM sys.key_constraints 
+WHERE parent_object_id = OBJECT_ID('dbo.DealerDetailMiniMax') AND [type] = 'UQ';
+
+IF @ConstraintName IS NOT NULL
+BEGIN
+    DECLARE @DropConstraintSql NVARCHAR(500) = N'ALTER TABLE [dbo].[DealerDetailMiniMax] DROP CONSTRAINT [' + @ConstraintName + N'];';
+    EXEC sp_executesql @DropConstraintSql;
+END
+GO
+
+-- Drop single-column unique index if created as an index
+IF EXISTS (
+    SELECT 1 FROM sys.indexes i
+    JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+    JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+    WHERE i.object_id = OBJECT_ID('dbo.DealerDetailMiniMax')
+      AND i.is_unique = 1 AND i.is_primary_key = 0
+      AND c.name = 'Dealer_Name'
+      AND (SELECT COUNT(1) FROM sys.index_columns WHERE object_id = i.object_id AND index_id = i.index_id) = 1
+)
+BEGIN
+    DECLARE @IndexName NVARCHAR(200);
+    SELECT TOP 1 @IndexName = i.name
+    FROM sys.indexes i
+    JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+    JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+    WHERE i.object_id = OBJECT_ID('dbo.DealerDetailMiniMax')
+      AND i.is_unique = 1 AND i.is_primary_key = 0
+      AND c.name = 'Dealer_Name'
+      AND (SELECT COUNT(1) FROM sys.index_columns WHERE object_id = i.object_id AND index_id = i.index_id) = 1;
+
+    DECLARE @DropIndexSql NVARCHAR(500) = N'DROP INDEX [' + @IndexName + N'] ON [dbo].[DealerDetailMiniMax];';
+    EXEC sp_executesql @DropIndexSql;
+END
+GO
+
+-- 3. Create composite unique index on (Comp_ID, Dealer_Name)
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_DealerDetailMiniMax_Comp_Dealer' AND object_id = OBJECT_ID('dbo.DealerDetailMiniMax'))
+BEGIN
+    CREATE UNIQUE NONCLUSTERED INDEX [UX_DealerDetailMiniMax_Comp_Dealer] 
+    ON [dbo].[DealerDetailMiniMax] ([Comp_ID] ASC, [Dealer_Name] ASC)
+    WHERE [Comp_ID] IS NOT NULL;
 END
 GO
 
@@ -15,6 +64,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
+-- 4. Stored Procedure: USP_AssignCodeDealer_AI
 CREATE OR ALTER PROCEDURE [dbo].[USP_AssignCodeDealer_AI]
 (
     @Mode VARCHAR(20) = 'SELECT', -- 'SELECT', 'INSERT', 'UPDATE', 'DELETE'
@@ -38,6 +88,7 @@ BEGIN
     SET @Dealer_Name = LTRIM(RTRIM(ISNULL(@Dealer_Name, '')));
     SET @Search = LTRIM(RTRIM(ISNULL(@Search, '')));
 
+    -- Strip surrounding double quotes if present
     IF LEN(@Dealer_Name) >= 2 AND LEFT(@Dealer_Name, 1) = '"' AND RIGHT(@Dealer_Name, 1) = '"'
         SET @Dealer_Name = SUBSTRING(@Dealer_Name, 2, LEN(@Dealer_Name) - 2);
 
@@ -113,6 +164,7 @@ BEGIN
         IF @Search IS NOT NULL AND @Search <> ''
             SET @SearchParam = '%' + @Search + '%';
 
+        -- 1. Query Data
         SELECT 
             Dealer_ID AS DealerId,
             Dealer_Name AS DealerName,
@@ -120,7 +172,7 @@ BEGIN
             Entry_Date AS EntryDate,
             Comp_ID AS CompId
         FROM [dbo].[DealerDetailMiniMax] WITH (NOLOCK)
-        WHERE (Comp_ID = @Comp_Id OR Comp_ID IS NULL)
+        WHERE Comp_ID = @Comp_Id
           AND (@StartDate IS NULL OR Entry_Date >= @StartDate)
           AND (@EndDate IS NULL OR Entry_Date <= @EndDate)
           AND (@SearchParam IS NULL OR Dealer_Name LIKE @SearchParam OR CAST(Dealer_ID AS NVARCHAR) LIKE @SearchParam)
@@ -128,6 +180,7 @@ BEGIN
         OFFSET CASE WHEN @IsExport = 1 THEN 0 ELSE @Offset END ROWS 
         FETCH NEXT CASE WHEN @IsExport = 1 THEN 1000000 ELSE @Limit END ROWS ONLY;
 
+        -- 2. Query Pagination Meta
         IF @IsExport = 0
         BEGIN
             SELECT 
@@ -136,7 +189,7 @@ BEGIN
                 @Limit AS [Limit],
                 CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
             FROM [dbo].[DealerDetailMiniMax] WITH (NOLOCK)
-            WHERE (Comp_ID = @Comp_Id OR Comp_ID IS NULL)
+            WHERE Comp_ID = @Comp_Id
               AND (@StartDate IS NULL OR Entry_Date >= @StartDate)
               AND (@EndDate IS NULL OR Entry_Date <= @EndDate)
               AND (@SearchParam IS NULL OR Dealer_Name LIKE @SearchParam OR CAST(Dealer_ID AS NVARCHAR) LIKE @SearchParam);
@@ -150,9 +203,10 @@ BEGIN
             RETURN;
         END
 
-        IF EXISTS (SELECT 1 FROM [dbo].[DealerDetailMiniMax] WHERE Dealer_Name = @Dealer_Name AND (Comp_ID = @Comp_Id OR Comp_ID IS NULL))
+        -- Uniqueness check company id wise
+        IF EXISTS (SELECT 1 FROM [dbo].[DealerDetailMiniMax] WHERE Dealer_Name = @Dealer_Name AND Comp_ID = @Comp_Id)
         BEGIN
-            SELECT 0 AS Success, 'A dealer with this name already exists.' AS Message, 0 AS DealerId;
+            SELECT 0 AS Success, 'A dealer with this name already exists for your company.' AS Message, 0 AS DealerId;
             RETURN;
         END
 
@@ -176,16 +230,17 @@ BEGIN
             RETURN;
         END
 
-        IF EXISTS (SELECT 1 FROM [dbo].[DealerDetailMiniMax] WHERE Dealer_Name = @Dealer_Name AND Dealer_ID <> @Dealer_ID AND (Comp_ID = @Comp_Id OR Comp_ID IS NULL))
+        -- Uniqueness check company id wise excluding current Dealer_ID
+        IF EXISTS (SELECT 1 FROM [dbo].[DealerDetailMiniMax] WHERE Dealer_Name = @Dealer_Name AND Dealer_ID <> @Dealer_ID AND Comp_ID = @Comp_Id)
         BEGIN
-            SELECT 0 AS Success, 'Another dealer with this name already exists.' AS Message, @Dealer_ID AS DealerId;
+            SELECT 0 AS Success, 'Another dealer with this name already exists for your company.' AS Message, @Dealer_ID AS DealerId;
             RETURN;
         END
 
         UPDATE [dbo].[DealerDetailMiniMax]
         SET Dealer_Name = @Dealer_Name,
             Status = ISNULL(@Status, Status)
-        WHERE Dealer_ID = @Dealer_ID AND (Comp_ID = @Comp_Id OR Comp_ID IS NULL);
+        WHERE Dealer_ID = @Dealer_ID AND Comp_ID = @Comp_Id;
 
         SELECT 1 AS Success, 'Dealer updated successfully.' AS Message, @Dealer_ID AS DealerId;
     END
@@ -198,7 +253,7 @@ BEGIN
         END
 
         DELETE FROM [dbo].[DealerDetailMiniMax]
-        WHERE Dealer_ID = @Dealer_ID AND (Comp_ID = @Comp_Id OR Comp_ID IS NULL);
+        WHERE Dealer_ID = @Dealer_ID AND Comp_ID = @Comp_Id;
 
         IF @@ROWCOUNT > 0
             SELECT 1 AS Success, 'Dealer deleted successfully.' AS Message, @Dealer_ID AS DealerId;

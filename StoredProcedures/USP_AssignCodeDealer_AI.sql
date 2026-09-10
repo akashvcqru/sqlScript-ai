@@ -10,6 +10,7 @@ GO
 -- Author:      Antigravity
 -- Create date: 10-09-2026
 -- Description: Manage Assign Code Dealers in DealerDetailMiniMax (SELECT, INSERT, UPDATE, DELETE)
+--              Dealer_Name is UNIQUE Company ID wise (Comp_ID scope).
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_AssignCodeDealer_AI]
 (
@@ -118,7 +119,7 @@ BEGIN
             Entry_Date AS EntryDate,
             Comp_ID AS CompId
         FROM [dbo].[DealerDetailMiniMax] WITH (NOLOCK)
-        WHERE (Comp_ID = @Comp_Id OR Comp_ID IS NULL)
+        WHERE Comp_ID = @Comp_Id
           AND (@StartDate IS NULL OR Entry_Date >= @StartDate)
           AND (@EndDate IS NULL OR Entry_Date <= @EndDate)
           AND (@SearchParam IS NULL OR Dealer_Name LIKE @SearchParam OR CAST(Dealer_ID AS NVARCHAR) LIKE @SearchParam)
@@ -135,7 +136,7 @@ BEGIN
                 @Limit AS [Limit],
                 CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
             FROM [dbo].[DealerDetailMiniMax] WITH (NOLOCK)
-            WHERE (Comp_ID = @Comp_Id OR Comp_ID IS NULL)
+            WHERE Comp_ID = @Comp_Id
               AND (@StartDate IS NULL OR Entry_Date >= @StartDate)
               AND (@EndDate IS NULL OR Entry_Date <= @EndDate)
               AND (@SearchParam IS NULL OR Dealer_Name LIKE @SearchParam OR CAST(Dealer_ID AS NVARCHAR) LIKE @SearchParam);
@@ -149,9 +150,10 @@ BEGIN
             RETURN;
         END
 
-        IF EXISTS (SELECT 1 FROM [dbo].[DealerDetailMiniMax] WHERE Dealer_Name = @Dealer_Name AND (Comp_ID = @Comp_Id OR Comp_ID IS NULL))
+        -- Uniqueness check company id wise
+        IF EXISTS (SELECT 1 FROM [dbo].[DealerDetailMiniMax] WHERE Dealer_Name = @Dealer_Name AND Comp_ID = @Comp_Id)
         BEGIN
-            SELECT 0 AS Success, 'A dealer with this name already exists.' AS Message, 0 AS DealerId;
+            SELECT 0 AS Success, 'A dealer with this name already exists for your company.' AS Message, 0 AS DealerId;
             RETURN;
         END
 
@@ -175,16 +177,17 @@ BEGIN
             RETURN;
         END
 
-        IF EXISTS (SELECT 1 FROM [dbo].[DealerDetailMiniMax] WHERE Dealer_Name = @Dealer_Name AND Dealer_ID <> @Dealer_ID AND (Comp_ID = @Comp_Id OR Comp_ID IS NULL))
+        -- Uniqueness check company id wise excluding current Dealer_ID
+        IF EXISTS (SELECT 1 FROM [dbo].[DealerDetailMiniMax] WHERE Dealer_Name = @Dealer_Name AND Dealer_ID <> @Dealer_ID AND Comp_ID = @Comp_Id)
         BEGIN
-            SELECT 0 AS Success, 'Another dealer with this name already exists.' AS Message, @Dealer_ID AS DealerId;
+            SELECT 0 AS Success, 'Another dealer with this name already exists for your company.' AS Message, @Dealer_ID AS DealerId;
             RETURN;
         END
 
         UPDATE [dbo].[DealerDetailMiniMax]
         SET Dealer_Name = @Dealer_Name,
             Status = ISNULL(@Status, Status)
-        WHERE Dealer_ID = @Dealer_ID AND (Comp_ID = @Comp_Id OR Comp_ID IS NULL);
+        WHERE Dealer_ID = @Dealer_ID AND Comp_ID = @Comp_Id;
 
         SELECT 1 AS Success, 'Dealer updated successfully.' AS Message, @Dealer_ID AS DealerId;
     END
@@ -197,7 +200,7 @@ BEGIN
         END
 
         DELETE FROM [dbo].[DealerDetailMiniMax]
-        WHERE Dealer_ID = @Dealer_ID AND (Comp_ID = @Comp_Id OR Comp_ID IS NULL);
+        WHERE Dealer_ID = @Dealer_ID AND Comp_ID = @Comp_Id;
 
         IF @@ROWCOUNT > 0
             SELECT 1 AS Success, 'Dealer deleted successfully.' AS Message, @Dealer_ID AS DealerId;
