@@ -380,7 +380,11 @@ BEGIN
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
                     WHEN @Comp_Id = 'Comp-1669' THEN
                         CASE
-                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
                         END
@@ -393,7 +397,11 @@ BEGIN
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
                     WHEN @Comp_Id = 'Comp-1669' THEN
                         CASE
-                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
                         END
@@ -430,7 +438,11 @@ BEGIN
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
                     WHEN @Comp_Id = 'Comp-1669' THEN
                         CASE
-                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
                         END
@@ -443,7 +455,11 @@ BEGIN
                     WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
                     WHEN @Comp_Id = 'Comp-1669' THEN
                         CASE
-                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
                         END
@@ -781,7 +797,11 @@ BEGIN
             CASE 
                 WHEN @Comp_Id = 'Comp-1669' THEN
                     CASE
-                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
+                            CASE 
+                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                                ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                            END
                         WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                         ELSE 0.00
                     END
@@ -807,7 +827,11 @@ BEGIN
             CASE 
                 WHEN @Comp_Id = 'Comp-1669' THEN
                     CASE
-                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
+                            CASE 
+                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                                ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                            END
                         WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                         ELSE 0.00
                     END
