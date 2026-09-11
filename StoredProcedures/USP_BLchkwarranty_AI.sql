@@ -43,6 +43,7 @@ BEGIN
     DECLARE @TableName NVARCHAR(50) = 'M_Code';
     DECLARE @M_ConsumerID INT = NULL;
     DECLARE @ResolvedServiceId VARCHAR(50) = 'SRV1023';
+    DECLARE @WarrantyPeriod INT = 0;
 
     -- 1. Normalize Mobile (add 91 if 10 digits)
     IF @MobileNo IS NOT NULL AND LEN(@MobileNo) = 10
@@ -315,7 +316,6 @@ BEGIN
     END
 
     -- Get Warranty Period from subscription details
-    DECLARE @WarrantyPeriod INT = 0;
     SELECT TOP 1 @WarrantyPeriod = ISNULL(WarrantyPeriod, 0) 
     FROM M_ServiceSubscriptionTrans 
     WHERE Subscribe_Id = @Subscribe_Id AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
