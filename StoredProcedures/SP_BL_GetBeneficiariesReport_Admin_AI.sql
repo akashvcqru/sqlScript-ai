@@ -296,10 +296,17 @@ BEGIN
         INSERT INTO #Benefit (M_Consumerid, PointsEarned, LastScan)
         SELECT 
             CM.Active_ConsumerId AS M_Consumerid,
-            CAST(
-                ISNULL([dbo].[fnPointSp](SUM(ISNULL(BL.Points, 0))), 0.00) 
-                + ISNULL(SUM(CAST(ISNULL(BL.Cash, 0) AS DECIMAL(18,2))), 0.00)
-            AS DECIMAL(18,2)) AS PointsEarned,
+            SUM(CAST(
+                CASE 
+                    WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
+                        CASE 
+                            WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                        END
+                    WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                    ELSE 0.00
+                END
+            AS DECIMAL(18,2))) AS PointsEarned,
             MAX(BL.UpdateDate) AS LastScan
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
         INNER JOIN #ConsumerMapping CM ON BL.M_Consumerid = CM.M_ConsumerId
