@@ -5,7 +5,8 @@
 --   1. When an invalid code is submitted to USP_BLchkwarranty_AI (@RowID IS NULL),
 --      resolve Comp_ID (from parameter or Code1 fallback) and insert into Pro_Enq
 --      with Is_Success = '0' and Dial_Mode = 'Website'.
---   2. Update existing success and duplicate enquiries in USP_BLchkwarranty_AI to use Dial_Mode = 'Website'.
+--   2. Update existing success enquiries in USP_BLchkwarranty_AI to use Dial_Mode = 'Website'.
+--   3. Synchronized schema with WarrentyDetails and M_Consumer tables.
 -- =============================================
 
 USE [Vcqru]
@@ -212,11 +213,11 @@ BEGIN
             SELECT 1 
             FROM LandingPage_FieldConfig FC 
             INNER JOIN Master_InputFieldsWeb MF ON FC.FieldId = MF.FieldId 
-            WHERE FC.PageId = @PageId AND MF.FieldName = 'email' AND FC.IsRequired = 1 AND FC.IsVisible = 1
+            WHERE FC.PageId = @PageId AND MF.FieldName = 'EmailAddrs' AND FC.IsRequired = 1 AND FC.IsVisible = 1
         ) AND (@Email IS NULL OR @Email = '')
         BEGIN
             SET @ResultCode = 0;
-            SET @Message = 'INVALID: Email ID is required.';
+            SET @Message = 'INVALID: Email Address is required.';
             SELECT 
                 @ResultCode AS ResultCode, 
                 @Message AS [Message],
@@ -321,78 +322,18 @@ BEGIN
                 @ProID AS ProId;
             RETURN;
         END
-
-        -- 8. PurchaseDate Validation
-        IF EXISTS (
-            SELECT 1 
-            FROM LandingPage_FieldConfig FC 
-            INNER JOIN Master_InputFieldsWeb MF ON FC.FieldId = MF.FieldId 
-            WHERE FC.PageId = @PageId AND MF.FieldName = 'purchasedate' AND FC.IsRequired = 1 AND FC.IsVisible = 1
-        ) AND @PurchaseDate IS NULL
-        BEGIN
-            SET @ResultCode = 0;
-            SET @Message = 'INVALID: Purchase Date is required.';
-            SELECT 
-                @ResultCode AS ResultCode, 
-                @Message AS [Message],
-                NULL AS ProductName,
-                NULL AS BrandName,
-                @ActualCompID AS CompId,
-                NULL AS ProductImage,
-                0 AS WarrantyPeriod,
-                NULL AS ExpirationDate,
-                @ProID AS ProId;
-            RETURN;
-        END
-
-        -- 9. BillNo Validation
-        IF EXISTS (
-            SELECT 1 
-            FROM LandingPage_FieldConfig FC 
-            INNER JOIN Master_InputFieldsWeb MF ON FC.FieldId = MF.FieldId 
-            WHERE FC.PageId = @PageId AND MF.FieldName = 'billno' AND FC.IsRequired = 1 AND FC.IsVisible = 1
-        ) AND (@BillNo IS NULL OR @BillNo = '')
-        BEGIN
-            SET @ResultCode = 0;
-            SET @Message = 'INVALID: Bill Number is required.';
-            SELECT 
-                @ResultCode AS ResultCode, 
-                @Message AS [Message],
-                NULL AS ProductName,
-                NULL AS BrandName,
-                @ActualCompID AS CompId,
-                NULL AS ProductImage,
-                0 AS WarrantyPeriod,
-                NULL AS ExpirationDate,
-                @ProID AS ProId;
-            RETURN;
-        END
-
-        -- 10. PurchaseFrom Validation
-        IF EXISTS (
-            SELECT 1 
-            FROM LandingPage_FieldConfig FC 
-            INNER JOIN Master_InputFieldsWeb MF ON FC.FieldId = MF.FieldId 
-            WHERE FC.PageId = @PageId AND MF.FieldName = 'PurchaseFrom' AND FC.IsRequired = 1 AND FC.IsVisible = 1
-        ) AND (@PurchaseFrom IS NULL OR @PurchaseFrom = '')
-        BEGIN
-            SET @ResultCode = 0;
-            SET @Message = 'INVALID: Purchased From is required.';
-            SELECT 
-                @ResultCode AS ResultCode, 
-                @Message AS [Message],
-                NULL AS ProductName,
-                NULL AS BrandName,
-                @ActualCompID AS CompId,
-                NULL AS ProductImage,
-                0 AS WarrantyPeriod,
-                NULL AS ExpirationDate,
-                @ProID AS ProId;
-            RETURN;
-        END
     END
 
-    -- 3. Check Warranty Registration Table (WarrentyDetails)
+    -- Get Warranty Period from subscription details
+    SELECT TOP 1 @WarrantyPeriod = ISNULL(WarrantyPeriod, 0) 
+    FROM M_ServiceSubscriptionTrans 
+    WHERE Subscribe_Id = @Subscribe_Id AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
+    ORDER BY SST_Id DESC;
+
+    IF @WarrantyPeriod = 0
+        SET @WarrantyPeriod = 12; -- default to 12 months
+
+    -- 3. Check if already registered in WarrentyDetails
     DECLARE @ExistingId BIGINT = NULL;
     DECLARE @ExistingExpiration VARCHAR(50) = NULL;
     DECLARE @CodeKey VARCHAR(50) = @Code1 + '-' + @Code2;
@@ -428,15 +369,6 @@ BEGIN
         SELECT TOP 1 @BrandName = Comp_Name FROM Comp_Reg WHERE Comp_ID = @ActualCompID;
     END
 
-    -- Fetch Warranty Period from subscription details
-    SELECT TOP 1 @WarrantyPeriod = ISNULL(WarrantyPeriod, 0)
-    FROM M_ServiceSubscriptionTrans
-    WHERE Subscribe_Id = @Subscribe_Id AND IsActive = 1 AND ISNULL(IsDelete, 0) = 0
-    ORDER BY SST_Id DESC;
-
-    IF @WarrantyPeriod = 0
-        SET @WarrantyPeriod = 12; -- default to 12 months
-
     IF @ExistingId IS NOT NULL
     BEGIN
         SET @ResultCode = 2;
@@ -456,43 +388,44 @@ BEGIN
         RETURN;
     END
 
-    -- 4. Calculate Warranty Expiration Date
-    DECLARE @EffectivePurchaseDate DATETIME = ISNULL(@PurchaseDate, GETDATE());
-    DECLARE @ExpirationDate DATETIME = DATEADD(MONTH, @WarrantyPeriod, @EffectivePurchaseDate);
-
+    -- 4. Register Warranty
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- Insert into WarrentyDetails
-        INSERT INTO WarrentyDetails (
-            Code, MobileNo, ConsumerName, Email, City, State, PinCode, Address, 
-            PurchaseDate, EntryDate, Comp_ID, Latitude, Longitude, Role_Id, 
-            Remark, ImagePath, BillNo, PurchaseFrom, ImagePathBill, SerialNo, 
-            VehicleNumber, ExpirationDate
+        DECLARE @ExpirationDate DATETIME = DATEADD(MONTH, @WarrantyPeriod, ISNULL(@PurchaseDate, GETDATE()));
+
+        INSERT INTO [dbo].[WarrentyDetails] (
+            Code, Mobile, Email, WarrantyPeriod, ExpirationDate, 
+            PurchaseDate, Comment, IsWarrantyClaimed, VendorClaimStatus, 
+            claimdate, Brand, Comp_id, State, City, Pincode, Address, ImagePath,
+            BillNo, PurchaseFrom, ImagePathBill, Serialno, VehicleNumber
         )
         VALUES (
-            @CodeKey, RIGHT(ISNULL(@MobileNo, ''), 10), @ConsumerName, @Email, @City, @State, @PinCode, @Address,
-            @EffectivePurchaseDate, GETDATE(), @ActualCompID, @Latitude, @Longitude, @Role_Id,
-            @Remark, @ImagePath, @BillNo, @PurchaseFrom, @ImagePathBill, @SerialNo,
-            @VehicleNumber, @ExpirationDate
+            @CodeKey, @MobileNo, @Email, CAST(@WarrantyPeriod AS VARCHAR(50)), @ExpirationDate, 
+            ISNULL(@PurchaseDate, GETDATE()), ISNULL(@Remark, 'Registered via Web API'), NULL, NULL, 
+            GETDATE(), @BrandName, ISNULL(@Comp_ID, @ActualCompID), @State, @City, @PinCode, @Address, @ImagePath,
+            @BillNo, @PurchaseFrom, @ImagePathBill, @SerialNo, @VehicleNumber
         );
 
-        -- Consumer Profile Sync
-        IF @MobileNo IS NOT NULL AND @MobileNo <> ''
+        -- Find or Create Consumer in M_Consumer (optional but good practice to sync)
+        IF @MobileNo IS NOT NULL
         BEGIN
-            SELECT TOP 1 @M_ConsumerID = M_Consumerid FROM M_Consumer WHERE right(MobileNo, 10) = right(@MobileNo, 10);
-            DECLARE @LogCompID NVARCHAR(50) = ISNULL(@Comp_ID, @ActualCompID);
+            SELECT @M_ConsumerID = M_Consumerid FROM M_Consumer WHERE MobileNo = @MobileNo;
+            IF @M_ConsumerID IS NULL
+            BEGIN
+                SELECT @M_ConsumerID = M_Consumerid FROM M_Consumer WHERE right(MobileNo, 10) = right(@MobileNo, 10);
+            END
 
+            DECLARE @LogCompID NVARCHAR(50) = ISNULL(@Comp_ID, @ActualCompID);
             IF @M_ConsumerID IS NULL
             BEGIN
                 DECLARE @GeneratedUserID NVARCHAR(50);
                 EXEC GetCodeGenValue 'Consumer', @GeneratedUserID OUTPUT;
+
                 DECLARE @RandomPassword NVARCHAR(5) = RIGHT('00000' + CAST(ABS(CHECKSUM(NEWID())) % 100000 AS VARCHAR(5)), 5);
 
-                INSERT INTO M_Consumer (User_ID, ConsumerName, Email, MobileNo, City, state, PinCode, Entry_Date, IsActive, IsDelete, Role_Id, Password, Comp_id, Address)
-                VALUES (@GeneratedUserID, ISNULL(@ConsumerName, 'Consumer'), @Email, @MobileNo, @City, @State, @PinCode, GETDATE(), 1, 0, @Role_Id, @RandomPassword, @LogCompID, @Address);
-                
-                SET @M_ConsumerID = SCOPE_IDENTITY();
+                INSERT INTO M_Consumer (User_ID, ConsumerName, Email, MobileNo, City, state, PinCode, Entry_Date, IsActive, IsDelete, Password, Comp_id, Address, gender, Agegroup, Other_Role)
+                VALUES (@GeneratedUserID, ISNULL(@ConsumerName, 'Consumer'), @Email, @MobileNo, @City, @State, @PinCode, GETDATE(), 1, 0, @RandomPassword, @LogCompID, @Address, NULL, NULL, NULL);
             END
             ELSE
             BEGIN
@@ -548,11 +481,11 @@ BEGIN
         SELECT 
             @ResultCode AS ResultCode, 
             @Message AS [Message],
-            NULL AS ProductName,
-            NULL AS BrandName,
+            @ProductName AS ProductName,
+            @BrandName AS BrandName,
             @ActualCompID AS CompId,
-            NULL AS ProductImage,
-            0 AS WarrantyPeriod,
+            @ProductImage AS ProductImage,
+            @WarrantyPeriod AS WarrantyPeriod,
             NULL AS ExpirationDate,
             @ProID AS ProId;
     END CATCH
