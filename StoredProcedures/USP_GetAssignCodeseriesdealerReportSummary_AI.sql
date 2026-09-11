@@ -162,11 +162,10 @@ BEGIN
             Passcode AS Passcode,
             dealer_name AS DealerName,
             MAX(entry_date) AS EntryDate,
-            Comp_ID AS CompId,
             Pro_ID AS ProId,
             ProductName AS ProductName
         FROM FilteredBase
-        GROUP BY fromseries, toseries, Passcode, dealer_name, Comp_ID, Pro_ID, ProductName
+        GROUP BY fromseries, toseries, Passcode, dealer_name, Pro_ID, ProductName
     )
     SELECT * 
     FROM GroupedResult

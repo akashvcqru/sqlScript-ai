@@ -145,11 +145,10 @@ BEGIN
             Passcode AS Passcode,
             dealer_name AS DealerName,
             MAX(entry_date) AS EntryDate,
-            Comp_ID AS CompId,
             Pro_ID AS ProId,
             ProductName AS ProductName
         FROM FilteredBase
-        GROUP BY fromseries, toseries, Passcode, dealer_name, Comp_ID, Pro_ID, ProductName
+        GROUP BY fromseries, toseries, Passcode, dealer_name, Pro_ID, ProductName
     )
     SELECT * 
     FROM GroupedResult
@@ -300,16 +299,13 @@ BEGIN
     SELECT 
         a.ID AS Id,
         CONCAT(ISNULL(a.Code1, ''), '-', ISNULL(a.Code2, '')) AS Code,
-        a.Code1 AS Code1,
-        a.Code2 AS Code2,
         CONCAT(ISNULL(a.Pro_ID, ''), '-', ISNULL(a.Series_Order, ''), '-', ISNULL(a.Series_Serial, '')) AS Series,
         a.Pro_ID AS ProId,
         a.Series_Order AS SeriesOrder,
         a.Series_Serial AS SeriesSerial,
         a.Passcode AS Passcode,
         a.dealer_name AS DealerName,
-        a.entry_date AS EntryDate,
-        a.Comp_ID AS CompId
+        a.entry_date AS EntryDate
     FROM [dbo].[tbl_assigncodelocation] a WITH (NOLOCK)
     WHERE a.Comp_ID = @Comp_Id
       AND (@StartDate IS NULL OR a.entry_date >= @StartDate)
