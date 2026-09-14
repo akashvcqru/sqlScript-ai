@@ -3,6 +3,7 @@
 -- Description: Detailed HDFC Sandbox & Live + InstantPay configs (only 1 GLOBAL active)
 -- =========================================================================
 
+
 -- 1. INSTANTPAY: GLOBAL ACTIVE (IsActive = 1)
 UPDATE tbl_VendorPaymentGatewaySetting
 SET IsActive = 1,
@@ -27,6 +28,7 @@ SET IsActive = 1,
     UpdatedBy = 'Admin'
 WHERE Comp_Id = 'GLOBAL' AND GatewayCode = 'InstantPay';
 GO
+
 
 -- 2. HDFC BANK: GLOBAL STANDBY (IsActive = 0)
 -- Real HDFC Sandbox and Production credentials
