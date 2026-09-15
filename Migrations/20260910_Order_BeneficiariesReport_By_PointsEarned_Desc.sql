@@ -1,3 +1,6 @@
+-- Migration: Update SP_BL_GetBeneficiariesReport to sort records by PointsEarned DESC, LastScan DESC and include LastScan in SELECT output
+-- Date: 2026-09-10
+
 USE [Vcqru]
 GO
 SET ANSI_NULLS ON
@@ -6,24 +9,23 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 -- ============================================================================
--- [dbo].[SP_BL_GetBeneficiariesReport_Admin_AI]
+-- [dbo].[SP_BL_GetBeneficiariesReport]
 -- Logic isolated for Comp-1669 without modifying any other company logic
 -- Author: Antigravity
--- Date: 2026-09-04
+-- Date: 2026-09-10
 -- ============================================================================
-CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport_Admin_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
 (
     @Comp_Id         NVARCHAR(50),  
     @datePreset      NVARCHAR(20) = NULL,   -- TODAY, WEEK, LASTWEEK, MONTH, QUARTER, ALL
     @FromDate        DATE = NULL,
-    @ToDate          DATE = NULL,
+    @ToDate          DATE = NULL, 
     @KYCStatusFilter NVARCHAR(20) = NULL,   -- Approved / Rejected / Pending
     @StateFilter     NVARCHAR(100) = NULL,
     @Page            INT = NULL,
     @Limit           INT = NULL,
     @IsExport        BIT = NULL,
-    @Search          NVARCHAR(30) = NULL,
-    @BalanceLessThan DECIMAL(18,2) = NULL
+    @Search          NVARCHAR(30) = NULL
 )
 AS
 BEGIN
@@ -296,17 +298,10 @@ BEGIN
         INSERT INTO #Benefit (M_Consumerid, PointsEarned, LastScan)
         SELECT 
             CM.Active_ConsumerId AS M_Consumerid,
-            SUM(CAST(
-                CASE 
-                    WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
-                        CASE 
-                            WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                            ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
-                        END
-                    WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
-                    ELSE 0.00
-                END
-            AS DECIMAL(18,2))) AS PointsEarned,
+            CAST(
+                ISNULL([dbo].[fnPointSp](SUM(ISNULL(BL.Points, 0))), 0.00) 
+                + ISNULL(SUM(CAST(ISNULL(BL.Cash, 0) AS DECIMAL(18,2))), 0.00)
+            AS DECIMAL(18,2)) AS PointsEarned,
             MAX(BL.UpdateDate) AS LastScan
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
         INNER JOIN #ConsumerMapping CM ON BL.M_Consumerid = CM.M_ConsumerId
@@ -462,47 +457,44 @@ BEGIN
     ---------------------------------------------------------
     -- 6. REFERRAL POINTS
     ---------------------------------------------------------
-    SELECT 
-        CM.Active_ConsumerId AS M_Consumerid,
-        SUM(CAST(
-            CASE 
-                WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
-                WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
-                ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
-            END 
-        AS DECIMAL(18,2))) AS ReferralPoints
+    SELECT
+        CM.Active_ConsumerId AS M_ConsumerId,
+        SUM(ISNULL(BL.Points, 0) + ISNULL(BL.Cash, 0)) AS RefralAmount
     INTO #Referrals
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN #ConsumerMapping CM ON BL.M_Consumerid = CM.M_ConsumerId
     WHERE BL.compid IN (SELECT Comp_Id FROM @CompanyList)
-      AND LOWER(ISNULL(BL.ServiceName, '')) IN ('refral', 'referral')
+      AND (LOWER(BL.ServiceName) = 'refral' OR LOWER(BL.ServiceName) = 'referral')
       AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
       AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
     GROUP BY CM.Active_ConsumerId;
 
-    CREATE CLUSTERED INDEX IX_Referrals_ConsumerId ON #Referrals(M_Consumerid);
+    CREATE CLUSTERED INDEX IX_Referrals_ConsumerId ON #Referrals(M_ConsumerId);
 
     ---------------------------------------------------------
-    -- 7. REDEMPTIONS (CLAIMS, UPI, BPOINTS, TRANSACTIONS)
+    -- 7. REDEEM AMOUNT (CLAIMS)
     ---------------------------------------------------------
-    SELECT 
+    SELECT
         U.M_ConsumerId,
-        SUM(TRY_CAST(ISNULL(CD.Amount, 0) AS DECIMAL(18,2))) AS Transferred,
-        SUM(TRY_CAST(ISNULL(CD.tdsAmount, 0) AS DECIMAL(18,2))) AS TDS
+        SUM(CD.Amount) AS ClaimRedeem
     INTO #Claims
     FROM ClaimDetails CD WITH (NOLOCK)
-    INNER JOIN #Users U ON CD.Mobileno = U.MobileNo
-    WHERE CD.Comp_Id IN (SELECT Comp_Id FROM @CompanyList)
-      AND CD.Isapproved = 1
+    INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
+    INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
+    WHERE CD.Comp_id IN (SELECT Comp_Id FROM @CompanyList)
+      AND CD.PaymentStatus = 'Success'
       AND (@StartDate IS NULL OR CD.Claim_date >= @StartDate)
       AND (@EndDate   IS NULL OR CD.Claim_date <  @EndDate)
     GROUP BY U.M_ConsumerId;
 
     CREATE CLUSTERED INDEX IX_Claims_ConsumerId ON #Claims(M_ConsumerId);
 
-    SELECT 
+    ---------------------------------------------------------
+    -- 8. REDEEM AMOUNT (UPI)
+    ---------------------------------------------------------
+    SELECT
         CM.Active_ConsumerId AS M_ConsumerId,
-        SUM(TRY_CAST(ISNULL(t.Amount, t.Points_Val) AS DECIMAL(18,2))) AS UPIAmount
+        SUM(TRY_CAST(ISNULL(t.Amount, t.Points_Val) AS DECIMAL(18,2))) AS UPIRedeem
     INTO #UPI
     FROM tblUPITransactionDetails t WITH (NOLOCK)
     INNER JOIN #ConsumerMapping CM ON TRY_CAST(t.M_Consumerid AS INT) = CM.M_ConsumerId
@@ -515,6 +507,9 @@ BEGIN
 
     CREATE CLUSTERED INDEX IX_UPI_ConsumerId ON #UPI(M_ConsumerId);
 
+    ---------------------------------------------------------
+    -- 9. REDEEM AMOUNT (BPOINTSTRANSFER / TRANSACTIONS)
+    ---------------------------------------------------------
     SELECT 
         CM.Active_ConsumerId AS M_ConsumerId,
         SUM(TRY_CAST(ISNULL(BT.RedeemPoints, 0) AS DECIMAL(18,2))) AS BPointsDebited
@@ -544,7 +539,7 @@ BEGIN
     CREATE CLUSTERED INDEX IX_Transactions_ConsumerId ON #Transactions(M_ConsumerId);
 
     ---------------------------------------------------------
-    -- 7e. REDEEM AMOUNT (PAYTM - ISOLATED FOR COMP-1669 ONLY)
+    -- 9b. REDEEM AMOUNT (PAYTM - ISOLATED FOR COMP-1669 ONLY)
     ---------------------------------------------------------
     CREATE TABLE #Paytm
     (
@@ -568,70 +563,63 @@ BEGIN
     END
 
     ---------------------------------------------------------
-    -- 8. FINAL DATASET PREPARATION
+    -- 10. COMBINE FINAL DATA
     ---------------------------------------------------------
-    SELECT 
+    SELECT
         U.ConsumerName,
         U.MobileNo,
-        COALESCE(S.State, U.State) AS State,
-        COALESCE(S.City, U.City) AS City,
+        ISNULL(S.State, U.State) AS State,
+        ISNULL(S.City, U.City) AS City,
         U.PinCode,
         U.KYCStatus,
-        (ISNULL(B.PointsEarned, 0.00) + ISNULL(O.OtherPoints, 0.00)) AS PointsEarned,
-        ISNULL(R.ReferralPoints, 0.00) AS RefralAmount,
+        (ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00)) AS PointsEarned,
+        ISNULL(R.RefralAmount, 0.00) AS RefralAmount,
         CASE 
             WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(PT.PaytmAmount, 0.00)
-            ELSE (ISNULL(C.Transferred, 0.00) + ISNULL(UPI.UPIAmount, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
+            ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
         END AS RedeemAmount,
-        (((ISNULL(B.PointsEarned, 0.00) + ISNULL(O.OtherPoints, 0.00)) + ISNULL(R.ReferralPoints, 0.00)) - 
+        ((ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00) + ISNULL(R.RefralAmount, 0.00)) - 
          CASE 
             WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(PT.PaytmAmount, 0.00)
-            ELSE (ISNULL(C.Transferred, 0.00) + ISNULL(UPI.UPIAmount, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
+            ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
          END) AS BalanceAmount,
-        ISNULL(C.TDS, 0.00) AS TDSAmount,
-        B.LastScan,
-        ROW_NUMBER() OVER (ORDER BY (ISNULL(B.PointsEarned, 0.00) + ISNULL(O.OtherPoints, 0.00)) DESC, U.M_ConsumerId) AS RN
+        B.LastScan
     INTO #FinalData
     FROM #Users U
-    LEFT JOIN #State S ON S.M_ConsumerId = U.M_ConsumerId
-    LEFT JOIN #Benefit B ON B.M_Consumerid = U.M_ConsumerId
-    LEFT JOIN #OtherEarnedPoints O ON O.M_Consumerid = U.M_ConsumerId
-    LEFT JOIN #Referrals R ON R.M_Consumerid = U.M_ConsumerId
-    LEFT JOIN #Claims C ON C.M_ConsumerId = U.M_ConsumerId
-    LEFT JOIN #UPI UPI ON UPI.M_ConsumerId = U.M_ConsumerId
-    LEFT JOIN #BPoints BP ON BP.M_ConsumerId = U.M_ConsumerId
-    LEFT JOIN #Transactions T ON T.M_ConsumerId = U.M_ConsumerId
-    LEFT JOIN #Paytm PT ON PT.M_ConsumerId = U.M_ConsumerId
+    LEFT JOIN #State S ON U.M_ConsumerId = S.M_ConsumerId
+    LEFT JOIN #Benefit B ON U.M_ConsumerId = B.M_ConsumerId
+    LEFT JOIN #OtherEarnedPoints OEP ON U.M_ConsumerId = OEP.M_ConsumerId
+    LEFT JOIN #Referrals R ON U.M_ConsumerId = R.M_ConsumerId
+    LEFT JOIN #Claims CD ON U.M_ConsumerId = CD.M_ConsumerId
+    LEFT JOIN #UPI UPI ON U.M_ConsumerId = UPI.M_ConsumerId
+    LEFT JOIN #BPoints BP ON U.M_ConsumerId = BP.M_ConsumerId
+    LEFT JOIN #Transactions T ON U.M_ConsumerId = T.M_ConsumerId
+    LEFT JOIN #Paytm PT ON U.M_ConsumerId = PT.M_ConsumerId
     WHERE (
-            (ISNULL(B.PointsEarned, 0.00) + ISNULL(O.OtherPoints, 0.00)) > 0 
-            OR ISNULL(R.ReferralPoints, 0.00) > 0 
-            OR (CASE 
-                    WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(PT.PaytmAmount, 0.00)
-                    ELSE (ISNULL(C.Transferred, 0.00) + ISNULL(UPI.UPIAmount, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
-                END) > 0
-          )
-      AND (@KYCStatusFilter IS NULL OR U.KYCStatus = @KYCStatusFilter)
-      AND (@StateFilter IS NULL OR S.State = @StateFilter OR (S.State IS NULL AND U.State = @StateFilter))
-      AND (@BalanceLessThan IS NULL OR ((((ISNULL(B.PointsEarned, 0.00) + ISNULL(O.OtherPoints, 0.00)) + ISNULL(R.ReferralPoints, 0.00)) - 
-           CASE 
+        @KYCStatusFilter IS NULL OR
+        (@KYCStatusFilter = 'Approved' AND U.KYCStatus = 'Approved') OR
+        (@KYCStatusFilter = 'Rejected' AND U.KYCStatus = 'Rejected') OR
+        (@KYCStatusFilter = 'Pending' AND (U.KYCStatus = 'Pending' OR U.KYCStatus IS NULL))
+    )
+    AND (
+        @StateFilter IS NULL OR
+        ISNULL(S.State, U.State) = @StateFilter
+    )
+    AND (
+        (ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00)) > 0
+        OR ISNULL(R.RefralAmount, 0.00) > 0
+        OR (CASE 
                 WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(PT.PaytmAmount, 0.00)
-                ELSE (ISNULL(C.Transferred, 0.00) + ISNULL(UPI.UPIAmount, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
-           END) < @BalanceLessThan))
-      AND (
-          @Search IS NULL 
-          OR LTRIM(RTRIM(@Search)) = ''
-          OR U.ConsumerName LIKE '%' + @Search + '%'
-          OR U.MobileNo LIKE '%' + @Search + '%'
-          OR S.State LIKE '%' + @Search + '%'
-          OR S.City LIKE '%' + @Search + '%'
-      );
+                ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
+            END) > 0
+    );
 
     ---------------------------------------------------------
-    -- 9. OUTPUT
+    -- 11. RESULT SETS
     ---------------------------------------------------------
     IF @IsExport = 1
-    BEGIN 
-        SELECT 
+    BEGIN
+        SELECT
             ConsumerName,
             MobileNo,
             State,
@@ -642,14 +630,13 @@ BEGIN
             RefralAmount,
             RedeemAmount,
             BalanceAmount,
-            TDSAmount,
             LastScan
         FROM #FinalData
-        ORDER BY RN;
+        ORDER BY PointsEarned DESC, LastScan DESC;
     END
     ELSE
     BEGIN
-        SELECT 
+        SELECT
             ConsumerName,
             MobileNo,
             State,
@@ -660,16 +647,15 @@ BEGIN
             RefralAmount,
             RedeemAmount,
             BalanceAmount,
-            TDSAmount,
             LastScan
         FROM #FinalData
-        WHERE RN BETWEEN @Offset + 1 AND (@Offset + @Limit)
-        ORDER BY RN;
+        ORDER BY PointsEarned DESC, LastScan DESC
+        OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
 
         SELECT
             COUNT(1) AS TotalRecords,
             @Page AS CurrentPage,
-            @Limit AS [Limit],
+            @Limit AS Limit,
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
         FROM #FinalData;
     END

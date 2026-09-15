@@ -1,13 +1,22 @@
+-- =============================================
+-- Migration: Add Invalid Code Logging to Pro_Enq in USP_BLchkwarranty_AI
+-- Date: 2026-09-11
+-- Description:
+--   1. When an invalid code is submitted to USP_BLchkwarranty_AI (@RowID IS NULL),
+--      resolve Comp_ID (from parameter or Code1 fallback) and insert into Pro_Enq
+--      with Is_Success = '0' and Dial_Mode = 'Website'.
+--   2. Update existing success enquiries in USP_BLchkwarranty_AI to use Dial_Mode = 'Website'.
+--   3. Synchronized schema with WarrentyDetails and M_Consumer tables.
+-- =============================================
+
+USE [Vcqru]
+GO
+
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- =============================================
--- Author:        AI Assistant (Antigravity)
--- Create date:   2026-06-29
--- Description:   Validate and register E-Warranty (SRV1023) code checking dynamic landing page field configs.
--- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_BLchkwarranty_AI]
     @Code1 VARCHAR(10),
     @Code2 VARCHAR(15),

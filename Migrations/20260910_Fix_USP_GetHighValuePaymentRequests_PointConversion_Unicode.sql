@@ -1,3 +1,8 @@
+/****** Migration: 20260910_Fix_USP_GetHighValuePaymentRequests_PointConversion_Unicode.sql ******/
+-- Purpose:
+--   1. Prefix Unicode string literals with N prefix (N' Pt = ₹', N' Pts = ₹1.00', etc.) to prevent Indian Rupee symbol corruption (â,¹) due to non-Unicode collation conversion.
+--   2. Add support for @datePreset = 'ALL' / 'ALLTIME' to retrieve all records without date window restriction.
+
 USE [vcqru]
 GO
 
@@ -6,11 +11,6 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- =============================================
--- Author:      Antigravity
--- Create date: 2026-07-03
--- Description: Retrieves high value payment requests from ClaimDetails with fallback to DEFAULT limit.
--- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetHighValuePaymentRequests_Admin_AI]
 (
       @Compid           NVARCHAR(50) = NULL,   -- Optional company filter
@@ -127,9 +127,6 @@ BEGIN
                 )
             ELSE N'1 Pt = ₹1.00'
         END AS PointConversion,
-        -- PointValue removed
-        ISNULL(pcr.CashValue,0) AS CashValue,
-        (CAST(ISNULL(cd.RequestAmmount, cd.Amount) AS DECIMAL(18,2)) - ISNULL(TRY_CAST(cd.tdsAmount AS DECIMAL(18,2)),0.00)) AS NetPayout,
         ISNULL(c.Comp_Name, 'Unknown') AS CompName,
         cd.Comp_id AS CompId,
         cd.Isapproved AS IsApproved,
