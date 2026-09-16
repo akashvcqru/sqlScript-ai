@@ -3,13 +3,14 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- Exec [dbo].[SP_GetGeoLocationDataForMap_AI] 'Comp-1555',null,'MONTH',null,null
+-- Exec [dbo].[SP_GetGeoLocationDataForMap_AI] 'Comp-1555',null,'MONTH',null,null,'WEB'
 ALTER PROCEDURE [dbo].[SP_GetGeoLocationDataForMap_AI]
     @Comp_Id VARCHAR(50),	
     @ServiceID VARCHAR(50) = NULL,
     @datePreset VARCHAR(50) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTERMONTH, QUARTER, YEAR, LASTYEAR, ALL
     @FromDate DATE = NULL,
-    @ToDate DATE = NULL
+    @ToDate DATE = NULL,
+    @Dial_Mode VARCHAR(50) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -21,6 +22,18 @@ BEGIN
         OR LOWER(LTRIM(RTRIM(@ServiceID))) = 'null'
     )
         SET @ServiceID = NULL;
+
+    -- Normalize Dial_Mode
+    IF (
+           @Dial_Mode IS NULL
+        OR LTRIM(RTRIM(@Dial_Mode)) = ''
+        OR LOWER(LTRIM(RTRIM(@Dial_Mode))) = 'null'
+        OR LOWER(LTRIM(RTRIM(@Dial_Mode))) = 'all'
+    )
+        SET @Dial_Mode = NULL;
+
+    DECLARE @CleanDialMode VARCHAR(50) = UPPER(LTRIM(RTRIM(ISNULL(@Dial_Mode, ''))));
+    IF @CleanDialMode = '' SET @CleanDialMode = NULL;
 
     ---------------------------------------------------------
     -- Normalize datePreset (NULL = ALL DATA)
@@ -123,12 +136,12 @@ BEGIN
             P.MobileNo,
             P.Enq_Date,
             CONCAT(P.Received_Code1, P.Received_Code2) AS UniqueCode,
-            COALESCE(NULLIF(LTRIM(RTRIM(G.DisplayName)), ''), NULLIF(LTRIM(RTRIM(G.City)), ''), NULLIF(LTRIM(RTRIM(G.State)), ''), 'Location Captured') AS DisplayName,
             CASE 
                 WHEN P.Is_Success = '1' THEN 'Authenticate'
                 WHEN P.Is_Success = '2' THEN 'Re-Authenticate'
                 ELSE 'Invalid'
-            END AS UniqueCodeStatus
+            END AS UniqueCodeStatus,
+            P.Dial_Mode
         FROM Pro_Enq P WITH (NOLOCK)
         INNER JOIN M_Code MC WITH (NOLOCK)
             ON MC.Code1 = P.Received_Code1 
@@ -145,6 +158,27 @@ BEGIN
                 OR
                 (G.Latitude IS NOT NULL AND LTRIM(RTRIM(G.Latitude)) NOT IN ('', '0', '0.0', 'undefined', 'null'))
             )
+            AND (
+                @CleanDialMode IS NULL
+                OR (
+                    CASE 
+                        WHEN @CleanDialMode IN ('WEB', 'WEBSITE', 'WEBAPI') 
+                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WEB%' THEN 1
+                        WHEN @CleanDialMode IN ('APP', 'BL_APP', 'BLAPP', 'MOBILE APP', 'APP_MODE') 
+                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%APP%' THEN 1
+                        WHEN @CleanDialMode IN ('QR', 'QR CODE', 'SCANNER') 
+                             AND (UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%QR%' OR UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SCAN%') THEN 1
+                        WHEN @CleanDialMode IN ('WHATSAPP', 'WA') 
+                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WHATSAPP%' THEN 1
+                        WHEN @CleanDialMode = 'SMS' 
+                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SMS%' THEN 1
+                        WHEN @CleanDialMode IN ('IVR', 'CALL') 
+                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%IVR%' THEN 1
+                        WHEN UPPER(ISNULL(P.Dial_Mode, '')) = @CleanDialMode THEN 1
+                        ELSE 0
+                    END = 1
+                )
+            )
             AND (@StartDate IS NULL OR P.Enq_Date >= @StartDate)
             AND (@EndDate   IS NULL OR P.Enq_Date <  @EndDate);
     END
@@ -158,8 +192,8 @@ BEGIN
                 P.MobileNo,
                 P.Enq_Date,
                 CONCAT(P.Received_Code1, P.Received_Code2) AS UniqueCode,
-                COALESCE(NULLIF(LTRIM(RTRIM(G.DisplayName)), ''), NULLIF(LTRIM(RTRIM(G.City)), ''), NULLIF(LTRIM(RTRIM(G.State)), ''), 'Location Captured') AS DisplayName,
                 P.Is_Success,
+                P.Dial_Mode,
                 ROW_NUMBER() OVER
                 (
                     PARTITION BY CONCAT(P.Received_Code1, P.Received_Code2)
@@ -181,6 +215,27 @@ BEGIN
                     OR
                     (G.Latitude IS NOT NULL AND LTRIM(RTRIM(G.Latitude)) NOT IN ('', '0', '0.0', 'undefined', 'null'))
                 )
+                AND (
+                    @CleanDialMode IS NULL
+                    OR (
+                        CASE 
+                            WHEN @CleanDialMode IN ('WEB', 'WEBSITE', 'WEBAPI') 
+                                 AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WEB%' THEN 1
+                            WHEN @CleanDialMode IN ('APP', 'BL_APP', 'BLAPP', 'MOBILE APP', 'APP_MODE') 
+                                 AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%APP%' THEN 1
+                            WHEN @CleanDialMode IN ('QR', 'QR CODE', 'SCANNER') 
+                                 AND (UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%QR%' OR UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SCAN%') THEN 1
+                            WHEN @CleanDialMode IN ('WHATSAPP', 'WA') 
+                                 AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WHATSAPP%' THEN 1
+                            WHEN @CleanDialMode = 'SMS' 
+                                 AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SMS%' THEN 1
+                            WHEN @CleanDialMode IN ('IVR', 'CALL') 
+                                 AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%IVR%' THEN 1
+                            WHEN UPPER(ISNULL(P.Dial_Mode, '')) = @CleanDialMode THEN 1
+                            ELSE 0
+                        END = 1
+                    )
+                )
                 AND (@StartDate IS NULL OR P.Enq_Date >= @StartDate)
                 AND (@EndDate   IS NULL OR P.Enq_Date <  @EndDate)
         )
@@ -190,12 +245,12 @@ BEGIN
             MobileNo,
             Enq_Date,
             UniqueCode,
-            DisplayName,
             CASE
                 WHEN Is_Success = '0' THEN 'Invalid'
                 WHEN rn = 1 THEN 'Authenticate'
                 ELSE 'Re-Authenticate'
-            END AS UniqueCodeStatus
+            END AS UniqueCodeStatus,
+            Dial_Mode
         FROM CTE;
     END
     ELSE
@@ -206,12 +261,12 @@ BEGIN
             P.MobileNo,
             P.Enq_Date,
             CONCAT(P.Received_Code1, P.Received_Code2) AS UniqueCode,
-            COALESCE(NULLIF(LTRIM(RTRIM(G.DisplayName)), ''), NULLIF(LTRIM(RTRIM(G.City)), ''), NULLIF(LTRIM(RTRIM(G.State)), ''), 'Location Captured') AS DisplayName,
             CASE 
                 WHEN P.Is_Success = '1' THEN 'Authenticate'
                 WHEN P.Is_Success = '2' THEN 'Re-Authenticate'
                 ELSE 'Invalid'
-            END AS UniqueCodeStatus
+            END AS UniqueCodeStatus,
+            P.Dial_Mode
         FROM Pro_Enq P WITH (NOLOCK)
         LEFT JOIN GeoLocationData G WITH (NOLOCK)
             ON G.Code1 = P.Received_Code1
@@ -223,6 +278,27 @@ BEGIN
                 (P.Latitude IS NOT NULL AND LTRIM(RTRIM(P.Latitude)) NOT IN ('', '0', '0.0', 'undefined', 'null'))
                 OR
                 (G.Latitude IS NOT NULL AND LTRIM(RTRIM(G.Latitude)) NOT IN ('', '0', '0.0', 'undefined', 'null'))
+            )
+            AND (
+                @CleanDialMode IS NULL
+                OR (
+                    CASE 
+                        WHEN @CleanDialMode IN ('WEB', 'WEBSITE', 'WEBAPI') 
+                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WEB%' THEN 1
+                        WHEN @CleanDialMode IN ('APP', 'BL_APP', 'BLAPP', 'MOBILE APP', 'APP_MODE') 
+                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%APP%' THEN 1
+                        WHEN @CleanDialMode IN ('QR', 'QR CODE', 'SCANNER') 
+                             AND (UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%QR%' OR UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SCAN%') THEN 1
+                        WHEN @CleanDialMode IN ('WHATSAPP', 'WA') 
+                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WHATSAPP%' THEN 1
+                        WHEN @CleanDialMode = 'SMS' 
+                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SMS%' THEN 1
+                        WHEN @CleanDialMode IN ('IVR', 'CALL') 
+                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%IVR%' THEN 1
+                        WHEN UPPER(ISNULL(P.Dial_Mode, '')) = @CleanDialMode THEN 1
+                        ELSE 0
+                    END = 1
+                )
             )
             AND (@StartDate IS NULL OR P.Enq_Date >= @StartDate)
             AND (@EndDate   IS NULL OR P.Enq_Date <  @EndDate);
