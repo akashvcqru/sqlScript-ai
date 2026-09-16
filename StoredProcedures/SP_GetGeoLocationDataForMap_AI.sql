@@ -3,7 +3,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- Exec [dbo].[SP_GetGeoLocationDataForMap_AI] 'Comp-1555',null,'MONTH',null,null,'WEB'
+-- Exec [dbo].[SP_GetGeoLocationDataForMap_AI] 'Comp-1555',null,'MONTH',null,null,'Web'
 ALTER PROCEDURE [dbo].[SP_GetGeoLocationDataForMap_AI]
     @Comp_Id VARCHAR(50),	
     @ServiceID VARCHAR(50) = NULL,
@@ -162,19 +162,12 @@ BEGIN
                 @CleanDialMode IS NULL
                 OR (
                     CASE 
-                        WHEN @CleanDialMode IN ('WEB', 'WEBSITE', 'WEBAPI') 
-                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WEB%' THEN 1
-                        WHEN @CleanDialMode IN ('APP', 'BL_APP', 'BLAPP', 'MOBILE APP', 'APP_MODE') 
-                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%APP%' THEN 1
-                        WHEN @CleanDialMode IN ('QR', 'QR CODE', 'SCANNER') 
-                             AND (UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%QR%' OR UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SCAN%') THEN 1
-                        WHEN @CleanDialMode IN ('WHATSAPP', 'WA') 
-                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WHATSAPP%' THEN 1
-                        WHEN @CleanDialMode = 'SMS' 
-                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SMS%' THEN 1
-                        WHEN @CleanDialMode IN ('IVR', 'CALL') 
-                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%IVR%' THEN 1
-                        WHEN UPPER(ISNULL(P.Dial_Mode, '')) = @CleanDialMode THEN 1
+                        WHEN @CleanDialMode = 'QR CODE' AND (UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%QR%' OR UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SCAN%') THEN 1
+                        WHEN @CleanDialMode = 'WEB' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WEB%' THEN 1
+                        WHEN @CleanDialMode = 'SMS' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SMS%' THEN 1
+                        WHEN @CleanDialMode = 'APP' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%APP%' THEN 1
+                        WHEN @CleanDialMode = 'IVR' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%IVR%' THEN 1
+                        WHEN @CleanDialMode = 'WHATSAPP' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WHATSAPP%' THEN 1
                         ELSE 0
                     END = 1
                 )
@@ -219,19 +212,12 @@ BEGIN
                     @CleanDialMode IS NULL
                     OR (
                         CASE 
-                            WHEN @CleanDialMode IN ('WEB', 'WEBSITE', 'WEBAPI') 
-                                 AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WEB%' THEN 1
-                            WHEN @CleanDialMode IN ('APP', 'BL_APP', 'BLAPP', 'MOBILE APP', 'APP_MODE') 
-                                 AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%APP%' THEN 1
-                            WHEN @CleanDialMode IN ('QR', 'QR CODE', 'SCANNER') 
-                                 AND (UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%QR%' OR UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SCAN%') THEN 1
-                            WHEN @CleanDialMode IN ('WHATSAPP', 'WA') 
-                                 AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WHATSAPP%' THEN 1
-                            WHEN @CleanDialMode = 'SMS' 
-                                 AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SMS%' THEN 1
-                            WHEN @CleanDialMode IN ('IVR', 'CALL') 
-                                 AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%IVR%' THEN 1
-                            WHEN UPPER(ISNULL(P.Dial_Mode, '')) = @CleanDialMode THEN 1
+                            WHEN @CleanDialMode = 'QR CODE' AND (UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%QR%' OR UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SCAN%') THEN 1
+                            WHEN @CleanDialMode = 'WEB' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WEB%' THEN 1
+                            WHEN @CleanDialMode = 'SMS' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SMS%' THEN 1
+                            WHEN @CleanDialMode = 'APP' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%APP%' THEN 1
+                            WHEN @CleanDialMode = 'IVR' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%IVR%' THEN 1
+                            WHEN @CleanDialMode = 'WHATSAPP' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WHATSAPP%' THEN 1
                             ELSE 0
                         END = 1
                     )
@@ -283,19 +269,12 @@ BEGIN
                 @CleanDialMode IS NULL
                 OR (
                     CASE 
-                        WHEN @CleanDialMode IN ('WEB', 'WEBSITE', 'WEBAPI') 
-                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WEB%' THEN 1
-                        WHEN @CleanDialMode IN ('APP', 'BL_APP', 'BLAPP', 'MOBILE APP', 'APP_MODE') 
-                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%APP%' THEN 1
-                        WHEN @CleanDialMode IN ('QR', 'QR CODE', 'SCANNER') 
-                             AND (UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%QR%' OR UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SCAN%') THEN 1
-                        WHEN @CleanDialMode IN ('WHATSAPP', 'WA') 
-                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WHATSAPP%' THEN 1
-                        WHEN @CleanDialMode = 'SMS' 
-                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SMS%' THEN 1
-                        WHEN @CleanDialMode IN ('IVR', 'CALL') 
-                             AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%IVR%' THEN 1
-                        WHEN UPPER(ISNULL(P.Dial_Mode, '')) = @CleanDialMode THEN 1
+                        WHEN @CleanDialMode = 'QR CODE' AND (UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%QR%' OR UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SCAN%') THEN 1
+                        WHEN @CleanDialMode = 'WEB' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WEB%' THEN 1
+                        WHEN @CleanDialMode = 'SMS' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%SMS%' THEN 1
+                        WHEN @CleanDialMode = 'APP' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%APP%' THEN 1
+                        WHEN @CleanDialMode = 'IVR' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%IVR%' THEN 1
+                        WHEN @CleanDialMode = 'WHATSAPP' AND UPPER(ISNULL(P.Dial_Mode, '')) LIKE '%WHATSAPP%' THEN 1
                         ELSE 0
                     END = 1
                 )
