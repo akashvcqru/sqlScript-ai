@@ -140,9 +140,8 @@ BEGIN
 	 AND Received_Code2 = CAST(Code2 AS VARCHAR(50))
    INNER JOIN Pro_Reg PR
    ON PR.Pro_ID=M.Pro_ID
-    WHERE PR.Comp_ID = @Comp_Id  and MobileNo = @Search
-       
-       ;
+    WHERE PR.Comp_ID = @Comp_Id 
+      AND (@Search IS NULL OR LTRIM(RTRIM(@Search)) = '' OR MobileNo = @Search);
 
     CREATE INDEX IX_Enq_Code   ON #Enq(Received_Code1, Received_Code2);
     CREATE INDEX IX_Enq_Mobile ON #Enq(MobileNo);
