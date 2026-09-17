@@ -73,6 +73,21 @@ BEGIN
         RETURN;
     END
 
+    -- Clean up @Comp_ID if passed as 'DEFAULT' or empty string
+    IF @Comp_ID = 'DEFAULT' OR RTRIM(LTRIM(@Comp_ID)) = ''
+    BEGIN
+        SET @Comp_ID = NULL;
+    END
+
+    -- If a specific Company ID is specified, validate that the code belongs to that company
+    IF @Comp_ID IS NOT NULL AND @CurrentCompID <> @Comp_ID
+    BEGIN
+        SET @ResultCode = 0;
+        SET @Message = 'Invalid Code. This code does not belong to the selected company.';
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @Comp_ID AS Comp_ID;
+        RETURN;
+    END
+
     -- =========================================================================
     -- VENDOR-WISE DAILY SCAN LIMIT & TIME WINDOW CHECK
     -- =========================================================================
