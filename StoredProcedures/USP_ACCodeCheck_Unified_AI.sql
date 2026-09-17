@@ -88,6 +88,37 @@ BEGIN
         RETURN;
     END
 
+    -- Check if company is active in Comp_Reg
+    DECLARE @CompStatus NUMERIC(18, 0) = NULL;
+
+    SELECT TOP 1 
+        @CompStatus = Status
+    FROM Comp_Reg WITH (NOLOCK)
+    WHERE Comp_ID = @CurrentCompID;
+
+    IF @CompStatus = 0
+    BEGIN
+        SET @ResultCode = 3;
+        SET @Message = 'Service for this company is currently inactive. Please contact customer support for assistance.';
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
+        RETURN;
+    END
+
+    -- Check if company is inactive in SMS_Vendor_Config (if table exists)
+    IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SMS_Vendor_Config')
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM SMS_Vendor_Config WITH (NOLOCK)
+            WHERE Comp_Id = @CurrentCompID AND IsActive = 0
+        )
+        BEGIN
+            SET @ResultCode = 3;
+            SET @Message = 'Service for this company is currently inactive. Please contact customer support for assistance.';
+            SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
+            RETURN;
+        END
+    END
+
     -- =========================================================================
     -- VENDOR-WISE DAILY SCAN LIMIT & TIME WINDOW CHECK
     -- =========================================================================
