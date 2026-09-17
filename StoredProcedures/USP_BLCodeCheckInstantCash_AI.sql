@@ -101,7 +101,8 @@ BEGIN
             @Series_Serial = TRY_CAST(ISNULL(Series_Serial,0) AS INT),
             @Batch_No = Batch_No
         FROM M_Code WITH (UPDLOCK, ROWLOCK)
-        WHERE Code1 = @dCode1 AND Code2 = @dCode2;
+        WHERE Code1 = @dCode1 AND Code2 = @dCode2
+          AND (ScrapeFlag IS NULL OR ScrapeFlag = 0);
 
         -- If not found, check M_Code_PFL
         IF @M_Codeid IS NULL
@@ -114,7 +115,8 @@ BEGIN
                 @IsPFL = 1,
                 @Batch_No = Batch_No
             FROM M_Code_PFL WITH (UPDLOCK, ROWLOCK)
-            WHERE Code1 = @dCode1 AND Code2 = @dCode2;
+            WHERE Code1 = @dCode1 AND Code2 = @dCode2
+              AND (ScrapeFlag IS NULL OR ScrapeFlag = 0);
         END
 
         IF @M_Codeid IS NULL
@@ -127,7 +129,7 @@ BEGIN
                 IsActive, IsDelete, Created_Date
             )
             VALUES (
-                @Mode, GETDATE(), 'InstantCashAPI', @MobileNo, @Code1, @Code2, 
+                @Mode, GETDATE(), 'InstantCashAPI_InvalidCode', @MobileNo, @Code1, @Code2, 
                 '0', @Comp_ID, @Latitude, @Longitude, @City, @State, @PinCode,
                 1, 0, GETDATE()
             );
@@ -162,7 +164,7 @@ BEGIN
             IF @InvalidMessage IS NULL OR @InvalidMessage = ''
                 SET @InvalidMessage = 'The code you entered is invalid. Please check and try again.';
 
-            SELECT 0 AS ResultCode, @InvalidMessage AS Message;
+            SELECT 0 AS ResultCode, @InvalidMessage AS Message, 0 AS Amount, '' AS ServiceID, @Comp_ID AS Comp_ID;
             RETURN;
         END
 
@@ -180,28 +182,57 @@ BEGIN
             BEGIN
                 ROLLBACK TRANSACTION;
                 DECLARE @DeactivatedMessage NVARCHAR(250) = 'This code is currently inactive. Please contact the service provider for assistance.';
-                SELECT 0 AS ResultCode, @DeactivatedMessage AS Message;
+                SELECT 0 AS ResultCode, @DeactivatedMessage AS Message, 0 AS Amount, '' AS ServiceID, @Comp_ID AS Comp_ID;
                 RETURN;
             END
         END
 
         SELECT @ActualComp_ID = Comp_ID FROM Pro_Reg WHERE Pro_ID = @Pro_ID;
 
-        -- For Instant Cash, we might be more lenient or log mismatch but proceed
-        -- However, we'll keep the mismatch check but ensure it compares against @ActualComp_ID
-        IF @Comp_ID IS NOT NULL AND @Comp_ID <> '' AND @Comp_ID <> @ActualComp_ID
+        -- Clean up @Comp_ID
+        IF @Comp_ID = 'DEFAULT' OR RTRIM(LTRIM(@Comp_ID)) = ''
         BEGIN
-            -- Log the mismatch for debugging
+            SET @Comp_ID = NULL;
+        END
+
+        -- Company Mismatch Check: If a specific company is requested, reject mismatch to protect company code
+        IF @Comp_ID IS NOT NULL AND @Comp_ID <> @ActualComp_ID
+        BEGIN
+            ROLLBACK TRANSACTION;
+
+            INSERT INTO Pro_Enq (
+                Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, 
+                Is_Success, Comp_ID, Latitude, Longitude, City, state, PinCode,
+                IsActive, IsDelete, Created_Date
+            )
+            VALUES (
+                @Mode, GETDATE(), 'InstantCash_CompanyMismatch', @MobileNo, @Code1, @Code2, 
+                '0', @Comp_ID, @Latitude, @Longitude, @City, @State, @PinCode,
+                1, 0, GETDATE()
+            );
+
             INSERT INTO InvalidCodeCompid(ApiComp_ID, DbComp_ID, Code1, Code2, Pro_ID, MobileNo)
             VALUES (@Comp_ID, @ActualComp_ID, @dCode1, @dCode2, @Pro_ID, @MobileNo);
 
-            -- For now, let's allow it if the code is valid for another company, OR reject
-            -- The requirement says "fix this isse", if the issue is mismatch, we should allow it but use the actual company ID
-            SET @Comp_ID = @ActualComp_ID; 
+            SELECT 0 AS ResultCode, 'Invalid Code. This code does not belong to the selected company.' AS Message, 0 AS Amount, '' AS ServiceID, @Comp_ID AS Comp_ID;
+            RETURN;
         END
-        ELSE IF @Comp_ID IS NULL OR @Comp_ID = ''
+
+        SET @Comp_ID = @ActualComp_ID;
+
+        -- Check if company is active in Comp_Reg
+        DECLARE @CompStatus NUMERIC(18, 0) = NULL;
+
+        SELECT TOP 1 
+            @CompStatus = Status
+        FROM Comp_Reg WITH (NOLOCK)
+        WHERE Comp_ID = @ActualComp_ID;
+
+        IF @CompStatus = 0
         BEGIN
-            SET @Comp_ID = @ActualComp_ID;
+            ROLLBACK TRANSACTION;
+            SELECT 3 AS ResultCode, 'Service for this company is currently inactive. Please contact customer support for assistance.' AS Message, 0 AS Amount, '' AS ServiceID, @ActualComp_ID AS Comp_ID;
+            RETURN;
         END
 
     -- =========================================================================
