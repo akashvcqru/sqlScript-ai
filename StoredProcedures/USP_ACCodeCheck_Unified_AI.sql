@@ -67,9 +67,26 @@ BEGIN
 
     IF @RowID IS NULL
     BEGIN
+        DECLARE @InvalidLogCompID NVARCHAR(50) = @Comp_ID;
+        IF @InvalidLogCompID IS NULL OR @InvalidLogCompID = '' OR @InvalidLogCompID = 'DEFAULT'
+        BEGIN
+            SET @InvalidLogCompID = 'DEFAULT';
+        END
+
+        INSERT INTO Pro_Enq (
+            Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, 
+            Is_Success, Comp_ID, Latitude, Longitude, City, state, PinCode,
+            IsActive, IsDelete, Created_Date
+        )
+        VALUES (
+            @Mode, GETDATE(), 'Invalid Code Check', @MobileNo, @Code1, @Code2, 
+            '0', @InvalidLogCompID, @Lat, @Long, @City, @State, @PinCode,
+            1, 0, GETDATE()
+        );
+
         SET @ResultCode = 0;
         SET @Message = 'Invalid Code. Please check the 13-digit code and try again.';
-        SELECT @ResultCode AS ResultCode, @Message AS [Message];
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @InvalidLogCompID AS Comp_ID;
         RETURN;
     END
 
@@ -82,6 +99,17 @@ BEGIN
     -- If a specific Company ID is specified, validate that the code belongs to that company
     IF @Comp_ID IS NOT NULL AND @CurrentCompID <> @Comp_ID
     BEGIN
+        INSERT INTO Pro_Enq (
+            Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, 
+            Is_Success, Comp_ID, Latitude, Longitude, City, state, PinCode,
+            IsActive, IsDelete, Created_Date
+        )
+        VALUES (
+            @Mode, GETDATE(), 'Company Code Mismatch', @MobileNo, @Code1, @Code2, 
+            '0', @Comp_ID, @Lat, @Long, @City, @State, @PinCode,
+            1, 0, GETDATE()
+        );
+
         SET @ResultCode = 0;
         SET @Message = 'Invalid Code. This code does not belong to the selected company.';
         SELECT @ResultCode AS ResultCode, @Message AS [Message], @Comp_ID AS Comp_ID;
