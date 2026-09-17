@@ -140,9 +140,8 @@ BEGIN
 	 AND Received_Code2 = CAST(Code2 AS VARCHAR(50))
    INNER JOIN Pro_Reg PR
    ON PR.Pro_ID=M.Pro_ID
-    WHERE PR.Comp_ID = @Comp_Id  and MobileNo = @Search
-       
-       ;
+    WHERE PR.Comp_ID = @Comp_Id 
+      AND (@Search IS NULL OR LTRIM(RTRIM(@Search)) = '' OR MobileNo = @Search);
 
     CREATE INDEX IX_Enq_Code   ON #Enq(Received_Code1, Received_Code2);
     CREATE INDEX IX_Enq_Mobile ON #Enq(MobileNo);
@@ -311,7 +310,7 @@ BEGIN
             AS DECIMAL(18,2)) AS AssignPoint,
             ROW_NUMBER() OVER (
                 PARTITION BY MC.M_Codeid, SS.Service_ID 
-                ORDER BY SST.Entry_Date DESC, SST.SST_Id DESC
+                ORDER BY SST.Entry_Date DESC, SST_Id DESC
             ) AS rn_service,
             SST.Entry_Date,
             SST.SST_Id
@@ -359,6 +358,7 @@ BEGIN
     IF OBJECT_ID('tempdb..#FinalReport') IS NOT NULL DROP TABLE #FinalReport;
 
     CREATE TABLE #FinalReport (
+        Row_id BIGINT,
         UniqueCode VARCHAR(100),
         Enq_Date DATETIME,
         Dial_Mode VARCHAR(50),
@@ -379,6 +379,7 @@ BEGIN
     -- 1. Insert scan enquiries
     INSERT INTO #FinalReport
     SELECT 
+        E.Row_id,
         (E.Received_Code1 + E.Received_Code2) AS UniqueCode,
         E.Enq_Date,
         E.Dial_Mode,
@@ -435,6 +436,7 @@ BEGIN
     -- 2. Insert registration referrals (virtual rows)
     INSERT INTO #FinalReport
     SELECT 
+        NULL AS Row_id,
         '' AS UniqueCode,
         BL.UpdateDate AS Enq_Date,
         'Referral' AS Dial_Mode,
@@ -471,6 +473,7 @@ BEGIN
     IF (@IsExport = 1)
     BEGIN
         SELECT 
+            Row_id,
             UniqueCode,
             Enq_Date,
             Dial_Mode,
@@ -503,6 +506,7 @@ BEGIN
     ELSE
     BEGIN
         SELECT 
+            Row_id,
             UniqueCode,
             Enq_Date,
             Dial_Mode,

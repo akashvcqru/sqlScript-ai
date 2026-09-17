@@ -15,6 +15,7 @@ BEGIN
         NotificationType VARCHAR(50) DEFAULT 'VCQRUEvent', -- 'VCQRUEvent', 'SpecialDay', 'Instant'
         SpecialDayDate DATETIME NULL,
         RedirectUrl NVARCHAR(1000) NULL,
+        ImageUrl NVARCHAR(1000) NULL,
         CreatedDate DATETIME DEFAULT GETDATE(),
         UpdatedDate DATETIME DEFAULT GETDATE(),
         CONSTRAINT UQ_Comp_Event UNIQUE (CompID, EventId)
@@ -22,7 +23,7 @@ BEGIN
 END
 GO
 
--- Also ensure NotificationType, SpecialDayDate, RedirectUrl exist if table already exists
+-- Also ensure NotificationType, SpecialDayDate, RedirectUrl, ImageUrl exist if table already exists
 IF EXISTS (SELECT * FROM sys.tables WHERE name = 'tbl_NotificationEventSettings')
 BEGIN
     IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('tbl_NotificationEventSettings') AND name = 'NotificationType')
@@ -36,6 +37,10 @@ BEGIN
     IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('tbl_NotificationEventSettings') AND name = 'RedirectUrl')
     BEGIN
         ALTER TABLE tbl_NotificationEventSettings ADD RedirectUrl NVARCHAR(1000) NULL;
+    END
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('tbl_NotificationEventSettings') AND name = 'ImageUrl')
+    BEGIN
+        ALTER TABLE tbl_NotificationEventSettings ADD ImageUrl NVARCHAR(1000) NULL;
     END
 END
 GO
