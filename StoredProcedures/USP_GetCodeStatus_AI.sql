@@ -140,7 +140,7 @@ BEGIN
     IF OBJECT_ID('tempdb..#CodeStatus') IS NOT NULL DROP TABLE #CodeStatus;
 
     CREATE TABLE #CodeStatus (
-        CodeStatus VARCHAR(20),
+        CodeStatus VARCHAR(50),
         Points DECIMAL(18,2),
         IsCash INT,
         Enq_Date DATETIME,
@@ -160,7 +160,12 @@ BEGIN
     BEGIN
         INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, ExpireCodeDate, CodeServiceSetingStatus, ImageVerified, Pro_Name, Batch_No, AssignPoint, WornPoint)
         SELECT
-            CASE WHEN PE.Status = 'Authenticate' OR PE.Status = 'Re-Authenticate' OR PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
+            CASE 
+                WHEN CHARINDEX('SRV1018', ISNULL(sd.Service_ID, '')) > 0 THEN
+                    CASE WHEN PE.Status = 'Authenticate' OR PE.Is_Success = 1 THEN 'Authenticate' ELSE 'Re-Authenticate' END
+                ELSE
+                    CASE WHEN PE.Status = 'Authenticate' OR PE.Status = 'Re-Authenticate' OR PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN 'Success' ELSE 'Unsuccess' END
+            END AS CodeStatus,
             CAST(CASE WHEN PE.Status = 'Authenticate' OR PE.Status = 'Re-Authenticate' OR PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN 
                 CASE 
                     WHEN ISNULL(BL.WornCash, 0) > 0 THEN BL.WornCash
@@ -244,7 +249,12 @@ BEGIN
     BEGIN
         INSERT INTO #CodeStatus (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, ExpireCodeDate, CodeServiceSetingStatus, ImageVerified, Pro_Name, Batch_No, AssignPoint, WornPoint)
         SELECT
-            CASE WHEN PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
+            CASE 
+                WHEN CHARINDEX('SRV1018', ISNULL(sd.Service_ID, '')) > 0 THEN
+                    CASE WHEN PE.Is_Success = 1 THEN 'Authenticate' ELSE 'Re-Authenticate' END
+                ELSE
+                    CASE WHEN PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN 'Success' ELSE 'Unsuccess' END
+            END AS CodeStatus,
             CAST(CASE WHEN PE.Is_Success = 1 OR ISNULL(BL.WornCash, 0) > 0 OR ISNULL(BL.WornPoints, 0) > 0 THEN 
                 CASE 
                     WHEN ISNULL(BL.WornCash, 0) > 0 THEN BL.WornCash
