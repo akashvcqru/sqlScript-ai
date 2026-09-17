@@ -166,6 +166,7 @@ BEGIN
           OR (@user_type = '6' AND SS.Service_ID IN ('SRV1001'))
           OR (ISNULL(@user_type, '') NOT IN ('6', '7'))
       )
+      AND (LOWER(@Comp_ID) <> 'comp-1669' OR pe.Enq_Date >= '2026-09-08 17:27:20.650')
       AND (m.Series_Order > SS.start_order OR (m.Series_Order = SS.start_order AND m.Series_Serial >= SS.start_series))
       AND (m.Series_Order < SS.end_order OR (m.Series_Order = SS.end_order AND m.Series_Serial <= SS.end_series))
     GROUP BY m.Row_ID, SS.Service_ID;
@@ -202,6 +203,7 @@ BEGIN
           AND pr.Comp_ID = @Comp_ID  
           AND (@Year IS NULL OR YEAR(pe.Enq_Date) = @Year)
           AND (@Month IS NULL OR MONTH(pe.Enq_Date) = @Month)
+          AND (LOWER(@Comp_ID) <> 'comp-1669' OR pe.Enq_Date >= '2026-09-08 17:27:20.650')
     )
     SELECT   
         t.*,  
@@ -235,7 +237,8 @@ BEGIN
         ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
     INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
         ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-    WHERE BL.compid = @Comp_ID;
+    WHERE BL.compid = @Comp_ID
+      AND (LOWER(@Comp_ID) <> 'comp-1669' OR BL.UpdateDate >= '2026-09-08 17:27:20.650');
 
     CREATE INDEX IX_Points_MCodeid ON #Points(M_Codeid, rn);
 
@@ -458,6 +461,7 @@ WHERE t2.Status IN ('Invalid', 'Unsuccess')  and s.Service_ID = 'SRV1018'
       AND bll.compid = @Comp_ID  
       AND (@Year IS NULL OR YEAR(bll.UpdateDate) = @Year)
       AND (@Month IS NULL OR MONTH(bll.UpdateDate) = @Month)
+      AND (LOWER(@Comp_ID) <> 'comp-1669' OR bll.UpdateDate >= '2026-09-08 17:27:20.650')
       AND (
           LOWER(@Comp_ID) <> 'comp-1669'
           OR (@user_type = '7' AND bll.ServiceName IN ('Instant Payout'))
