@@ -9,8 +9,10 @@ BEGIN
         Title NVARCHAR(500) NOT NULL,
         Body NVARCHAR(MAX) NOT NULL,
         RedirectUrl NVARCHAR(1000) NULL,
+        ImageUrl NVARCHAR(1000) NULL,
         SentAt DATETIME DEFAULT GETDATE(),
         Status VARCHAR(50) DEFAULT 'Success'
     );
 END
 GO
+

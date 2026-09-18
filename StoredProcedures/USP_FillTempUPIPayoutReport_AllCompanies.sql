@@ -208,4 +208,14 @@ BEGIN
 
         SET @i = @i + 1;
     END
+
+
+	UPDATE a
+      SET a.BankStatus = 'Success'
+      FROM TempUPIPayoutReport a
+      INNER JOIN tblUPITransactionDetails b
+          ON a.tblUPITransactionDetailsID = b.Id
+      WHERE b.Status = 'Success'
+        AND ISNULL(a.BankStatus, '') <> 'Success' AND a.ReqDate >= DATEADD(DAY, -2, GETDATE()) ;
+
 END

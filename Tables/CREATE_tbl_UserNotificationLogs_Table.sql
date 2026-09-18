@@ -14,10 +14,20 @@ BEGIN
         FCMToken VARCHAR(500) NULL,
         IsSuccess BIT NOT NULL DEFAULT 0,
         ErrorMessage NVARCHAR(MAX) NULL,
+        IsRead BIT NOT NULL DEFAULT 0,
         SentAt DATETIME DEFAULT GETDATE()
     );
 
     CREATE NONCLUSTERED INDEX IX_tbl_UserNotificationLogs_Comp_User 
     ON tbl_UserNotificationLogs(CompID, MConsumerID, SentAt DESC);
 END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('tbl_UserNotificationLogs') AND name = 'IsRead')
+    BEGIN
+        ALTER TABLE tbl_UserNotificationLogs 
+        ADD IsRead BIT NOT NULL CONSTRAINT DF_tbl_UserNotificationLogs_IsRead DEFAULT 0;
+    END
+END
 GO
+

@@ -44,6 +44,7 @@ BEGIN
     WHERE 
         a.CompID = @Comp_id
         AND a.status = 1
+        AND (a.Isdelete IS NULL OR a.Isdelete = 0)
     ORDER BY 
         a.Gift_value ASC;
 END

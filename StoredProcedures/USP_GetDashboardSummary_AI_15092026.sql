@@ -1,11 +1,11 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 9/17/2026 10:21:59 AM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI_15092026]    Script Date: 9/15/2026 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetDashboardSummary_AI_15092026]
 (
     @M_Consumerid INT,
     @CompID VARCHAR(50),
@@ -492,3 +492,4 @@ BEGIN
     ) t
     GROUP BY Service_ID;
 END
+GO

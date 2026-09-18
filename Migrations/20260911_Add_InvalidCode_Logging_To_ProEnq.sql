@@ -1,13 +1,22 @@
+-- =============================================
+-- Migration: Add Invalid Code Logging to Pro_Enq in USP_BLchkwarranty_AI
+-- Date: 2026-09-11
+-- Description:
+--   1. When an invalid code is submitted to USP_BLchkwarranty_AI (@RowID IS NULL),
+--      resolve Comp_ID (from parameter or Code1 fallback) and insert into Pro_Enq
+--      with Is_Success = '0' and Dial_Mode = 'Website'.
+--   2. Update existing success enquiries in USP_BLchkwarranty_AI to use Dial_Mode = 'Website'.
+--   3. Synchronized schema with WarrentyDetails and M_Consumer tables.
+-- =============================================
+
+USE [Vcqru]
+GO
+
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- =============================================
--- Author:        AI Assistant (Antigravity)
--- Create date:   2026-06-29
--- Description:   Validate and register E-Warranty (SRV1023) code checking dynamic landing page field configs.
--- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_BLchkwarranty_AI]
     @Code1 VARCHAR(10),
     @Code2 VARCHAR(15),
@@ -119,62 +128,6 @@ BEGIN
             0 AS WarrantyPeriod,
             NULL AS ExpirationDate,
             NULL AS ProId;
-        RETURN;
-    END
-
-    -- Clean up @Comp_ID
-    IF @Comp_ID = 'DEFAULT' OR RTRIM(LTRIM(@Comp_ID)) = ''
-    BEGIN
-        SET @Comp_ID = NULL;
-    END
-
-    -- If a specific Company ID is specified, validate that code belongs to that company
-    IF @Comp_ID IS NOT NULL AND @ActualCompID <> @Comp_ID
-    BEGIN
-        INSERT INTO Pro_Enq (
-            Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, 
-            Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, City, state, PinCode,
-            IsActive, IsDelete, Created_Date
-        )
-        VALUES (
-            @Code1, @Code2, RIGHT(ISNULL(@MobileNo, ''), 10), 'Website', 'Warranty_CompanyMismatch', 
-            '0', GETDATE(), @Comp_ID, @Latitude, @Longitude, @City, @State, @PinCode,
-            1, 0, GETDATE()
-        );
-
-        SET @ResultCode = 0;
-        SET @Message = 'INVALID: Invalid Code. This code does not belong to the selected company.';
-        SELECT 
-            @ResultCode AS ResultCode, 
-            @Message AS [Message],
-            NULL AS ProductName,
-            NULL AS BrandName,
-            @Comp_ID AS CompId,
-            NULL AS ProductImage,
-            0 AS WarrantyPeriod,
-            NULL AS ExpirationDate,
-            @ProID AS ProId;
-        RETURN;
-    END
-
-    -- Check if company is active in Comp_Reg
-    DECLARE @CompStatus NUMERIC(18, 0) = NULL;
-    SELECT TOP 1 @CompStatus = Status FROM Comp_Reg WITH (NOLOCK) WHERE Comp_ID = @ActualCompID;
-
-    IF @CompStatus = 0
-    BEGIN
-        SET @ResultCode = 3;
-        SET @Message = 'Service for this company is currently inactive. Please contact customer support for assistance.';
-        SELECT 
-            @ResultCode AS ResultCode, 
-            @Message AS [Message],
-            NULL AS ProductName,
-            NULL AS BrandName,
-            @ActualCompID AS CompId,
-            NULL AS ProductImage,
-            0 AS WarrantyPeriod,
-            NULL AS ExpirationDate,
-            @ProID AS ProId;
         RETURN;
     END
 

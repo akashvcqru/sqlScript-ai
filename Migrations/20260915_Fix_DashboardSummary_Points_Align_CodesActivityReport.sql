@@ -1,11 +1,20 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 9/17/2026 10:21:59 AM ******/
-SET ANSI_NULLS ON
+
+-- ============================================================================
+-- Migration Script: Create USP_GetDashboardSummary_AI_15092026 & Update USP_GetDashboardSummary_AI
+-- Date: 2026-09-15
+-- Target DB: Production (Vcqru)
+-- Description: 
+--   1. Create dated procedure USP_GetDashboardSummary_AI_15092026
+--   2. Update USP_GetDashboardSummary_AI to ensure points from scans & orphan points
+--      match SP_BL_GetCodesActivityReport_AI won points.
+-- ============================================================================
+
+PRINT 'Creating procedure USP_GetDashboardSummary_AI_15092026...'
 GO
-SET QUOTED_IDENTIFIER ON
-GO
-ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
+
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetDashboardSummary_AI_15092026]
 (
     @M_Consumerid INT,
     @CompID VARCHAR(50),
@@ -20,27 +29,20 @@ BEGIN
 
     IF @MobileNo IS NULL RETURN;
 
-    -- Flag for service-wise gifts presence
     DECLARE @HasServiceWiseGifts BIT = 0;
     IF EXISTS (SELECT 1 FROM Claim_gift WHERE CompID = @CompID AND Service_id IS NOT NULL AND Isdelete = 0)
     BEGIN
         SET @HasServiceWiseGifts = 1;
     END
 
-    ---------------------------------------------------------
-    -- COMPANY FILTER PREPARATION
-    ---------------------------------------------------------
     DECLARE @CompanyList TABLE (Comp_Id VARCHAR(50) PRIMARY KEY);
-        INSERT INTO @CompanyList VALUES (@CompID);
+    INSERT INTO @CompanyList VALUES (@CompID);
 
     DECLARE @Multiplier DECIMAL(18,2) = 1.00;
     SELECT TOP 1 @Multiplier = 1.00 + (calculation_value / 100.0) 
     FROM loyalty_calculation 
     WHERE comp_id = @CompID AND isactive = 1 AND isdelete = 0;
 
-    ---------------------------------------------------------
-    -- Use Temp Tables instead of CTEs to support multiple result sets
-    ---------------------------------------------------------
     IF OBJECT_ID('tempdb..#UserScans') IS NOT NULL DROP TABLE #UserScans;
     IF OBJECT_ID('tempdb..#EarnedPoints') IS NOT NULL DROP TABLE #EarnedPoints;
     IF OBJECT_ID('tempdb..#ConfigPoints') IS NOT NULL DROP TABLE #ConfigPoints;
@@ -62,9 +64,8 @@ BEGIN
     WHERE RIGHT(PE.MobileNo, 10) = RIGHT(@MobileNo, 10)
       AND PE.Is_Success = '1';
 
-    -- Get Earned Points (Scans)
     SELECT
-        MC.M_Codeid, BL.UpdateDate,
+        MC.M_Codeid,BL.UpdateDate,
         CASE WHEN @CompID = 'Comp-1669' THEN 'SRV1001' ELSE ISNULL(SS.Service_ID, 'SRV1001') END AS Service_ID,
         CAST(
             CASE 
@@ -104,36 +105,8 @@ BEGIN
               FROM M_Consumer WITH (NOLOCK) 
               WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0
           )
-          OR EXISTS (
-              SELECT 1 FROM M_Consumer WITH (NOLOCK) 
-              WHERE M_Consumerid = MC.M_Consumerid AND RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0
-          )
       )
       AND (@CompID <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001'));
-
-    -- Include orphan scan entries (code scan entries with BuildLoyaltyOrReferralMCodeCheckid for this consumer/company)
-    INSERT INTO #EarnedPointsRaw (M_Codeid, UpdateDate, Service_ID, Points, BLoyalty_PointEarnedID)
-    SELECT 
-        MC.M_Codeid, BL.UpdateDate,
-        ISNULL(SS.Service_ID, 'SRV1001') AS Service_ID,
-        CAST(
-            CASE 
-                WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
-                WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
-                ELSE 0.00
-            END AS DECIMAL(18,2)) AS Points,
-        BL.BLoyalty_PointEarnedID
-    FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-    INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
-    INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-    LEFT JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON BL.SST_id = SST.SST_Id
-    LEFT JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
-    WHERE BL.compid = @CompID
-      AND BL.BLoyalty_PointEarnedID NOT IN (SELECT BLoyalty_PointEarnedID FROM #EarnedPointsRaw)
-      AND (
-          BL.M_Consumerid = @M_Consumerid 
-          OR BL.M_Consumerid IN (SELECT M_Consumerid FROM M_Consumer WITH (NOLOCK) WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0)
-      );
 
     IF OBJECT_ID('tempdb..#EarnedPoints') IS NOT NULL DROP TABLE #EarnedPoints;
 
@@ -170,7 +143,6 @@ BEGIN
 
     CREATE CLUSTERED INDEX IX_EarnedPoints_MCodeid ON #EarnedPoints(M_Codeid, rn);
 
-    -- Get Config Points
     SELECT 
         US.M_Codeid,
         SS.Service_ID,
@@ -208,7 +180,7 @@ BEGIN
     UNION
     SELECT M_Codeid, Service_ID FROM #EarnedPoints;
 
-	DECLARE @Vrkabel_User_Type INT = NULL;
+    DECLARE @Vrkabel_User_Type INT = NULL;
     IF LOWER(@CompID) = 'comp-1669'
     BEGIN
         SELECT TOP 1 @Vrkabel_User_Type = TRY_CAST(Vrkabel_User_Type AS INT)
@@ -218,7 +190,6 @@ BEGIN
           AND IsDelete = 0;
     END
 
-    -- Aggregate into #ConfiguredPoints
     SELECT
         COALESCE(SS.Service_ID, 'SRV1001') AS Service_ID,
         SUM(
@@ -241,16 +212,6 @@ BEGIN
     WHERE US.rn <= ISNULL(CP.Frequency, 1)
     GROUP BY COALESCE(SS.Service_ID, 'SRV1001');
 
-    -- Include orphan scan points that didn't join to #UserScans into #ConfiguredPoints
-    INSERT INTO #ConfiguredPoints (Service_ID, ServiceTotalPoints, ServiceTotalCash)
-    SELECT Service_ID, SUM(Points), 0
-    FROM #EarnedPoints
-    WHERE M_Codeid NOT IN (SELECT M_Codeid FROM #UserScans)
-    GROUP BY Service_ID;
-
-    ---------------------------------------------------------
-    -- PRECISE POINT/CASH SUM FOR TOTAL (DUPLICATION FREE)
-    ---------------------------------------------------------
     DECLARE @TotalConfigPoints DECIMAL(18,2) = 0;
     DECLARE @TotalConfigCash DECIMAL(18,2) = 0;
 
@@ -259,7 +220,6 @@ BEGIN
         @TotalConfigCash = ISNULL(SUM(ServiceTotalCash), 0)
     FROM #ConfiguredPoints;
 
-    -- Referral Stats (TRUE referral points ONLY: BuildLoyaltyOrReferralMCodeCheckid IS NULL or ServiceName referral)
     SELECT 
         ISNULL(SUM(CAST(
             CASE 
@@ -277,7 +237,7 @@ BEGIN
         AS DECIMAL(18,2))), 0) as RefCash
     INTO #ReferralStats
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-    INNER JOIN @CompanyList CL ON BL.compid = CL.Comp_Id
+    INNER JOIN @CompanyList CL ON (BL.compid = CL.Comp_Id OR (LOWER(@CompID) <> 'comp-1669' AND ISNULL(BL.compid, '') = ''))
     WHERE (
           BL.M_Consumerid = @M_Consumerid 
           OR BL.M_Consumerid IN (
@@ -287,19 +247,27 @@ BEGIN
           )
       )
       AND (
-          LOWER(ISNULL(BL.ServiceName, '')) IN ('refral', 'referral')
-          OR BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+          (LOWER(@CompID) = 'comp-1669' AND LOWER(ISNULL(BL.ServiceName, '')) IN ('refral', 'referral'))
+          OR
+          (LOWER(@CompID) <> 'comp-1669' AND (
+              BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+              OR NOT EXISTS (
+                  SELECT 1 
+                  FROM BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
+                  INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+                  INNER JOIN #UserScans US WITH (NOLOCK) ON MC.M_Codeid = US.M_Codeid
+                  WHERE BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+              )
+          ))
       );
 
-    ---------------------------------------------------------
-    -- Calculate specific totals for this consumer
     DECLARE @BPointsAmount DECIMAL(18,2) = 0;
     SELECT @BPointsAmount = ISNULL(SUM(ISNULL(RedeemPoints, 0)), 0)
     FROM BPointsTransaction WITH (NOLOCK)
     INNER JOIN @CompanyList CL ON companyid = CL.Comp_Id
     WHERE bpstatus IN ('Accepted', 'SUCCESS')
       AND RedeemBy = @M_Consumerid
-      AND (@CompID <> 'Comp-1669' OR Redeemdate >= '2026-09-08 17:27:20.650');
+      AND (@CompID <> 'Comp-1669' OR Redeemdate >= '2026-09-03 00:00:00.000');
 
     DECLARE @TransactionsAmount DECIMAL(18,2) = 0;
     SELECT @TransactionsAmount = ISNULL(SUM(ISNULL(CAST(Amount AS DECIMAL(18,2)), 0)), 0)
@@ -311,7 +279,7 @@ BEGIN
         @CompID <> 'Comp-1152'
         OR TransactionDate > '2022-11-25'
       )
-      AND (@CompID <> 'Comp-1669' OR TransactionDate >= '2026-09-08 17:27:20.650');
+      AND (@CompID <> 'Comp-1669' OR TransactionDate >= '2026-09-03 00:00:00.000');
 
     DECLARE @UPIAmount DECIMAL(18,2) = 0;
     SELECT @UPIAmount = ISNULL(SUM(ISNULL(Amount, 0)), 0)
@@ -320,7 +288,7 @@ BEGIN
       AND Status = 'Success'
       AND LEN(Code1) > 3
       AND M_Consumerid = CAST(@M_Consumerid AS VARCHAR(50))
-      AND (@CompID <> 'Comp-1669' OR ReqDate >= '2026-09-08 17:27:20.650');
+      AND (@CompID <> 'Comp-1669' OR ReqDate >= '2026-09-03 00:00:00.000');
 
     DECLARE @ClaimsAmount DECIMAL(18,2) = 0;
     SELECT @ClaimsAmount = ISNULL(SUM(CASE WHEN ISNULL(Amount, 0) > 0 THEN Amount ELSE ISNULL(TRY_CONVERT(NUMERIC(18,2), PointsValue), 0) END), 0)
@@ -328,7 +296,7 @@ BEGIN
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
     WHERE Isapproved <> 2
       AND RIGHT(CD.Mobileno, 10) = RIGHT(@MobileNo, 10)
-      and @CompID = cl.comp_id AND ( @CompID <> 'Comp-1669' or  (@CompID = 'Comp-1669' and CD.Claim_date >= '2026-09-08 17:27:20.650'));
+      and @CompID = cl.comp_id AND ( @CompID <> 'Comp-1669' or  (@CompID = 'Comp-1669' and CD.Claim_date >= '2026-09-03 00:00:00.000'));
 
     DECLARE @PaytmAmount DECIMAL(18,2) = 0;
     SELECT @PaytmAmount = ISNULL(SUM(ISNULL(CAST(Amount AS DECIMAL(18,2)), 0)), 0)
@@ -343,13 +311,11 @@ BEGIN
               WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0
           )
           OR RIGHT(PT.mobileno, 10) = RIGHT(@MobileNo, 10)
-      )
-      AND (@CompID <> 'Comp-1669' OR PT.pdate >= '2026-09-08 17:27:20.650');
+      );
 
     DECLARE @RedeemAmount DECIMAL(18,2) = 0;
     SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount + @PaytmAmount;
 
-    -- Calculate precise counts using SP_BL_GetCodesActivityReport_AI logic
     DECLARE @SuccessCodeCount INT = 0;
     SELECT @SuccessCodeCount = COUNT(*)
     FROM #UserScans US
@@ -367,7 +333,6 @@ BEGIN
     INNER JOIN Pro_Reg PR WITH (NOLOCK) ON PR.Pro_ID = M.Pro_ID
     WHERE RIGHT(pe.MobileNo, 10) = RIGHT(@MobileNo, 10)
       AND PR.Comp_ID = @CompID
-      -- Count ONLY 'Already Scanned' (Is_Success = '2')
       AND pe.Is_Success = '2';
 
     DECLARE @InvalidCodeCount INT = 0;
@@ -420,7 +385,6 @@ BEGIN
         SET @Comp1669TotalPoints = CAST(@Comp1669PointsEarnedSum + @Comp1669RefSum AS DECIMAL(18,2));
     END
 
-    -- Result Set 1: Overall Stats
     SELECT 
         (@SuccessCodeCount + @UnsuccessCodeCount + @InvalidCodeCount) as TotalCode,
         @RedeemAmount as ReedemPoints,
@@ -451,7 +415,6 @@ BEGIN
         RETURN;
     END
 
-    -- Result Set 2: Service-Wise Stats
     SELECT 
         ms.Service_ID,
         ms_name.ServiceName,
@@ -462,16 +425,14 @@ BEGIN
     LEFT JOIN #ConfiguredPoints cp ON cp.Service_ID = ms.Service_ID
     WHERE ms.Comp_ID = @CompID
     UNION ALL
-    -- Include Referral/KYC if they have data
     SELECT 
-        'SRV1000' as Service_ID, -- Generic ID for other rewards
+        'SRV1000' as Service_ID,
         'Other Rewards' as ServiceName,
         RefPoints as ServiceTotalPoints,
         RefCash as ServiceTotalCash
     FROM #ReferralStats
     WHERE RefPoints > 0 OR RefCash > 0;
 
-    -- Result Set 3: Claim Amounts Service-Wise
     SELECT Service_ID, SUM(ClaimAmount) as ClaimAmount
     FROM (
         SELECT 
@@ -492,3 +453,4 @@ BEGIN
     ) t
     GROUP BY Service_ID;
 END
+GO

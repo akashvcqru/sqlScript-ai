@@ -30,14 +30,11 @@ BEGIN
     BEGIN
         SELECT 
             CAST(NULL AS INT) AS M_CodeID,
-            CAST(NULL AS VARCHAR(50)) AS Code1,
-            CAST(NULL AS VARCHAR(50)) AS Code2,
             CAST(NULL AS VARCHAR(100)) AS Code,
             CAST(NULL AS VARCHAR(50)) AS Pro_ID,
             CAST(NULL AS VARCHAR(20)) AS Series_Order,
             CAST(NULL AS VARCHAR(20)) AS Series_Serial,
             CAST(NULL AS VARCHAR(100)) AS Series,
-            CAST(NULL AS VARCHAR(50)) AS Comp_ID,
             CAST(NULL AS VARCHAR(20)) AS AssignStatus
         WHERE 1 = 0;
         RETURN;
@@ -90,14 +87,11 @@ BEGIN
     BEGIN
         SELECT 
             CAST(NULL AS INT) AS M_CodeID,
-            CAST(NULL AS VARCHAR(50)) AS Code1,
-            CAST(NULL AS VARCHAR(50)) AS Code2,
             CAST(NULL AS VARCHAR(100)) AS Code,
             CAST(NULL AS VARCHAR(50)) AS Pro_ID,
             CAST(NULL AS VARCHAR(20)) AS Series_Order,
             CAST(NULL AS VARCHAR(20)) AS Series_Serial,
             CAST(NULL AS VARCHAR(100)) AS Series,
-            CAST(NULL AS VARCHAR(50)) AS Comp_ID,
             CAST(NULL AS VARCHAR(20)) AS AssignStatus
         WHERE 1 = 0;
         RETURN;
@@ -107,14 +101,11 @@ BEGIN
     BEGIN
         SELECT 
             CAST(NULL AS INT) AS M_CodeID,
-            CAST(NULL AS VARCHAR(50)) AS Code1,
-            CAST(NULL AS VARCHAR(50)) AS Code2,
             CAST(NULL AS VARCHAR(100)) AS Code,
             CAST(NULL AS VARCHAR(50)) AS Pro_ID,
             CAST(NULL AS VARCHAR(20)) AS Series_Order,
             CAST(NULL AS VARCHAR(20)) AS Series_Serial,
             CAST(NULL AS VARCHAR(100)) AS Series,
-            CAST(NULL AS VARCHAR(50)) AS Comp_ID,
             CAST(NULL AS VARCHAR(20)) AS AssignStatus
         WHERE 1 = 0;
         RETURN;
@@ -125,14 +116,11 @@ BEGIN
         ;WITH CodeList AS (
             SELECT DISTINCT 
                 m.Row_ID AS M_CodeID, 
-                m.Code1,  
-                m.Code2, 
-                CONCAT(m.Code1, '-', m.Code2) AS Code,
+                CONCAT(m.Code1, m.Code2) AS Code,
                 m.Pro_ID,  
                 m.Series_Order,  
                 m.Series_Serial, 
                 CONCAT(m.Pro_ID, '-', m.Series_Order, '-', m.Series_Serial) AS Series,
-                p.Comp_ID,
                 CASE WHEN a.M_CodeID IS NOT NULL THEN 'Already Assigned' ELSE 'Fresh' END AS AssignStatus
             FROM [dbo].[M_Code] m WITH (NOLOCK)
             INNER JOIN [dbo].[pro_reg] p WITH (NOLOCK) ON p.Pro_ID = m.Pro_ID
@@ -145,14 +133,11 @@ BEGIN
         )
         SELECT 
             M_CodeID,
-            Code1,
-            Code2,
             Code,
             Pro_ID,
             CAST(Series_Order AS VARCHAR(20)) AS Series_Order,
             CAST(Series_Serial AS VARCHAR(20)) AS Series_Serial,
             Series,
-            Comp_ID,
             AssignStatus
         FROM CodeList
         ORDER BY Series_Order, Series_Serial;
@@ -162,14 +147,11 @@ BEGIN
         ;WITH CodeList AS (
             SELECT DISTINCT 
                 m.Row_ID AS M_CodeID, 
-                m.Code1,  
-                m.Code2, 
-                CONCAT(m.Code1, '-', m.Code2) AS Code,
+                CONCAT(m.Code1, m.Code2) AS Code,
                 m.Pro_ID,  
                 m.Series_Order,  
                 m.Series_Serial, 
                 CONCAT(m.Pro_ID, '-', m.Series_Order, '-', m.Series_Serial) AS Series,
-                p.Comp_ID,
                 CASE WHEN a.M_CodeID IS NOT NULL THEN 'Already Assigned' ELSE 'Fresh' END AS AssignStatus
             FROM [dbo].[M_Code] m WITH (NOLOCK)
             INNER JOIN [dbo].[pro_reg] p WITH (NOLOCK) ON p.Pro_ID = m.Pro_ID
@@ -185,14 +167,11 @@ BEGIN
         )
         SELECT 
             M_CodeID,
-            Code1,
-            Code2,
             Code,
             Pro_ID,
             CAST(Series_Order AS VARCHAR(20)) AS Series_Order,
             CAST(Series_Serial AS VARCHAR(20)) AS Series_Serial,
             Series,
-            Comp_ID,
             AssignStatus
         FROM CodeList
         ORDER BY Series_Order, Series_Serial;

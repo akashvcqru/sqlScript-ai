@@ -169,8 +169,7 @@ BEGIN
             Dealer_ID AS DealerId,
             Dealer_Name AS DealerName,
             CAST(ISNULL(Status, 1) AS INT) AS Status,
-            Entry_Date AS EntryDate,
-            Comp_ID AS CompId
+            Entry_Date AS EntryDate
         FROM [dbo].[DealerDetailMiniMax] WITH (NOLOCK)
         WHERE Comp_ID = @Comp_Id
           AND (@StartDate IS NULL OR Entry_Date >= @StartDate)
