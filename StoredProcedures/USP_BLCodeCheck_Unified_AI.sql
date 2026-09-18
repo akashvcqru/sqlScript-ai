@@ -207,12 +207,18 @@ BEGIN
         BEGIN
             -- Identify Code and Product
             DECLARE @Batch_No NVARCHAR(100) = NULL;
-            SELECT @M_Codeid = Row_ID, @Pro_ID = Pro_ID, @Batch_No = Batch_No FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2;
+            SELECT @M_Codeid = Row_ID, @Pro_ID = Pro_ID, @Batch_No = Batch_No 
+            FROM M_Code 
+            WHERE Code1 = @Code1 AND Code2 = @Code2
+              AND (ScrapeFlag IS NULL OR ScrapeFlag = 0);
 
             IF @M_Codeid = 0 OR @M_Codeid IS NULL
             BEGIN
                 -- Try M_Code_PFL for specific ranges if needed
-                SELECT @M_Codeid = Row_ID, @Pro_ID = Pro_ID, @Batch_No = Batch_No FROM M_Code_PFL WHERE Code1 = @Code1 AND Code2 = @Code2;
+                SELECT @M_Codeid = Row_ID, @Pro_ID = Pro_ID, @Batch_No = Batch_No 
+                FROM M_Code_PFL 
+                WHERE Code1 = @Code1 AND Code2 = @Code2
+                  AND (ScrapeFlag IS NULL OR ScrapeFlag = 0);
             END
 
             IF @M_Codeid > 0
@@ -380,6 +386,9 @@ BEGIN
             END
             ELSE
             BEGIN
+                INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, City, State, PinCode)
+                VALUES (@Code1, @Code2, @CleanMobile, 'WEB', 'LoyaltyAPI_InvalidCode', '0', GETDATE(), @Comp_ID, @Latitude, @Longitude, @City, @State, @PinCode);
+
                 SET @ResultCode = 0; -- Invalid Code
                 SET @Message = 'Invalid code. Please check and try again.';
             END

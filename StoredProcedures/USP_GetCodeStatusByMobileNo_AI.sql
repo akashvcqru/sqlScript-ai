@@ -5,6 +5,7 @@ GO
 -- =============================================
 -- Author:      AI
 -- Create date: 2026-04-28
+-- Updated:     2026-09-17 (Support SRV1018 Authenticate/Re-Authenticate for Anti-Counterfeit and strict frequency enforcement)
 -- Description: Get code status details and summary for a specific mobile number
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetCodeStatusByMobileNo_AI]
@@ -45,14 +46,15 @@ BEGIN
     DECLARE @NormalizedMobile NVARCHAR(10) = RIGHT(LTRIM(RTRIM(@MobileNo)), 10);
 
     ---------------------------------------------------------
-    -- Subscription Temp Table
+    -- Subscription Temp Table (for PFL / Comp-1152)
     ---------------------------------------------------------
     IF OBJECT_ID('tempdb..#temp1') IS NOT NULL DROP TABLE #temp1;
 
     SELECT 
         sst.SST_Id,
-        sst.Points,
-        sst.IsCash,
+        ISNULL(sst.Points, 0) AS Points,
+        ISNULL(sst.IsCash, 0) AS IsCash,
+        ISNULL(sst.Frequency, 1) AS Frequency,
         ss.Pro_ID,
         ss.start_order,
         ss.start_series,
@@ -60,13 +62,12 @@ BEGIN
         ss.end_series,
         ss.Service_ID
     INTO #temp1
-    FROM M_ServiceSubscriptionTrans sst
-    INNER JOIN M_ServiceSubscription ss 
-        ON sst.Subscribe_Id = ss.Subscribe_Id
-    INNER JOIN Pro_Reg pr 
+    FROM M_ServiceSubscription ss WITH (NOLOCK)
+    LEFT JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK)
+        ON sst.Subscribe_Id = ss.Subscribe_Id AND sst.IsActive = 1 AND sst.IsDelete = 0
+    INNER JOIN Pro_Reg pr WITH (NOLOCK)
         ON pr.Pro_id = ss.Pro_ID
     WHERE (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))
-      AND sst.IsActive = 1 AND sst.IsDelete = 0
       AND ss.IsActive = 1 AND ss.IsDelete = 0;
 
     ---------------------------------------------------------
@@ -92,9 +93,13 @@ BEGIN
 
     IF @ActualCompId = 'Comp-1693'
     BEGIN
-        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint)
+        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint, Result)
         SELECT
-            CASE WHEN PE.Status = 'Authenticate' THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
+            CASE 
+                WHEN PE.Status = 'Authenticate' THEN 'Authenticate'
+                WHEN PE.Status = 'Re-Authenticate' THEN 'Re-Authenticate'
+                ELSE 'Unsuccess'
+            END AS CodeStatus,
             CAST(CASE WHEN PE.Status = 'Authenticate' THEN 
                 CASE 
                     WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0)
@@ -106,8 +111,8 @@ BEGIN
             ISNULL(PE.Code1V, '') + ISNULL(PE.Code2V, '') AS UniqueCode,
             PE.MobileNo,
             ISNULL(PE.Dial_Mode, 'Web') AS Dial_Mode,
-            PE.Pro_Name,
-            PE.Batch_No,
+            ISNULL(PE.Pro_Name, pr.Pro_Name) AS Pro_Name,
+            ISNULL(PE.Batch_No, mc.Batch_No) AS Batch_No,
             ISNULL(PE.IsVerified, 0) AS ImageVerified,
             CAST(CASE WHEN PE.Status = 'Authenticate' THEN
                 CASE 
@@ -120,12 +125,17 @@ BEGIN
                     WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(BL.Cash, 0) 
                     ELSE CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END
                 END
-            ELSE 0 END AS DECIMAL(18,2)) AS WornPoint
+            ELSE 0 END AS DECIMAL(18,2)) AS WornPoint,
+            CASE 
+                WHEN PE.Status = 'Authenticate' THEN 'Authenticate'
+                WHEN PE.Status = 'Re-Authenticate' THEN 'Re-Authenticate'
+                ELSE 'Invalid'
+            END AS Result
         FROM pfl_codecheckData PE WITH (NOLOCK)
-        INNER JOIN M_Code_PFL mc WITH (NOLOCK)
+        LEFT JOIN M_Code_PFL mc WITH (NOLOCK)
             ON mc.Code1 = PE.Code1V
            AND mc.Code2 = PE.Code2V
-        INNER JOIN Pro_Reg pr WITH (NOLOCK)
+        LEFT JOIN Pro_Reg pr WITH (NOLOCK)
             ON pr.Pro_ID = mc.Pro_ID
         LEFT JOIN #temp1 sd 
             ON sd.Pro_ID = mc.Pro_Id
@@ -143,8 +153,7 @@ BEGIN
            AND BL.Code2 = PE.Code2V
            AND (BL.compid = @ActualCompId OR REPLACE(BL.compid, '-', '') = REPLACE(@ActualCompId, '-', '') OR BL.compid IS NULL)
            AND BL.M_Consumerid = mc_c.M_Consumerid
-        WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile
-          AND (pr.Comp_ID = @ActualCompId OR REPLACE(pr.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
+        WHERE RIGHT(PE.MobileNo, 10) = @NormalizedMobile;
     END
     ELSE IF @ActualCompId = 'Comp-1152'
     BEGIN
@@ -154,12 +163,21 @@ BEGIN
             SET @IsSBUTeam = 1;
         END
 
-        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint)
+        INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint, Result)
         SELECT 
-            CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint
+            CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint, Result
         FROM (
             SELECT
-                CASE WHEN pc.Is_Success = 1 THEN 'Success' ELSE 'Unsuccess' END AS CodeStatus,
+                CASE 
+                    WHEN CHARINDEX('SRV1018', ISNULL(sd.Service_ID, '')) > 0 THEN
+                        CASE 
+                            WHEN pc.Is_Success = 1 THEN 'Authenticate'
+                            WHEN pc.Is_Success = 2 THEN 'Re-Authenticate'
+                            ELSE 'Unsuccess'
+                        END
+                    ELSE
+                        CASE WHEN pc.Is_Success = 1 THEN 'Success' ELSE 'Unsuccess' END
+                END AS CodeStatus,
                 CAST(CASE WHEN pc.Is_Success = 1 THEN 
                     CASE 
                         WHEN sd.Service_ID = 'SRV1005' THEN ISNULL(sd.IsCash, 0)
@@ -186,6 +204,20 @@ BEGIN
                         ELSE CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END
                     END
                 ELSE 0 END AS DECIMAL(18,2)) AS WornPoint,
+                CASE 
+                    WHEN CHARINDEX('SRV1018', ISNULL(sd.Service_ID, '')) > 0 THEN
+                        CASE 
+                            WHEN pc.Is_Success = 1 THEN 'Authenticate'
+                            WHEN pc.Is_Success = 2 THEN 'Re-Authenticate'
+                            ELSE 'Invalid'
+                        END
+                    ELSE
+                        CASE 
+                            WHEN pc.Is_Success = 1 THEN 'Verified'
+                            WHEN pc.Is_Success = 2 THEN 'Already Scanned'
+                            ELSE 'Invalid'
+                        END
+                END AS Result,
                 ROW_NUMBER() OVER (
                     PARTITION BY pc.Code1, pc.Code2
                     ORDER BY pc.Enq_Date DESC
@@ -237,26 +269,33 @@ BEGIN
             M.Row_ID AS M_Codeid,
             M.Series_Order,
             M.Series_Serial,
-            M.Batch_No
+            M.Batch_No,
+            ISNULL(NULLIF(M.reassignProid, ''), M.Pro_ID) AS Pro_ID
         INTO #Enq
         FROM Pro_Enq PE WITH (NOLOCK)
         INNER JOIN M_code M WITH (NOLOCK)
-            ON PE.Received_Code1 = CAST(M.code1 AS VARCHAR(50))
-           AND PE.Received_Code2 = CAST(M.Code2 AS VARCHAR(50))
+            ON (PE.Received_Code1 = CAST(M.code1 AS VARCHAR(50)) AND PE.Received_Code2 = CAST(M.Code2 AS VARCHAR(50)))
+            OR (
+                LTRIM(RTRIM(ISNULL(CAST(PE.Received_Code1 AS VARCHAR(50)), ''))) + LTRIM(RTRIM(ISNULL(CAST(PE.Received_Code2 AS VARCHAR(50)), '')))
+                = LTRIM(RTRIM(CAST(M.code1 AS VARCHAR(50)))) + LTRIM(RTRIM(CAST(M.Code2 AS VARCHAR(50))))
+            )
         INNER JOIN Pro_Reg PR WITH (NOLOCK)
-            ON PR.Pro_ID = M.Pro_ID
+            ON PR.Pro_ID = ISNULL(NULLIF(M.reassignProid, ''), M.Pro_ID)
         WHERE (PR.Comp_ID = @ActualCompId OR REPLACE(PR.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))
           AND RIGHT(PE.MobileNo, 10) = @NormalizedMobile;
 
-        IF OBJECT_ID('tempdb..#Codes') IS NOT NULL DROP TABLE #Codes;
-        SELECT DISTINCT Received_Code1, Received_Code2 INTO #Codes FROM #Enq;
-
         IF OBJECT_ID('tempdb..#MCode') IS NOT NULL DROP TABLE #MCode;
         SELECT 
-            MCd.Code1, MCd.Code2, MCd.Pro_ID, MCd.Series_Order, MCd.Series_Serial, MCd.Row_ID AS M_Codeid, MCd.Batch_No
+            MCd.Code1, 
+            MCd.Code2, 
+            ISNULL(NULLIF(MCd.reassignProid, ''), MCd.Pro_ID) AS Pro_ID, 
+            MCd.Series_Order, 
+            MCd.Series_Serial, 
+            MCd.Row_ID AS M_Codeid, 
+            MCd.Batch_No
         INTO #MCode
         FROM M_Code MCd WITH (NOLOCK)
-        INNER JOIN #Codes C ON MCd.Code1 = C.Received_Code1 AND MCd.Code2 = C.Received_Code2;
+        WHERE MCd.Row_ID IN (SELECT DISTINCT M_Codeid FROM #Enq);
 
         IF OBJECT_ID('tempdb..#Pro') IS NOT NULL DROP TABLE #Pro;
         SELECT Pro_ID, Pro_Name INTO #Pro FROM Pro_Reg WITH (NOLOCK) WHERE (Comp_ID = @ActualCompId OR REPLACE(Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''));
@@ -295,34 +334,46 @@ BEGIN
         IF OBJECT_ID('tempdb..#CodeConfigPoints') IS NOT NULL DROP TABLE #CodeConfigPoints;
         WITH RankedConfig AS (
             SELECT 
-                MC.M_Codeid, SS.Service_ID, SST.Frequency,
+                MC.M_Codeid, 
+                SS.Service_ID, 
+                ISNULL(SST.Frequency, 1) AS Frequency,
                 CAST(CASE WHEN SST.Points IS NULL OR SST.Points = 0 THEN ISNULL(SST.IsCash, 0) ELSE SST.Points END AS DECIMAL(18,2)) AS ConfigPoints,
                 CAST(CASE WHEN SS.Service_ID = 'SRV1005' THEN ISNULL(SST.IsCash, 0) ELSE ISNULL(SST.Points, 0) END AS DECIMAL(18,2)) AS AssignPoint,
-                ROW_NUMBER() OVER (PARTITION BY MC.M_Codeid, SS.Service_ID ORDER BY SST.Entry_Date DESC, SST.SST_Id DESC) AS rn_service,
-                SST.Entry_Date, SST.SST_Id
+                ROW_NUMBER() OVER (PARTITION BY MC.M_Codeid, SS.Service_ID ORDER BY SST.Entry_Date DESC, SST.SST_Id DESC) AS rn_service
             FROM #MCode MC
             INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SS.Pro_ID = MC.Pro_ID
-            INNER JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id
-            WHERE (SS.Comp_ID = @ActualCompId OR REPLACE(SS.Comp_ID, '-', '') = REPLACE(@ActualCompId, '-', ''))
-              AND SS.IsActive = 1 AND SS.IsDelete = 0 AND SST.IsActive = 1 AND SST.IsDelete = 0
-              AND SS.Service_ID IN ('SRV1001', 'SRV1005', 'SRV1029', 'SRV1023')
-              AND (MC.Series_Order > SS.start_order OR (MC.Series_Order = SS.start_order AND MC.Series_Serial >= SS.start_series))
-              AND (MC.Series_Order < SS.end_order OR (MC.Series_Order = SS.end_order AND MC.Series_Serial <= SS.end_series))
-        ),
-        UniqueServiceConfig AS ( SELECT * FROM RankedConfig WHERE rn_service = 1 ),
-        FinalRankedConfig AS (
-            SELECT M_Codeid, Frequency, ConfigPoints, AssignPoint,
-                ROW_NUMBER() OVER (PARTITION BY M_Codeid ORDER BY Entry_Date DESC, SST_Id DESC) AS rn_final
-            FROM UniqueServiceConfig
+            LEFT JOIN M_ServiceSubscriptionTrans SST WITH (NOLOCK) 
+                ON SST.Subscribe_Id = SS.Subscribe_Id AND SST.IsActive = 1 AND SST.IsDelete = 0
+            WHERE SS.IsActive = 1 AND SS.IsDelete = 0
+              AND (SS.start_order IS NULL OR MC.Series_Order IS NULL OR MC.Series_Order > SS.start_order OR (MC.Series_Order = SS.start_order AND MC.Series_Serial >= SS.start_series))
+              AND (SS.end_order IS NULL OR MC.Series_Order IS NULL OR MC.Series_Order < SS.end_order OR (MC.Series_Order = SS.end_order AND MC.Series_Serial <= SS.end_series))
         )
-        SELECT M_Codeid, Frequency, ConfigPoints, AssignPoint INTO #CodeConfigPoints FROM FinalRankedConfig WHERE rn_final = 1;
+        SELECT 
+            M_Codeid,
+            ISNULL(MAX(Frequency), 1) AS Frequency,
+            MAX(ConfigPoints) AS ConfigPoints,
+            MAX(AssignPoint) AS AssignPoint,
+            STRING_AGG(Service_ID, ', ') AS Service_ID
+        INTO #CodeConfigPoints
+        FROM RankedConfig
+        WHERE rn_service = 1
+        GROUP BY M_Codeid;
 
         -- Insert Scan Enquiries
         INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint, Result)
         SELECT 
             CASE 
-                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Success'
-                ELSE 'Unsuccess'
+                WHEN CHARINDEX('SRV1018', ISNULL(CP.Service_ID, '')) > 0 THEN
+                    CASE 
+                        WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Authenticate'
+                        WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Re-Authenticate'
+                        ELSE 'Unsuccess'
+                    END
+                ELSE
+                    CASE 
+                        WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Success'
+                        ELSE 'Unsuccess'
+                    END
             END AS CodeStatus,
             CASE 
                 WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 
@@ -342,24 +393,33 @@ BEGIN
                 CASE WHEN ISNULL(P.WornPoint, 0) > 0 THEN P.WornPoint ELSE ISNULL(CP.ConfigPoints, 0) END
             ELSE 0 END AS WornPoint,
             CASE 
-                WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Verified'
-                WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Already Scanned'
-                ELSE 'Invalid'
+                WHEN CHARINDEX('SRV1018', ISNULL(CP.Service_ID, '')) > 0 THEN
+                    CASE 
+                        WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Authenticate'
+                        WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Re-Authenticate'
+                        ELSE 'Invalid'
+                    END
+                ELSE
+                    CASE 
+                        WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.Frequency, 1) THEN 'Verified'
+                        WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.Frequency, 1)) THEN 'Already Scanned'
+                        ELSE 'Invalid'
+                    END
             END AS Result
         FROM
         (
             SELECT *,
-                   CASE WHEN Is_Success = 1 
-                        THEN ROW_NUMBER() OVER (PARTITION BY Received_Code1, Received_Code2, Is_Success ORDER BY Enq_Date)
-                        ELSE 1 END AS rn
+                   ROW_NUMBER() OVER (
+                       PARTITION BY Received_Code1, Received_Code2, Is_Success 
+                       ORDER BY Enq_Date ASC
+                   ) AS rn
             FROM #Enq
         ) E
         LEFT JOIN M_Consumer MC WITH (NOLOCK) ON MC.MobileNo = E.MobileNo AND MC.IsDelete = '0'
         LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid
         LEFT JOIN #MCode MCd ON MCd.M_Codeid = E.M_Codeid
         LEFT JOIN #Pro PR ON PR.Pro_ID = MCd.Pro_ID
-        LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid
-        WHERE (E.Is_Success != 1 OR E.rn <= ISNULL(CP.Frequency, 1));
+        LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid;
 
         -- Insert Referrals
         INSERT INTO #FinalData (CodeStatus, Points, IsCash, Enq_Date, UniqueCode, MobileNo, Dial_Mode, Pro_Name, Batch_No, ImageVerified, AssignPoint, WornPoint, Result)
@@ -421,8 +481,8 @@ BEGIN
     -- Calculate Summary Counts
     ---------------------------------------------------------
     DECLARE @TotalScans BIGINT = (SELECT COUNT(*) FROM #FinalData);
-    DECLARE @SuccessScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE Result = 'Verified' OR (CodeStatus = 'Success' AND UniqueCode <> ''));
-    DECLARE @FailedScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE CodeStatus = 'Unsuccess' OR Result IN ('Already Scanned', 'Invalid'));
+    DECLARE @SuccessScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE Result IN ('Verified', 'Authenticate') OR (CodeStatus IN ('Success', 'Authenticate') AND UniqueCode <> ''));
+    DECLARE @FailedScans BIGINT = (SELECT COUNT(*) FROM #FinalData WHERE CodeStatus IN ('Unsuccess', 'Re-Authenticate') OR Result IN ('Already Scanned', 'Invalid', 'Re-Authenticate'));
 
     ---------------------------------------------------------
     -- DETAILS RESULT

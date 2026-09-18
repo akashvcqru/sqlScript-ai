@@ -122,6 +122,62 @@ BEGIN
         RETURN;
     END
 
+    -- Clean up @Comp_ID
+    IF @Comp_ID = 'DEFAULT' OR RTRIM(LTRIM(@Comp_ID)) = ''
+    BEGIN
+        SET @Comp_ID = NULL;
+    END
+
+    -- If a specific Company ID is specified, validate that code belongs to that company
+    IF @Comp_ID IS NOT NULL AND @ActualCompID <> @Comp_ID
+    BEGIN
+        INSERT INTO Pro_Enq (
+            Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, 
+            Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, City, state, PinCode,
+            IsActive, IsDelete, Created_Date
+        )
+        VALUES (
+            @Code1, @Code2, RIGHT(ISNULL(@MobileNo, ''), 10), 'Website', 'Warranty_CompanyMismatch', 
+            '0', GETDATE(), @Comp_ID, @Latitude, @Longitude, @City, @State, @PinCode,
+            1, 0, GETDATE()
+        );
+
+        SET @ResultCode = 0;
+        SET @Message = 'INVALID: Invalid Code. This code does not belong to the selected company.';
+        SELECT 
+            @ResultCode AS ResultCode, 
+            @Message AS [Message],
+            NULL AS ProductName,
+            NULL AS BrandName,
+            @Comp_ID AS CompId,
+            NULL AS ProductImage,
+            0 AS WarrantyPeriod,
+            NULL AS ExpirationDate,
+            @ProID AS ProId;
+        RETURN;
+    END
+
+    -- Check if company is active in Comp_Reg
+    DECLARE @CompStatus NUMERIC(18, 0) = NULL;
+    SELECT TOP 1 @CompStatus = Status FROM Comp_Reg WITH (NOLOCK) WHERE Comp_ID = @ActualCompID;
+
+    IF @CompStatus = 0
+    BEGIN
+        SET @ResultCode = 3;
+        SET @Message = 'Service for this company is currently inactive. Please contact customer support for assistance.';
+        SELECT 
+            @ResultCode AS ResultCode, 
+            @Message AS [Message],
+            NULL AS ProductName,
+            NULL AS BrandName,
+            @ActualCompID AS CompId,
+            NULL AS ProductImage,
+            0 AS WarrantyPeriod,
+            NULL AS ExpirationDate,
+            @ProID AS ProId;
+        RETURN;
+    END
+
     -- Check Service Subscription for E-Warranty (@ResolvedServiceId)
     DECLARE @Subscribe_Id NVARCHAR(100) = NULL;
     SELECT TOP 1 @Subscribe_Id = Subscribe_Id 
