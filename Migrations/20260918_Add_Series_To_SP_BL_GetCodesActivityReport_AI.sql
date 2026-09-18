@@ -118,10 +118,10 @@ BEGIN
     ----------------------------------------------------
     -- Multiplier
     ----------------------------------------------------
-    DECLARE @Multiplier DECIMAL(18,2) = 1.0;
-    SELECT @Multiplier = ISNULL(Point_Multiplier, 1.0)
-    FROM Comp_Reg
-    WHERE Comp_ID = @Comp_Id;
+    DECLARE @Multiplier DECIMAL(18,2) = 1.00;
+    SELECT TOP 1 @Multiplier = 1.00 + (ISNULL(TRY_CAST(calculation_value AS DECIMAL(18,2)), 0.00) / 100.0) 
+    FROM loyalty_calculation WITH (NOLOCK)
+    WHERE comp_id = @Comp_Id AND isactive = 1 AND isdelete = 0;
 
     ----------------------------------------------------
     -- Clean Search
