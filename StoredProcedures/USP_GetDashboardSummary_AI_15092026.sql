@@ -299,7 +299,7 @@ BEGIN
     INNER JOIN @CompanyList CL ON companyid = CL.Comp_Id
     WHERE bpstatus IN ('Accepted', 'SUCCESS')
       AND RedeemBy = @M_Consumerid
-      AND (@CompID <> 'Comp-1669' OR Redeemdate >= '2026-09-03 00:00:00.000');
+      AND (@CompID <> 'Comp-1669' OR Redeemdate >= '2026-09-08 17:27:20.650');
 
     DECLARE @TransactionsAmount DECIMAL(18,2) = 0;
     SELECT @TransactionsAmount = ISNULL(SUM(ISNULL(CAST(Amount AS DECIMAL(18,2)), 0)), 0)
@@ -311,7 +311,7 @@ BEGIN
         @CompID <> 'Comp-1152'
         OR TransactionDate > '2022-11-25'
       )
-      AND (@CompID <> 'Comp-1669' OR TransactionDate >= '2026-09-03 00:00:00.000');
+      AND (@CompID <> 'Comp-1669' OR TransactionDate >= '2026-09-08 17:27:20.650');
 
     DECLARE @UPIAmount DECIMAL(18,2) = 0;
     SELECT @UPIAmount = ISNULL(SUM(ISNULL(Amount, 0)), 0)
@@ -320,7 +320,7 @@ BEGIN
       AND Status = 'Success'
       AND LEN(Code1) > 3
       AND M_Consumerid = CAST(@M_Consumerid AS VARCHAR(50))
-      AND (@CompID <> 'Comp-1669' OR ReqDate >= '2026-09-03 00:00:00.000');
+      AND (@CompID <> 'Comp-1669' OR ReqDate >= '2026-09-08 17:27:20.650');
 
     DECLARE @ClaimsAmount DECIMAL(18,2) = 0;
     SELECT @ClaimsAmount = ISNULL(SUM(CASE WHEN ISNULL(Amount, 0) > 0 THEN Amount ELSE ISNULL(TRY_CONVERT(NUMERIC(18,2), PointsValue), 0) END), 0)
@@ -328,7 +328,7 @@ BEGIN
     INNER JOIN @CompanyList CL ON CD.Comp_id = CL.Comp_Id
     WHERE Isapproved <> 2
       AND RIGHT(CD.Mobileno, 10) = RIGHT(@MobileNo, 10)
-      and @CompID = cl.comp_id AND ( @CompID <> 'Comp-1669' or  (@CompID = 'Comp-1669' and CD.Claim_date >= '2026-09-03 00:00:00.000'));
+      and @CompID = cl.comp_id AND ( @CompID <> 'Comp-1669' or  (@CompID = 'Comp-1669' and CD.Claim_date >= '2026-09-08 17:27:20.650'));
 
     DECLARE @PaytmAmount DECIMAL(18,2) = 0;
     SELECT @PaytmAmount = ISNULL(SUM(ISNULL(CAST(Amount AS DECIMAL(18,2)), 0)), 0)
@@ -343,7 +343,8 @@ BEGIN
               WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0
           )
           OR RIGHT(PT.mobileno, 10) = RIGHT(@MobileNo, 10)
-      );
+      )
+      AND (@CompID <> 'Comp-1669' OR PT.pdate >= '2026-09-08 17:27:20.650');
 
     DECLARE @RedeemAmount DECIMAL(18,2) = 0;
     SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount + @PaytmAmount;
