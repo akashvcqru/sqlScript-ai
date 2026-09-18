@@ -67,10 +67,84 @@ BEGIN
 
     IF @RowID IS NULL
     BEGIN
+        DECLARE @InvalidLogCompID NVARCHAR(50) = @Comp_ID;
+        IF @InvalidLogCompID IS NULL OR @InvalidLogCompID = '' OR @InvalidLogCompID = 'DEFAULT'
+        BEGIN
+            SET @InvalidLogCompID = 'DEFAULT';
+        END
+
+        INSERT INTO Pro_Enq (
+            Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, 
+            Is_Success, Comp_ID, Latitude, Longitude, City, state, PinCode,
+            IsActive, IsDelete, Created_Date
+        )
+        VALUES (
+            @Mode, GETDATE(), 'Invalid Code Check', @MobileNo, @Code1, @Code2, 
+            '0', @InvalidLogCompID, @Lat, @Long, @City, @State, @PinCode,
+            1, 0, GETDATE()
+        );
+
         SET @ResultCode = 0;
         SET @Message = 'Invalid Code. Please check the 13-digit code and try again.';
-        SELECT @ResultCode AS ResultCode, @Message AS [Message];
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @InvalidLogCompID AS Comp_ID;
         RETURN;
+    END
+
+    -- Clean up @Comp_ID if passed as 'DEFAULT' or empty string
+    IF @Comp_ID = 'DEFAULT' OR RTRIM(LTRIM(@Comp_ID)) = ''
+    BEGIN
+        SET @Comp_ID = NULL;
+    END
+
+    -- If a specific Company ID is specified, validate that the code belongs to that company
+    IF @Comp_ID IS NOT NULL AND @CurrentCompID <> @Comp_ID
+    BEGIN
+        INSERT INTO Pro_Enq (
+            Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, 
+            Is_Success, Comp_ID, Latitude, Longitude, City, state, PinCode,
+            IsActive, IsDelete, Created_Date
+        )
+        VALUES (
+            @Mode, GETDATE(), 'Company Code Mismatch', @MobileNo, @Code1, @Code2, 
+            '0', @Comp_ID, @Lat, @Long, @City, @State, @PinCode,
+            1, 0, GETDATE()
+        );
+
+        SET @ResultCode = 0;
+        SET @Message = 'Invalid Code. This code does not belong to the selected company.';
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @Comp_ID AS Comp_ID;
+        RETURN;
+    END
+
+    -- Check if company is active in Comp_Reg
+    DECLARE @CompStatus NUMERIC(18, 0) = NULL;
+
+    SELECT TOP 1 
+        @CompStatus = Status
+    FROM Comp_Reg WITH (NOLOCK)
+    WHERE Comp_ID = @CurrentCompID;
+
+    IF @CompStatus = 0
+    BEGIN
+        SET @ResultCode = 3;
+        SET @Message = 'Service for this company is currently inactive. Please contact customer support for assistance.';
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
+        RETURN;
+    END
+
+    -- Check if company is inactive in SMS_Vendor_Config (if table exists)
+    IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SMS_Vendor_Config')
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM SMS_Vendor_Config WITH (NOLOCK)
+            WHERE Comp_Id = @CurrentCompID AND IsActive = 0
+        )
+        BEGIN
+            SET @ResultCode = 3;
+            SET @Message = 'Service for this company is currently inactive. Please contact customer support for assistance.';
+            SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
+            RETURN;
+        END
     END
 
     -- =========================================================================

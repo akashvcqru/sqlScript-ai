@@ -386,10 +386,15 @@ BEGIN
             WHEN LEN(ISNULL(MC.MobileNo,'')) >= 10 THEN RIGHT(MC.MobileNo, 10)
             ELSE ISNULL(MC.MobileNo,'')
         END AS MobileNo,
-        ISNULL(CAST(C.Code1 AS VARCHAR(50)) + CAST(C.Code2 AS VARCHAR(50)), '') AS UniqueCode,
+        COALESCE(
+            NULLIF(CAST(C.Code1 AS VARCHAR(50)) + CAST(C.Code2 AS VARCHAR(50)), ''),
+            NULLIF(CAST(C_Direct.Code1 AS VARCHAR(50)) + CAST(C_Direct.Code2 AS VARCHAR(50)), ''),
+            NULLIF(CAST(BL.Code1 AS VARCHAR(50)) + CAST(BL.Code2 AS VARCHAR(50)), ''),
+            ''
+        ) AS UniqueCode,
         ISNULL(
+            COALESCE(PR.Pro_Name, PR_Direct.Pro_Name),
             CASE 
-                WHEN PR.Pro_Name IS NOT NULL AND LTRIM(RTRIM(PR.Pro_Name)) <> '' THEN PR.Pro_Name
                 WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%repair%' THEN 'Repair Point'
                 WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%cash%' THEN 'Cash Transfer'
                 WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%kyc%' THEN 'KYC Bonus'
@@ -397,16 +402,21 @@ BEGIN
                 WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%bonus%' THEN 'Bonus Point'
                 WHEN LTRIM(RTRIM(ISNULL(BL.ServiceName, ''))) <> '' THEN BL.ServiceName + ' Point'
                 ELSE 'Bonus Point'
-            END, 'Bonus Point'
+            END
         ) AS Pro_Name,
         ISNULL(MS.ServiceName, ISNULL(NULLIF(BL.ServiceName, ''), 'Bonus')) AS ServiceName,
         BL.UpdateDate AS Enq_Date,
         '' AS Dial_Mode,
         CAST(SUM(CAST(
             CASE 
-                WHEN BL.compid = 'Comp-1669' AND BL.Points IS NOT NULL AND BL.Points > 0 THEN 
-                    CASE 
-                        WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](BL.Points)
+                WHEN BL.compid = 'Comp-1669' THEN
+                    CASE
+                        WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
+                            CASE 
+                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                                ELSE CAST(BL.Points AS DECIMAL(18,2))
+                            END
+                        WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN CAST(BL.Cash AS DECIMAL(18,2))
                         ELSE CAST(BL.Points AS DECIMAL(18,2))
                     END
                 WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash
@@ -414,7 +424,7 @@ BEGIN
             END AS DECIMAL(18,2)
         )) AS VARCHAR(50)) AS Points,
         CASE 
-            WHEN PR.Pro_Name IS NOT NULL AND LTRIM(RTRIM(PR.Pro_Name)) <> '' THEN 'Verified'
+            WHEN COALESCE(PR.Pro_Name, PR_Direct.Pro_Name) IS NOT NULL AND LTRIM(RTRIM(COALESCE(PR.Pro_Name, PR_Direct.Pro_Name))) <> '' THEN 'Verified'
             WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%kyc%' THEN 'KYC Point'
             WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%invoice%' THEN 'Invoice Point'
             WHEN LOWER(ISNULL(BL.ServiceName, '')) LIKE '%refral%' OR LOWER(ISNULL(BL.ServiceName, '')) LIKE '%referral%' THEN 'Referral Point'
@@ -433,6 +443,10 @@ BEGIN
     LEFT JOIN dbo.M_Consumer_M_Code MCMC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MCMC.M_Consumer_MCodeid
     LEFT JOIN dbo.M_Code C WITH (NOLOCK) ON MCMC.M_Codeid = C.Row_ID
     LEFT JOIN dbo.Pro_Reg PR WITH (NOLOCK) ON C.Pro_ID = PR.Pro_ID
+    LEFT JOIN dbo.M_Code C_Direct WITH (NOLOCK)
+        ON C_Direct.Code1 = TRY_CAST(BL.Code1 AS BIGINT)
+       AND C_Direct.Code2 = TRY_CAST(BL.Code2 AS BIGINT)
+    LEFT JOIN dbo.Pro_Reg PR_Direct WITH (NOLOCK) ON C_Direct.Pro_ID = PR_Direct.Pro_ID
     LEFT JOIN dbo.M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.SST_Id = BL.SST_id
     LEFT JOIN dbo.M_ServiceSubscription SS WITH (NOLOCK) ON SS.Subscribe_Id = SST.Subscribe_Id
     LEFT JOIN dbo.M_Service MS WITH (NOLOCK) ON MS.Service_ID = SS.Service_ID
@@ -455,7 +469,7 @@ BEGIN
           OR MC.ConsumerName LIKE '%' + @Search + '%'
           OR BL.compid LIKE '%' + @Search + '%'
       )
-    GROUP BY BL.compid, CR.Comp_Name, BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, BL.UpdateDate, MS.ServiceName, BL.ServiceName, C.Code1, C.Code2, PR.Pro_Name;
+    GROUP BY BL.compid, CR.Comp_Name, BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, BL.UpdateDate, MS.ServiceName, BL.ServiceName, C.Code1, C.Code2, C_Direct.Code1, C_Direct.Code2, BL.Code1, BL.Code2, PR.Pro_Name, PR_Direct.Pro_Name;
 
     ----------------------------------------------------
     -- 6. TOTAL RECORDS (Result Set 1)

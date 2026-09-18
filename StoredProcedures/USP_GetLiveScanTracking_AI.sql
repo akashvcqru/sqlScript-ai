@@ -135,8 +135,8 @@ BEGIN
                 pe.Batch_No AS BatchNo,
                 pe.UniqueCode AS UniqueCode,
                 CASE 
-                    WHEN pe.Status = 'Authenticate' THEN 'Genuine'
-                    WHEN pe.Status = 'Re-Authenticate' THEN 'Duplicate'
+                    WHEN pe.Status = 'Authenticate' THEN 'Authenticate'
+                    WHEN pe.Status = 'Re-Authenticate' THEN 'Re-Authenticate'
                     ELSE 'Invalid' 
                 END AS ScanResult,
                 CASE WHEN pe.Status = 'Authenticate' THEN 'First' ELSE 'Repeat' END AS FirstOrRepeat,
@@ -195,7 +195,14 @@ BEGIN
             ImageVerified,
             COUNT(*) OVER() AS TotalRecords
         FROM ResultCTE
-        WHERE (@CodeStatusFilter IS NULL OR ScanResult = @CodeStatusFilter)
+        WHERE (
+            @CodeStatusFilter IS NULL 
+            OR ScanResult = @CodeStatusFilter
+            OR (@CodeStatusFilter = 'Genuine' AND ScanResult = 'Authenticate')
+            OR (@CodeStatusFilter = 'Duplicate' AND ScanResult = 'Re-Authenticate')
+            OR (@CodeStatusFilter = 'Authenticate' AND ScanResult = 'Authenticate')
+            OR (@CodeStatusFilter = 'Re-Authenticate' AND ScanResult = 'Re-Authenticate')
+        )
         ORDER BY ScanTimestamp DESC
         OFFSET (@PageNumber - 1) * @PageSize ROWS
         FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY
@@ -279,8 +286,8 @@ BEGIN
                 pe.CombinedCode AS UniqueCode,
                 CASE 
                     WHEN mc.VCode1 IS NULL THEN 'Invalid'
-                    WHEN pe.Is_Success = 2 THEN 'Duplicate'
-                    WHEN pe.Is_Success = 1 THEN 'Genuine'
+                    WHEN pe.Is_Success = 2 THEN 'Re-Authenticate'
+                    WHEN pe.Is_Success = 1 THEN 'Authenticate'
                     ELSE 'Invalid' 
                 END AS ScanResult,
                 CASE WHEN mc.Use_Count <= 1 THEN 'First' ELSE 'Repeat' END AS FirstOrRepeat,
@@ -346,7 +353,14 @@ BEGIN
             ImageVerified,
             COUNT(*) OVER() AS TotalRecords
         FROM ResultCTE
-        WHERE (@CodeStatusFilter IS NULL OR ScanResult = @CodeStatusFilter)
+        WHERE (
+            @CodeStatusFilter IS NULL 
+            OR ScanResult = @CodeStatusFilter
+            OR (@CodeStatusFilter = 'Genuine' AND ScanResult = 'Authenticate')
+            OR (@CodeStatusFilter = 'Duplicate' AND ScanResult = 'Re-Authenticate')
+            OR (@CodeStatusFilter = 'Authenticate' AND ScanResult = 'Authenticate')
+            OR (@CodeStatusFilter = 'Re-Authenticate' AND ScanResult = 'Re-Authenticate')
+        )
         ORDER BY ScanTimestamp DESC
         OFFSET (@PageNumber - 1) * @PageSize ROWS
         FETCH NEXT (CASE WHEN @IsExport = 1 THEN 1000000 ELSE @PageSize END) ROWS ONLY

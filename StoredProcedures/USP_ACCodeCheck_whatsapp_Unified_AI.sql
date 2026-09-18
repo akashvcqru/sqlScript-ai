@@ -20,7 +20,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @ResultCode INT = 1; -- 1: Success, 0: Invalid, 2: Already Used, 3: Error
+    DECLARE @ResultCode INT = 1; -- 1: Success, 0: Invalid, 2: Already Used, 3: Error / Inactive
     DECLARE @Message NVARCHAR(MAX) = '';
     DECLARE @RowID NUMERIC(12, 0);
     DECLARE @UseCount NUMERIC(5, 0);
@@ -73,19 +73,140 @@ BEGIN
 
     IF @RowID IS NULL
     BEGIN
+        DECLARE @InvalidLogCompID NVARCHAR(50) = @Comp_ID;
+        IF @InvalidLogCompID IS NULL OR @InvalidLogCompID = '' OR @InvalidLogCompID = 'DEFAULT'
+        BEGIN
+            SET @InvalidLogCompID = 'DEFAULT';
+        END
+
+        INSERT INTO Pro_Enq (
+            Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, 
+            Is_Success, Comp_ID, Latitude, Longitude, City, state, PinCode,
+            IsActive, IsDelete, Created_Date
+        )
+        VALUES (
+            @Mode, GETDATE(), 'WhatsApp_InvalidCode', @MobileNo, @Code1, @Code2, 
+            '0', @InvalidLogCompID, @Lat, @Long, @City, @State, @PinCode,
+            1, 0, GETDATE()
+        );
+
         SET @ResultCode = 0;
         SET @Message = 'Invalid Code. Please check the 13-digit code and try again.';
-        SELECT @ResultCode AS ResultCode, @Message AS [Message], @Comp_ID AS Comp_ID;
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @InvalidLogCompID AS Comp_ID;
         RETURN;
     END
 
-    -- If a specific Company ID is assigned to this WhatsApp phone number, validate that the code belongs to that company
+    -- If a specific Company ID is assigned to this WhatsApp channel / phone number, validate code belongs to that company
     IF @Comp_ID IS NOT NULL AND @CurrentCompID <> @Comp_ID
     BEGIN
+        INSERT INTO Pro_Enq (
+            Dial_Mode, Enq_Date, Mode_Detail, MobileNo, Received_Code1, Received_Code2, 
+            Is_Success, Comp_ID, Latitude, Longitude, City, state, PinCode,
+            IsActive, IsDelete, Created_Date
+        )
+        VALUES (
+            @Mode, GETDATE(), 'WhatsApp_CompanyMismatch', @MobileNo, @Code1, @Code2, 
+            '0', @Comp_ID, @Lat, @Long, @City, @State, @PinCode,
+            1, 0, GETDATE()
+        );
+
         SET @ResultCode = 0;
         SET @Message = 'Invalid Code. This code does not belong to the selected company.';
         SELECT @ResultCode AS ResultCode, @Message AS [Message], @Comp_ID AS Comp_ID;
         RETURN;
+    END
+
+    -- Check if company is active in Comp_Reg
+    DECLARE @CompStatus NUMERIC(18, 0) = NULL;
+
+    SELECT TOP 1 
+        @CompStatus = Status
+    FROM Comp_Reg WITH (NOLOCK)
+    WHERE Comp_ID = @CurrentCompID;
+
+    IF @CompStatus = 0
+    BEGIN
+        SET @ResultCode = 3;
+        SET @Message = 'Service for this company is currently inactive. Please contact customer support for assistance.';
+        SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
+        RETURN;
+    END
+
+    -- Check if company is inactive in SMS_Vendor_Config (if table exists)
+    IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SMS_Vendor_Config')
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM SMS_Vendor_Config WITH (NOLOCK)
+            WHERE Comp_Id = @CurrentCompID AND IsActive = 0
+        )
+        BEGIN
+            SET @ResultCode = 3;
+            SET @Message = 'Service for this company is currently inactive. Please contact customer support for assistance.';
+            SELECT @ResultCode AS ResultCode, @Message AS [Message], @CurrentCompID AS Comp_ID;
+            RETURN;
+        END
+    END
+
+    -- =========================================================================
+    -- VENDOR-WISE DAILY SCAN LIMIT & TIME WINDOW CHECK
+    -- =========================================================================
+    IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'tbl_VendorScanLimitSetting')
+    BEGIN
+        DECLARE @VendorDailyLimit INT = NULL;
+        DECLARE @VendorScanStartTime TIME(0) = NULL;
+        DECLARE @VendorScanEndTime TIME(0) = NULL;
+        DECLARE @VendorCustomLimitMsg NVARCHAR(500) = NULL;
+        DECLARE @CheckCompID NVARCHAR(50) = ISNULL(@Comp_ID, @CurrentCompID);
+
+        SELECT TOP 1 
+            @VendorDailyLimit = DailyUserScanLimit,
+            @VendorScanStartTime = ISNULL(ScanStartTime, '00:00:00'),
+            @VendorScanEndTime = ISNULL(ScanEndTime, '23:59:59'),
+            @VendorCustomLimitMsg = CustomLimitMessage
+        FROM [dbo].[tbl_VendorScanLimitSetting] WITH (NOLOCK)
+        WHERE Comp_Id = @CheckCompID 
+          AND IsActive = 1;
+
+        IF @VendorDailyLimit IS NOT NULL AND @VendorDailyLimit > 0
+        BEGIN
+            DECLARE @CurrentTimeVal TIME(0) = CAST(GETDATE() AS TIME(0));
+
+            -- Check Time Window
+            IF (@VendorScanStartTime IS NOT NULL AND @VendorScanEndTime IS NOT NULL)
+            BEGIN
+                IF @CurrentTimeVal < @VendorScanStartTime OR @CurrentTimeVal > @VendorScanEndTime
+                BEGIN
+                    SELECT 
+                        3 AS ResultCode, 
+                        CONCAT('Code scanning is allowed only between ', 
+                               FORMAT(CAST(@VendorScanStartTime AS DATETIME), 'hh:mm tt'), ' and ', 
+                               FORMAT(CAST(@VendorScanEndTime AS DATETIME), 'hh:mm tt'), '.') AS [Message],
+                        @CheckCompID AS Comp_ID;
+                    RETURN;
+                END
+            END
+
+            -- Check User Daily Limit (if MobileNo is provided)
+            IF @MobileNo IS NOT NULL AND LTRIM(RTRIM(@MobileNo)) <> ''
+            BEGIN
+                DECLARE @TodayScanCountVal INT = 0;
+                SELECT @TodayScanCountVal = COUNT(1)
+                FROM [dbo].[Pro_Enq] WITH (NOLOCK)
+                WHERE Comp_ID = @CheckCompID
+                  AND RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
+                  AND CAST(Enq_Date AS DATE) = CAST(GETDATE() AS DATE)
+                  AND Is_Success = '1';
+
+                IF @TodayScanCountVal >= @VendorDailyLimit
+                BEGIN
+                    SELECT 
+                        3 AS ResultCode, 
+                        ISNULL(NULLIF(LTRIM(RTRIM(@VendorCustomLimitMsg)), ''), 'You have reached your daily scan limit for today. Please try again tomorrow.') AS [Message],
+                        @CheckCompID AS Comp_ID;
+                    RETURN;
+                END
+            END
+        END
     END
 
     -- Check Service Subscription
