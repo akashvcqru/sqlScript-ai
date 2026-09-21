@@ -1,12 +1,14 @@
+-- Migration: 20260921_Format_Series_In_SP_BL_GetCodesActivityReport_AI.sql
+-- Purpose: Formats Series column segments with 4-digit zero-padding (e.g. BD38-0001-7277, 0000-0000-0000)
+
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 9/17/2026 7:17:07 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
      @FromDate DATE  = NULL,                -- NEW
@@ -17,7 +19,7 @@ ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Page INT = NULL,                        -- âœ… NEW
     @Limit INT = NULL,                      -- âœ… NEW
      @IsExport BIT =NULL,
-       @Search nvarchar(30) = null
+        @Search nvarchar(30) = null
 AS
 BEGIN
   SET NOCOUNT ON;
@@ -95,7 +97,7 @@ BEGIN
         ELSE IF (@datePreset = 'LASTYEAR')
         BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
-            SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
         ELSE IF (@datePreset = 'ALL' OR @datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR @datePreset = 'NULL')
         BEGIN
@@ -935,8 +937,8 @@ BEGIN
 			 OR (@SearchMobile IS NOT NULL AND FR.MobileNo LIKE '%' + @SearchMobile + '%')
 			 OR FR.UniqueCode LIKE '%' + @Search + '%'
 			 OR (@SearchMobile IS NOT NULL AND FR.UniqueCode LIKE '%' + @SearchMobile + '%')
-             OR FR.ServiceName LIKE '%' + @Search + '%'
-             OR FR.Series LIKE '%' + @Search + '%'
+              OR FR.ServiceName LIKE '%' + @Search + '%'
+              OR FR.Series LIKE '%' + @Search + '%'
         )
         ORDER BY FR.Enq_Date DESC;
     END
@@ -973,8 +975,8 @@ BEGIN
 			 OR (@SearchMobile IS NOT NULL AND FR.MobileNo LIKE '%' + @SearchMobile + '%')
 			 OR FR.UniqueCode LIKE '%' + @Search + '%'
 			 OR (@SearchMobile IS NOT NULL AND FR.UniqueCode LIKE '%' + @SearchMobile + '%')
-             OR FR.ServiceName LIKE '%' + @Search + '%'
-             OR FR.Series LIKE '%' + @Search + '%'
+              OR FR.ServiceName LIKE '%' + @Search + '%'
+              OR FR.Series LIKE '%' + @Search + '%'
         )
         ORDER BY FR.Enq_Date DESC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
@@ -1000,8 +1002,8 @@ BEGIN
 			 OR (@SearchMobile IS NOT NULL AND FR.MobileNo LIKE '%' + @SearchMobile + '%')
 			 OR FR.UniqueCode LIKE '%' + @Search + '%'
 			 OR (@SearchMobile IS NOT NULL AND FR.UniqueCode LIKE '%' + @SearchMobile + '%')
-             OR FR.ServiceName LIKE '%' + @Search + '%'
-             OR FR.Series LIKE '%' + @Search + '%'
+              OR FR.ServiceName LIKE '%' + @Search + '%'
+              OR FR.Series LIKE '%' + @Search + '%'
         );
     END
 END
