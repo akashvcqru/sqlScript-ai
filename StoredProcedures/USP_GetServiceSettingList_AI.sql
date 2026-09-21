@@ -43,7 +43,7 @@ BEGIN
            SST.IsDelete, 
            ISNULL(CT.Batch_No, TP.Batch_No) AS Batch_No,
            ISNULL(SS.PlanName, '') AS PlanName,
-           ISNULL(SS.PlanMasterPeriod, '') AS PlanMasterPeriod,
+           ISNULL(CAST(SS.PlanMasterPeriod AS VARCHAR(50)), '') AS PlanMasterPeriod,
            COUNT(*) OVER() as TotalRecords
     FROM M_ServiceSubscriptionTrans SST WITH (NOLOCK)
     INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id

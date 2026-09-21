@@ -34,7 +34,7 @@ BEGIN
         END AS StatusText,
         SST.IsDelete,
         ISNULL(SS.PlanName, '') AS PlanName,
-        ISNULL(SS.PlanMasterPeriod, '') AS PlanMasterPeriod,
+        ISNULL(CAST(SS.PlanMasterPeriod AS VARCHAR(50)), '') AS PlanMasterPeriod,
         CT.mastercode,
         CT.Batch_No,
         CT.Dealer_Name,
