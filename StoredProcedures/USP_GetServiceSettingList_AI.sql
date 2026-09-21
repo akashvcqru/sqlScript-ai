@@ -31,8 +31,8 @@ BEGIN
            CASE WHEN SS.start_order IS NOT NULL AND SS.start_series IS NOT NULL 
                 THEN CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR) + ' to ' + CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR) 
                 ELSE 'All' END AS servicerange, 
-           SST.DateFrom, 
-           SST.DateTo, 
+           ISNULL(SST.DateFrom, SS.DateFrom) AS DateFrom, 
+           ISNULL(SST.DateTo, SS.DateTo) AS DateTo, 
            SST.Points, 
            SST.IsCashConvert, 
            SST.IsCash, 
@@ -42,6 +42,8 @@ BEGIN
            CASE WHEN SST.IsActive = 1 THEN 'Activated' ELSE 'De-Activated' END AS StatusText, 
            SST.IsDelete, 
            ISNULL(CT.Batch_No, TP.Batch_No) AS Batch_No,
+           ISNULL(SS.PlanName, '') AS PlanName,
+           ISNULL(SS.PlanMasterPeriod, '') AS PlanMasterPeriod,
            COUNT(*) OVER() as TotalRecords
     FROM M_ServiceSubscriptionTrans SST WITH (NOLOCK)
     INNER JOIN M_ServiceSubscription SS WITH (NOLOCK) ON SST.Subscribe_Id = SS.Subscribe_Id

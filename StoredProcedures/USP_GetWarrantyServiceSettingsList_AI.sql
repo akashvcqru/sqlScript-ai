@@ -27,16 +27,16 @@ BEGIN
     FROM (
         SELECT ss.Comp_ID, ss.Service_ID, p.Pro_Name, 
                ISNULL(sst.Entry_Date, ss.EntryDate) AS Entry_Date, 
-               ISNULL(sst.IsDelete, ss.IsDelete) AS IsDelete
+               ISNULL(sst.IsDelete, ISNULL(ss.IsDelete, 0)) AS IsDelete
         FROM M_ServiceSubscription AS ss
         INNER JOIN Pro_Reg AS p ON ss.Pro_ID = p.Pro_ID
-        INNER JOIN M_ServiceSubscriptionTrans AS sst ON ss.Subscribe_Id = sst.Subscribe_Id 
+        LEFT JOIN M_ServiceSubscriptionTrans AS sst ON ss.Subscribe_Id = sst.Subscribe_Id 
         WHERE (ss.Comp_ID = @Comp_ID) 
           AND (ss.Service_ID = 'SRV1023') 
           AND (@Pro_Name IS NULL OR p.Pro_Name LIKE '%' + @Pro_Name + '%')
           AND (@FromDate IS NULL OR ISNULL(sst.Entry_Date, ss.EntryDate) >= @FromDate)
           AND (@ToDate IS NULL OR ISNULL(sst.Entry_Date, ss.EntryDate) <= @ToDate)
-          AND (ISNULL(sst.IsDelete, ss.IsDelete) = 0)
+          AND (ISNULL(sst.IsDelete, ISNULL(ss.IsDelete, 0)) = 0)
     ) AS T;
 
     -- Fetch the list with pagination
@@ -66,7 +66,7 @@ BEGIN
         CASE WHEN REG.IsSound = 1 THEN '../Data/Sound/' + SUBSTRING(REG.Comp_ID, 6, 4) + '/' + REG.Pro_ID + '/Loyalty/'+ CONVERT(VARCHAR,REG.Row_ID) +'/' + CONVERT(VARCHAR,REG.Row_ID) + '_H.wav' ELSE '' END AS SoundPath_H,
         CASE WHEN REG.IsSound = 1 THEN '../Data/Sound/' + SUBSTRING(REG.Comp_ID, 6, 4) + '/' + REG.Pro_ID + '/Loyalty/'+ CONVERT(VARCHAR,REG.Row_ID) +'/' + CONVERT(VARCHAR,REG.Row_ID) + '_E.wav' ELSE '' END AS SoundPath_E,
         -- Service is active only when both M_ServiceSubscription (ss) and M_ServiceSubscriptionTrans (sst) have IsActive = 1
-        CAST(CASE WHEN ISNULL(REG.SS_IsActive, 0) = 1 AND ISNULL(REG.SST_IsActive, 0) = 1 THEN 1 ELSE 0 END AS BIT) AS IsCounterFittingServiceActive,
+        CAST(CASE WHEN ISNULL(REG.SS_IsActive, 0) = 1 AND ISNULL(REG.SST_IsActive, 1) = 1 THEN 1 ELSE 0 END AS BIT) AS IsCounterFittingServiceActive,
         @TotalRecords AS TotalRecords
     FROM (
         SELECT 
@@ -83,8 +83,8 @@ BEGIN
             ss.IsActive AS SS_IsActive,
             sst.IsActive AS SST_IsActive,
             ISNULL(sst.IsActive, ss.IsActive) AS IsActive, 
-            ISNULL(sst.IsDelete, ss.IsDelete) AS IsDelete, 
-            ms.ServiceName, 
+            ISNULL(sst.IsDelete, ISNULL(ss.IsDelete, 0)) AS IsDelete, 
+            ISNULL(ms.ServiceName, 'Warranty') AS ServiceName, 
             p.Pro_Name, 
             ISNULL(mf.IsSound, 0) AS IsSound,
             ss.Comp_ID,
@@ -98,11 +98,11 @@ BEGIN
             CASE WHEN ss.start_order IS NULL THEN '' ELSE CONCAT(ss.start_order,'-',ss.start_series,',',CONCAT(ss.end_order,'-',ss.end_series)) END AS servicerange,
             ISNULL(tr.FromSeries, CASE WHEN ss.start_order IS NULL THEN '' ELSE CONCAT(ss.Pro_ID, '-', RIGHT('0000' + CAST(ss.start_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(ss.start_series AS VARCHAR(4)), 4)) END) AS FromSeries,
             ISNULL(tr.ToSeries, CASE WHEN ss.end_order IS NULL THEN '' ELSE CONCAT(ss.Pro_ID, '-', RIGHT('0000' + CAST(ss.end_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(ss.end_series AS VARCHAR(4)), 4)) END) AS ToSeries
-        FROM M_ServiceFeature mf
-        INNER JOIN M_Service AS ms ON mf.Service_ID = ms.Service_ID 
-        INNER JOIN M_ServiceSubscription AS ss ON ms.Service_ID = ss.Service_ID 
+        FROM M_ServiceSubscription AS ss
         INNER JOIN Pro_Reg AS p ON ss.Pro_ID = p.Pro_ID
-        INNER JOIN M_ServiceSubscriptionTrans AS sst ON ss.Subscribe_Id = sst.Subscribe_Id 
+        LEFT JOIN M_Service AS ms ON ss.Service_ID = ms.Service_ID 
+        LEFT JOIN M_ServiceFeature mf ON ss.Service_ID = mf.Service_ID 
+        LEFT JOIN M_ServiceSubscriptionTrans AS sst ON ss.Subscribe_Id = sst.Subscribe_Id 
         LEFT JOIN T_ReassignCode AS tr ON tr.ReassignCodeProId = ss.Pro_ID 
             AND tr.Comp_Id = ss.Comp_ID 
             AND tr.ServiceId = ss.Service_ID
