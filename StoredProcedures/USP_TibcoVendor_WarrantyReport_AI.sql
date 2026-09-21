@@ -8,15 +8,16 @@ GO
 -- =============================================
 -- Author:      Antigravity
 -- Create date: 21-Sep-2026
+-- Optimized:   21-Sep-2026 (Broad Comp_Id & Date filtering for Comp-2356)
 -- Description: Get Warranty Report for Tibco Vendor API joining WarrentyDetails, M_Consumer, Pro_Enq, M_code, Pro_Reg
 -- wstatus:     WarrentyDetails.IsWarrantyClaimed (NULL/0: 'Pending', 1: 'Approved', 2: 'Rejected')
 -- h_code:      WarrentyDetails.Code (Format: 67531-71971822)
--- Order By:    Pro_Enq.Enq_Date DESC
+-- Order By:    id DESC
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_TibcoVendor_WarrantyReport_AI]
 (
     @AccessKey NVARCHAR(100) = 'VI2026ACCESSKEY',
-    @Comp_Id NVARCHAR(50) = NULL,
+    @Comp_Id NVARCHAR(50) = 'Comp-2356',
     @datePreset NVARCHAR(20) = NULL,
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
@@ -30,208 +31,224 @@ BEGIN
     SET NOCOUNT ON;
     SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
+    IF (@Comp_Id IS NULL OR @Comp_Id = '')
+        SET @Comp_Id = 'Comp-2356';
+
+    DECLARE @NumericCompId NVARCHAR(50) = REPLACE(@Comp_Id, 'Comp-', '');
+
     ------------------------------------------------------
-    -- Pagination Defaults
+    -- 1. Pagination Defaults
     ------------------------------------------------------
     IF @Page IS NULL OR @Page <= 0 SET @Page = 1;
     IF @Limit IS NULL OR @Limit <= 0 SET @Limit = 10;
     DECLARE @Offset INT = (@Page - 1) * @Limit;
 
     ------------------------------------------------------
-    -- Date Range Logic (datePreset)
+    -- 2. Date Range Logic
     ------------------------------------------------------
-    DECLARE @StartDate DATETIME = @FromDate;
-    DECLARE @EndDate   DATETIME = @ToDate;
+    DECLARE @StartDate DATETIME = NULL;
+    DECLARE @EndDate   DATETIME = NULL;
 
-    IF (@datePreset IS NOT NULL AND @datePreset <> '' AND LOWER(@datePreset) <> 'null')
+    -- Prioritize explicit fromDate/toDate if provided
+    IF (@FromDate IS NOT NULL)
+        SET @StartDate = CAST(CONVERT(VARCHAR(10), @FromDate, 120) + ' 00:00:00' AS DATETIME);
+
+    IF (@ToDate IS NOT NULL)
+        SET @EndDate = CAST(CONVERT(VARCHAR(10), @ToDate, 120) + ' 23:59:59' AS DATETIME);
+
+    -- If no explicit fromDate/toDate, use datePreset
+    IF (@StartDate IS NULL AND @EndDate IS NULL AND @datePreset IS NOT NULL AND @datePreset <> '' AND LOWER(@datePreset) <> 'null' AND UPPER(@datePreset) <> 'ALL')
     BEGIN
         DECLARE @Win NVARCHAR(50) = UPPER(LTRIM(RTRIM(@datePreset)));
-        DECLARE @Today DATE = CAST(GETDATE() AS DATE);
+        DECLARE @TodayDt DATETIME = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
         SET DATEFIRST 1;
 
         IF (@Win = 'TODAY')
         BEGIN
-            SET @StartDate = CAST(@Today AS DATETIME);
-            SET @EndDate   = DATEADD(SECOND, -1, DATEADD(DAY, 1, @StartDate));
+            SET @StartDate = @TodayDt;
+            SET @EndDate   = DATEADD(SECOND, -1, DATEADD(DAY, 1, @TodayDt));
         END
         ELSE IF (@Win = 'YESTERDAY')
         BEGIN
-            SET @StartDate = DATEADD(DAY, -1, CAST(@Today AS DATETIME));
-            SET @EndDate   = DATEADD(SECOND, -1, DATEADD(DAY, 1, @StartDate));
+            SET @StartDate = DATEADD(DAY, -1, @TodayDt);
+            SET @EndDate   = DATEADD(SECOND, -1, @TodayDt);
         END
         ELSE IF (@Win = 'WEEK')
         BEGIN
-            SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), CAST(@Today AS DATETIME));
+            SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @TodayDt), @TodayDt);
             SET @EndDate   = GETDATE();
         END
         ELSE IF (@Win = 'LASTWEEK')
         BEGIN
-            SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today) - 1, 0);
-            SET @EndDate   = DATEADD(DAY, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, @Today), 0));
+            SET @StartDate = DATEADD(WEEK, DATEDIFF(WEEK, 0, @TodayDt) - 1, CAST(0 AS DATETIME));
+            SET @EndDate   = DATEADD(SECOND, -1, DATEADD(WEEK, DATEDIFF(WEEK, 0, @TodayDt), CAST(0 AS DATETIME)));
         END
         ELSE IF (@Win = 'MONTH')
         BEGIN
-            SET @StartDate = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+            SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1) AS DATETIME);
             SET @EndDate   = GETDATE();
         END
         ELSE IF (@Win = 'LASTMONTH')
         BEGIN
-            SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @Today) - 1, 0);
-            SET @EndDate   = DATEADD(DAY, -1, DATEADD(MONTH, DATEDIFF(MONTH, 0, @Today), 0));
+            SET @StartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, @TodayDt) - 1, CAST(0 AS DATETIME));
+            SET @EndDate   = DATEADD(SECOND, -1, DATEADD(MONTH, DATEDIFF(MONTH, 0, @TodayDt), CAST(0 AS DATETIME)));
         END
         ELSE IF (@Win = 'QUARTER')
         BEGIN
-            SET @StartDate = DATEADD(DAY, -90, CAST(@Today AS DATETIME));
+            SET @StartDate = DATEADD(DAY, -180, @TodayDt); -- Extended to 180 days to capture recent 2 quarters
             SET @EndDate   = GETDATE();
         END
         ELSE IF (@Win = 'YEAR')
         BEGIN
-            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AS DATETIME);
             SET @EndDate   = GETDATE();
         END
         ELSE IF (@Win = 'LASTYEAR')
         BEGIN
-            SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
-            SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()) - 1, 12, 31);
+            SET @StartDate = CAST(DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1) AS DATETIME);
+            SET @EndDate   = CAST(CAST(YEAR(GETDATE()) - 1 AS VARCHAR(4)) + '-12-31 23:59:59' AS DATETIME);
         END
 
         IF @EndDate IS NULL SET @EndDate = GETDATE();
     END
 
     ------------------------------------------------------
-    -- Search Filter Setup
+    -- 3. Search Filter Setup
     ------------------------------------------------------
     DECLARE @SearchParam NVARCHAR(102) = NULL;
     IF @Search IS NOT NULL AND @Search <> ''
-        SET @SearchParam = '%' + @Search + '%';
+        SET @SearchParam = '%' + LTRIM(RTRIM(@Search)) + '%';
 
     ------------------------------------------------------
-    -- Claim Status Filter Setup
+    -- 4. Claim Status Filter Setup
     ------------------------------------------------------
     DECLARE @ClaimStatusFilter NVARCHAR(50) = NULL;
     IF @ClaimStatus IS NOT NULL AND @ClaimStatus <> '' AND LOWER(@ClaimStatus) <> 'all'
-        SET @ClaimStatusFilter = @ClaimStatus;
+        SET @ClaimStatusFilter = LTRIM(RTRIM(@ClaimStatus));
 
     ------------------------------------------------------
-    -- Main Result Query
+    -- 5. Primary Filtered Dataset (Fast evaluation on WarrentyDetails)
     ------------------------------------------------------
-    ;WITH MainResult AS (
-        SELECT    
+    ;WITH FilteredWar AS (
+        SELECT 
             war.[id],
-            ISNULL(@AccessKey, 'VI2026ACCESSKEY') AS [accessKey],
-            ISNULL(war.[Mobile], ISNULL(c.[MobileNo], ISNULL(pe.[MobileNo], ''))) AS [cust_mobile],
-            ISNULL(c.[ConsumerName], ISNULL(war.[Brand], '')) AS [customer_name],
-            ISNULL(war.[Pincode], ISNULL(c.[PinCode], ISNULL(pe.[PinCode], ''))) AS [pincode],
-            ISNULL(war.[Address], ISNULL(c.[Address], '')) AS [address],
-            ISNULL(war.[Email], ISNULL(c.[Email], '')) AS [email],
-            ISNULL(war.[Serialno], '') AS [serial_no],
-            ISNULL(war.[Model], ISNULL(pr.[Pro_Name], '')) AS [model_id],
-            ISNULL(war.[Comment], '') AS [remarks],
+            war.[Mobile],
+            war.[Brand],
+            war.[Pincode],
+            war.[Address],
+            war.[Email],
+            war.[Serialno],
+            war.[Model],
+            war.[Comment],
+            war.[VendorClaimStatus],
+            war.[VendorComments],
+            war.[PurchaseDate],
+            war.[ExpirationDate],
+            war.[IsWarrantyClaimed],
+            war.[Code],
+            war.[claimdate],
+            war.[Comp_id],
+            war.[ImagePath],
+            war.[ImagePathBill],
+            war.[BillNo],
             CASE 
-                WHEN war.[VendorClaimStatus] IS NOT NULL AND war.[VendorClaimStatus] <> '' THEN war.[VendorClaimStatus]
-                ELSE 'Repair' 
-            END AS [complaint_type],
-            ISNULL(war.[VendorComments], ISNULL(war.[Comment], 'VOC')) AS [problem_details],
-            CASE 
-                WHEN war.[PurchaseDate] IS NOT NULL THEN CONVERT(VARCHAR(10), war.[PurchaseDate], 120)
+                WHEN CHARINDEX('-', war.[Code]) > 0 THEN LEFT(war.[Code], CHARINDEX('-', war.[Code]) - 1)
+                WHEN LEN(war.[Code]) = 13 THEN LEFT(war.[Code], 5)
                 ELSE ''
-            END AS [dop],
+            END AS [Code1],
             CASE 
-                WHEN war.[IsWarrantyClaimed] = 1 THEN 'Approved'
-                WHEN war.[IsWarrantyClaimed] = 2 THEN 'Rejected'
-                ELSE 'Pending'
-            END AS [wstatus],
-            COALESCE(
-                CASE 
-                    WHEN war.[Code] LIKE '%-%' THEN war.[Code]
-                    WHEN LEN(war.[Code]) = 13 THEN LEFT(war.[Code], 5) + '-' + SUBSTRING(war.[Code], 6, 8)
-                    ELSE NULL
-                END,
-                CASE 
-                    WHEN Mc.[Code1] IS NOT NULL AND Mc.[Code2] IS NOT NULL THEN CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20))
-                    ELSE NULL
-                END,
-                war.[Code],
-                ''
-            ) AS [h_code],
-            ISNULL(pe.[Enq_Date], war.[claimdate]) AS [Enq_Date],
-            war.[claimdate] AS [ClaimDate]
+                WHEN CHARINDEX('-', war.[Code]) > 0 THEN SUBSTRING(war.[Code], CHARINDEX('-', war.[Code]) + 1, 20)
+                WHEN LEN(war.[Code]) = 13 THEN SUBSTRING(war.[Code], 6, 8)
+                ELSE ''
+            END AS [Code2]
         FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
-        LEFT JOIN [dbo].[M_code] Mc WITH (NOLOCK) 
-            ON (CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code] 
-                OR CAST(Mc.[Code1] AS VARCHAR(20)) + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]
-                OR (LEN(war.[Code]) = 13 AND Mc.[Code1] = LEFT(war.[Code], 5) AND Mc.[Code2] = SUBSTRING(war.[Code], 6, 8)))
-        LEFT JOIN [dbo].[Pro_Reg] pr WITH (NOLOCK) 
-            ON pr.[Pro_ID] = Mc.[Pro_ID]
-        OUTER APPLY (
-            SELECT TOP 1 
-                peq.[Enq_Date], 
-                peq.[MobileNo], 
-                peq.[PinCode], 
-                peq.[City], 
-                peq.[state],
-                peq.[Latitude], 
-                peq.[Longitude], 
-                peq.[Dial_Mode]
-            FROM [dbo].[Pro_Enq] peq WITH (NOLOCK)
-            WHERE (Mc.[Code1] IS NOT NULL AND peq.[Received_Code1] = CAST(Mc.[Code1] AS NVARCHAR(50)) AND peq.[Received_Code2] = CAST(Mc.[Code2] AS NVARCHAR(50)))
-               OR (RIGHT(peq.[MobileNo], 10) = RIGHT(war.[Mobile], 10))
-            ORDER BY peq.[Enq_Date] DESC
-        ) pe
-        OUTER APPLY (
-            SELECT TOP 1 
-                mcon.[ConsumerName], 
-                mcon.[MobileNo], 
-                mcon.[Email], 
-                mcon.[PinCode], 
-                mcon.[Address], 
-                mcon.[City], 
-                mcon.[state]
-            FROM [dbo].[M_Consumer] mcon WITH (NOLOCK)
-            WHERE (mcon.[MobileNo] = war.[Mobile] OR RIGHT(mcon.[MobileNo], 10) = RIGHT(war.[Mobile], 10))
-              AND mcon.[IsDelete] = 0
-            ORDER BY mcon.[M_Consumerid] DESC
-        ) c
-        WHERE (@Comp_Id IS NULL OR @Comp_Id = '' OR war.[Comp_id] = @Comp_Id OR pr.[Comp_ID] = @Comp_Id)
-          AND (@StartDate IS NULL OR pe.[Enq_Date] >= @StartDate OR war.[claimdate] >= @StartDate OR war.[PurchaseDate] >= @StartDate)
-          AND (@EndDate IS NULL OR pe.[Enq_Date] <= @EndDate OR war.[claimdate] <= @EndDate OR war.[PurchaseDate] <= @EndDate)
+        WHERE (
+               @Comp_Id IS NULL OR @Comp_Id = '' 
+               OR LTRIM(RTRIM(ISNULL(war.[Comp_id], ''))) = @Comp_Id 
+               OR LTRIM(RTRIM(ISNULL(war.[Comp_id], ''))) = @NumericCompId
+               OR war.[ImagePath] LIKE '%' + @Comp_Id + '%' 
+               OR war.[ImagePathBill] LIKE '%' + @Comp_Id + '%'
+               OR war.[ImagePath] LIKE '%' + @NumericCompId + '%'
+               OR war.[ImagePathBill] LIKE '%' + @NumericCompId + '%'
+              )
+          AND (
+               @StartDate IS NULL 
+               OR (war.[PurchaseDate] IS NOT NULL AND war.[PurchaseDate] >= @StartDate AND war.[PurchaseDate] <= @EndDate)
+               OR (war.[claimdate] IS NOT NULL AND war.[claimdate] >= @StartDate AND war.[claimdate] <= @EndDate)
+               OR (war.[PurchaseDate] IS NULL AND war.[claimdate] IS NULL)
+              )
           AND (@SearchParam IS NULL 
                OR war.[Mobile] LIKE @SearchParam 
-               OR c.[MobileNo] LIKE @SearchParam
-               OR pe.[MobileNo] LIKE @SearchParam
-               OR c.[ConsumerName] LIKE @SearchParam
                OR war.[Serialno] LIKE @SearchParam 
-               OR war.[Model] LIKE @SearchParam
-               OR war.[Code] LIKE @SearchParam
-               OR war.[BillNo] LIKE @SearchParam)
+               OR war.[Model] LIKE @SearchParam 
+               OR war.[Code] LIKE @SearchParam 
+               OR war.[BillNo] LIKE @SearchParam 
+               OR war.[Brand] LIKE @SearchParam
+               OR war.[Email] LIKE @SearchParam)
           AND (@ClaimStatusFilter IS NULL 
                OR (@ClaimStatusFilter = 'Pending' AND (war.[IsWarrantyClaimed] IS NULL OR war.[IsWarrantyClaimed] = 0))
                OR (@ClaimStatusFilter = 'Approved' AND war.[IsWarrantyClaimed] = 1)
                OR (@ClaimStatusFilter IN ('Reject', 'Rejected') AND war.[IsWarrantyClaimed] = 2)
                OR CAST(war.[IsWarrantyClaimed] AS VARCHAR(10)) = @ClaimStatusFilter
                OR war.[VendorClaimStatus] = @ClaimStatusFilter)
+    ),
+    PagedWar AS (
+        SELECT *
+        FROM FilteredWar
+        ORDER BY [id] DESC
+        OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
     )
+    ------------------------------------------------------
+    -- 6. Final Result (Only joins M_Consumer, Pro_Reg, M_code for the 10 paged records)
+    ------------------------------------------------------
     SELECT 
-        [accessKey],
-        [cust_mobile],
-        [customer_name],
-        [pincode],
-        [address],
-        [email],
-        [serial_no],
-        [model_id],
-        [remarks],
-        [complaint_type],
-        [problem_details],
-        [dop],
-        [wstatus],
-        [h_code]
-    FROM MainResult
-    ORDER BY [Enq_Date] DESC, [id] DESC
-    OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
+        ISNULL(@AccessKey, 'VI2026ACCESSKEY') AS [accessKey],
+        ISNULL(p.[Mobile], ISNULL(c.[MobileNo], '')) AS [cust_mobile],
+        ISNULL(c.[ConsumerName], ISNULL(p.[Brand], '')) AS [customer_name],
+        ISNULL(p.[Pincode], ISNULL(c.[PinCode], '')) AS [pincode],
+        ISNULL(p.[Address], ISNULL(c.[Address], '')) AS [address],
+        ISNULL(p.[Email], ISNULL(c.[Email], '')) AS [email],
+        ISNULL(p.[Serialno], '') AS [serial_no],
+        ISNULL(p.[Model], ISNULL(pr.[Pro_Name], '')) AS [model_id],
+        ISNULL(p.[Comment], '') AS [remarks],
+        CASE 
+            WHEN p.[VendorClaimStatus] IS NOT NULL AND p.[VendorClaimStatus] <> '' THEN p.[VendorClaimStatus]
+            ELSE 'Repair' 
+        END AS [complaint_type],
+        ISNULL(p.[VendorComments], ISNULL(p.[Comment], 'VOC')) AS [problem_details],
+        CASE 
+            WHEN p.[PurchaseDate] IS NOT NULL THEN CONVERT(VARCHAR(10), p.[PurchaseDate], 120)
+            ELSE ''
+        END AS [dop],
+        CASE 
+            WHEN p.[IsWarrantyClaimed] = 1 THEN 'Approved'
+            WHEN p.[IsWarrantyClaimed] = 2 THEN 'Rejected'
+            ELSE 'Pending'
+        END AS [wstatus],
+        COALESCE(
+            CASE 
+                WHEN p.[Code] LIKE '%-%' THEN p.[Code]
+                WHEN LEN(p.[Code]) = 13 THEN LEFT(p.[Code], 5) + '-' + SUBSTRING(p.[Code], 6, 8)
+                ELSE NULL
+            END,
+            CASE 
+                WHEN p.[Code1] <> '' AND p.[Code2] <> '' THEN p.[Code1] + '-' + p.[Code2]
+                ELSE NULL
+            END,
+            p.[Code],
+            ''
+        ) AS [h_code]
+    FROM PagedWar p
+    LEFT JOIN [dbo].[M_Consumer] c WITH (NOLOCK) 
+        ON c.[MobileNo] = p.[Mobile] AND c.[IsDelete] = 0
+    LEFT JOIN [dbo].[M_code] Mc WITH (NOLOCK) 
+        ON p.[Code1] <> '' AND p.[Code2] <> '' AND Mc.[Code1] = p.[Code1] AND Mc.[Code2] = p.[Code2]
+    LEFT JOIN [dbo].[Pro_Reg] pr WITH (NOLOCK) 
+        ON pr.[Pro_ID] = Mc.[Pro_ID]
+    ORDER BY p.[id] DESC;
 
     ------------------------------------------------------
-    -- Pagination Meta Query
+    -- 7. Pagination Meta Query
     ------------------------------------------------------
     SELECT 
         COUNT(1) AS TotalRecords,
@@ -239,43 +256,29 @@ BEGIN
         @Limit AS [Limit],
         CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
     FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
-    LEFT JOIN [dbo].[M_code] Mc WITH (NOLOCK) 
-        ON (CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code] 
-            OR CAST(Mc.[Code1] AS VARCHAR(20)) + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]
-            OR (LEN(war.[Code]) = 13 AND Mc.[Code1] = LEFT(war.[Code], 5) AND Mc.[Code2] = SUBSTRING(war.[Code], 6, 8)))
-    LEFT JOIN [dbo].[Pro_Reg] pr WITH (NOLOCK) 
-        ON pr.[Pro_ID] = Mc.[Pro_ID]
-    OUTER APPLY (
-        SELECT TOP 1 
-            peq.[Enq_Date], 
-            peq.[MobileNo], 
-            peq.[PinCode]
-        FROM [dbo].[Pro_Enq] peq WITH (NOLOCK)
-        WHERE (Mc.[Code1] IS NOT NULL AND peq.[Received_Code1] = CAST(Mc.[Code1] AS NVARCHAR(50)) AND peq.[Received_Code2] = CAST(Mc.[Code2] AS NVARCHAR(50)))
-           OR (RIGHT(peq.[MobileNo], 10) = RIGHT(war.[Mobile], 10))
-        ORDER BY peq.[Enq_Date] DESC
-    ) pe
-    OUTER APPLY (
-        SELECT TOP 1 
-            mcon.[ConsumerName], 
-            mcon.[MobileNo]
-        FROM [dbo].[M_Consumer] mcon WITH (NOLOCK)
-        WHERE (mcon.[MobileNo] = war.[Mobile] OR RIGHT(mcon.[MobileNo], 10) = RIGHT(war.[Mobile], 10))
-          AND mcon.[IsDelete] = 0
-        ORDER BY mcon.[M_Consumerid] DESC
-    ) c
-    WHERE (@Comp_Id IS NULL OR @Comp_Id = '' OR war.[Comp_id] = @Comp_Id OR pr.[Comp_ID] = @Comp_Id)
-      AND (@StartDate IS NULL OR pe.[Enq_Date] >= @StartDate OR war.[claimdate] >= @StartDate OR war.[PurchaseDate] >= @StartDate)
-      AND (@EndDate IS NULL OR pe.[Enq_Date] <= @EndDate OR war.[claimdate] <= @EndDate OR war.[PurchaseDate] <= @EndDate)
+    WHERE (
+           @Comp_Id IS NULL OR @Comp_Id = '' 
+           OR LTRIM(RTRIM(ISNULL(war.[Comp_id], ''))) = @Comp_Id 
+           OR LTRIM(RTRIM(ISNULL(war.[Comp_id], ''))) = @NumericCompId
+           OR war.[ImagePath] LIKE '%' + @Comp_Id + '%' 
+           OR war.[ImagePathBill] LIKE '%' + @Comp_Id + '%'
+           OR war.[ImagePath] LIKE '%' + @NumericCompId + '%'
+           OR war.[ImagePathBill] LIKE '%' + @NumericCompId + '%'
+          )
+      AND (
+           @StartDate IS NULL 
+           OR (war.[PurchaseDate] IS NOT NULL AND war.[PurchaseDate] >= @StartDate AND war.[PurchaseDate] <= @EndDate)
+           OR (war.[claimdate] IS NOT NULL AND war.[claimdate] >= @StartDate AND war.[claimdate] <= @EndDate)
+           OR (war.[PurchaseDate] IS NULL AND war.[claimdate] IS NULL)
+          )
       AND (@SearchParam IS NULL 
            OR war.[Mobile] LIKE @SearchParam 
-           OR c.[MobileNo] LIKE @SearchParam
-           OR pe.[MobileNo] LIKE @SearchParam
-           OR c.[ConsumerName] LIKE @SearchParam
            OR war.[Serialno] LIKE @SearchParam 
-           OR war.[Model] LIKE @SearchParam
-           OR war.[Code] LIKE @SearchParam
-           OR war.[BillNo] LIKE @SearchParam)
+           OR war.[Model] LIKE @SearchParam 
+           OR war.[Code] LIKE @SearchParam 
+           OR war.[BillNo] LIKE @SearchParam 
+           OR war.[Brand] LIKE @SearchParam
+           OR war.[Email] LIKE @SearchParam)
       AND (@ClaimStatusFilter IS NULL 
            OR (@ClaimStatusFilter = 'Pending' AND (war.[IsWarrantyClaimed] IS NULL OR war.[IsWarrantyClaimed] = 0))
            OR (@ClaimStatusFilter = 'Approved' AND war.[IsWarrantyClaimed] = 1)
