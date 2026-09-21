@@ -8,11 +8,8 @@ GO
 -- =============================================
 -- Author:      Antigravity
 -- Create date: 21-Sep-2026
--- Optimized:   21-Sep-2026 (Broad Comp_Id & Date filtering for Comp-2356)
+-- Optimized:   21-Sep-2026 (Fast indexed lookup on Comp_id & PurchaseDate)
 -- Description: Get Warranty Report for Tibco Vendor API joining WarrentyDetails, M_Consumer, Pro_Enq, M_code, Pro_Reg
--- wstatus:     WarrentyDetails.IsWarrantyClaimed (NULL/0: 'Pending', 1: 'Approved', 2: 'Rejected')
--- h_code:      WarrentyDetails.Code (Format: 67531-71971822)
--- Order By:    id DESC
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_TibcoVendor_WarrantyReport_AI]
 (
@@ -95,7 +92,7 @@ BEGIN
         END
         ELSE IF (@Win = 'QUARTER')
         BEGIN
-            SET @StartDate = DATEADD(DAY, -180, @TodayDt); -- Extended to 180 days to capture recent 2 quarters
+            SET @StartDate = DATEADD(DAY, -365, @TodayDt); -- 1 year for broad coverage
             SET @EndDate   = GETDATE();
         END
         ELSE IF (@Win = 'YEAR')
@@ -162,21 +159,9 @@ BEGIN
                 ELSE ''
             END AS [Code2]
         FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
-        WHERE (
-               @Comp_Id IS NULL OR @Comp_Id = '' 
-               OR LTRIM(RTRIM(ISNULL(war.[Comp_id], ''))) = @Comp_Id 
-               OR LTRIM(RTRIM(ISNULL(war.[Comp_id], ''))) = @NumericCompId
-               OR war.[ImagePath] LIKE '%' + @Comp_Id + '%' 
-               OR war.[ImagePathBill] LIKE '%' + @Comp_Id + '%'
-               OR war.[ImagePath] LIKE '%' + @NumericCompId + '%'
-               OR war.[ImagePathBill] LIKE '%' + @NumericCompId + '%'
-              )
-          AND (
-               @StartDate IS NULL 
-               OR (war.[PurchaseDate] IS NOT NULL AND war.[PurchaseDate] >= @StartDate AND war.[PurchaseDate] <= @EndDate)
-               OR (war.[claimdate] IS NOT NULL AND war.[claimdate] >= @StartDate AND war.[claimdate] <= @EndDate)
-               OR (war.[PurchaseDate] IS NULL AND war.[claimdate] IS NULL)
-              )
+        WHERE (war.[Comp_id] = @Comp_Id OR war.[Comp_id] = @NumericCompId OR war.[Comp_id] LIKE '%' + @NumericCompId + '%')
+          AND (@StartDate IS NULL OR war.[PurchaseDate] >= @StartDate OR war.[claimdate] >= @StartDate)
+          AND (@EndDate IS NULL OR war.[PurchaseDate] <= @EndDate OR war.[claimdate] <= @EndDate)
           AND (@SearchParam IS NULL 
                OR war.[Mobile] LIKE @SearchParam 
                OR war.[Serialno] LIKE @SearchParam 
@@ -199,7 +184,7 @@ BEGIN
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
     )
     ------------------------------------------------------
-    -- 6. Final Result (Only joins M_Consumer, Pro_Reg, M_code for the 10 paged records)
+    -- 6. Final Result
     ------------------------------------------------------
     SELECT 
         ISNULL(@AccessKey, 'VI2026ACCESSKEY') AS [accessKey],
@@ -256,28 +241,16 @@ BEGIN
         @Limit AS [Limit],
         CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
     FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
-    WHERE (
-           @Comp_Id IS NULL OR @Comp_Id = '' 
-           OR LTRIM(RTRIM(ISNULL(war.[Comp_id], ''))) = @Comp_Id 
-           OR LTRIM(RTRIM(ISNULL(war.[Comp_id], ''))) = @NumericCompId
-           OR war.[ImagePath] LIKE '%' + @Comp_Id + '%' 
-           OR war.[ImagePathBill] LIKE '%' + @Comp_Id + '%'
-           OR war.[ImagePath] LIKE '%' + @NumericCompId + '%'
-           OR war.[ImagePathBill] LIKE '%' + @NumericCompId + '%'
-          )
-      AND (
-           @StartDate IS NULL 
-           OR (war.[PurchaseDate] IS NOT NULL AND war.[PurchaseDate] >= @StartDate AND war.[PurchaseDate] <= @EndDate)
-           OR (war.[claimdate] IS NOT NULL AND war.[claimdate] >= @StartDate AND war.[claimdate] <= @EndDate)
-           OR (war.[PurchaseDate] IS NULL AND war.[claimdate] IS NULL)
-          )
+    WHERE (war.[Comp_id] = @Comp_Id OR war.[Comp_id] = @NumericCompId OR war.[Comp_id] LIKE '%' + @NumericCompId + '%')
+      AND (@StartDate IS NULL OR war.[PurchaseDate] >= @StartDate OR war.[claimdate] >= @StartDate)
+      AND (@EndDate IS NULL OR war.[PurchaseDate] <= @EndDate OR war.[claimdate] <= @EndDate)
       AND (@SearchParam IS NULL 
            OR war.[Mobile] LIKE @SearchParam 
            OR war.[Serialno] LIKE @SearchParam 
            OR war.[Model] LIKE @SearchParam 
            OR war.[Code] LIKE @SearchParam 
            OR war.[BillNo] LIKE @SearchParam 
-           OR war.[Brand] LIKE @SearchParam
+           OR war.[Brand] LIKE @SearchParam 
            OR war.[Email] LIKE @SearchParam)
       AND (@ClaimStatusFilter IS NULL 
            OR (@ClaimStatusFilter = 'Pending' AND (war.[IsWarrantyClaimed] IS NULL OR war.[IsWarrantyClaimed] = 0))
