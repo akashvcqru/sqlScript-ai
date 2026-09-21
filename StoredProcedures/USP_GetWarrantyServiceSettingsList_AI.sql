@@ -12,6 +12,7 @@ GO
 -- =============================================================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetWarrantyServiceSettingsList_AI]
     @Comp_ID NVARCHAR(50),
+    @Search NVARCHAR(MAX) = NULL,
     @Pro_Name NVARCHAR(MAX) = NULL,
     @FromDate DATETIME = NULL,
     @ToDate DATETIME = NULL,
@@ -20,6 +21,9 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetWarrantyServiceSettingsList_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    SET @Search = NULLIF(LTRIM(RTRIM(@Search)), '');
+    SET @Pro_Name = NULLIF(LTRIM(RTRIM(@Pro_Name)), '');
 
     -- Calculate total records count
     DECLARE @TotalRecords INT;
@@ -37,6 +41,19 @@ BEGIN
           AND (@FromDate IS NULL OR ISNULL(sst.Entry_Date, ss.EntryDate) >= @FromDate)
           AND (@ToDate IS NULL OR ISNULL(sst.Entry_Date, ss.EntryDate) <= @ToDate)
           AND (ISNULL(sst.IsDelete, ISNULL(ss.IsDelete, 0)) = 0)
+          AND (
+              @Search IS NULL
+              OR p.Pro_Name LIKE '%' + @Search + '%'
+              OR ss.Pro_ID LIKE '%' + @Search + '%'
+              OR ss.PlanName LIKE '%' + @Search + '%'
+              OR CAST(ss.start_order AS VARCHAR) LIKE '%' + @Search + '%'
+              OR CAST(ss.start_series AS VARCHAR) LIKE '%' + @Search + '%'
+              OR CAST(ss.end_order AS VARCHAR) LIKE '%' + @Search + '%'
+              OR CAST(ss.end_series AS VARCHAR) LIKE '%' + @Search + '%'
+              OR (CAST(ss.start_order AS VARCHAR) + '-' + CAST(ss.start_series AS VARCHAR)) LIKE '%' + @Search + '%'
+              OR (CAST(ss.end_order AS VARCHAR) + '-' + CAST(ss.end_series AS VARCHAR)) LIKE '%' + @Search + '%'
+              OR (CAST(ss.start_order AS VARCHAR) + '-' + CAST(ss.start_series AS VARCHAR) + ' to ' + CAST(ss.end_order AS VARCHAR) + '-' + CAST(ss.end_series AS VARCHAR)) LIKE '%' + @Search + '%'
+          )
     ) AS T;
 
     -- Fetch the list with pagination
@@ -123,6 +140,16 @@ BEGIN
       AND (@FromDate IS NULL OR REG.Pasted_Date >= @FromDate)
       AND (@ToDate IS NULL OR REG.Pasted_Date <= @ToDate)
       AND (REG.IsDelete = 0)
+      AND (
+          @Search IS NULL
+          OR REG.Pro_Name LIKE '%' + @Search + '%'
+          OR REG.Pro_ID LIKE '%' + @Search + '%'
+          OR REG.PlanName LIKE '%' + @Search + '%'
+          OR REG.FromSeries LIKE '%' + @Search + '%'
+          OR REG.ToSeries LIKE '%' + @Search + '%'
+          OR REG.servicerange LIKE '%' + @Search + '%'
+          OR REG.Comments LIKE '%' + @Search + '%'
+      )
     ORDER BY REG.Pasted_Date DESC
     OFFSET (@PageIndex - 1) * @PageSize ROWS
     FETCH NEXT @PageSize ROWS ONLY;
