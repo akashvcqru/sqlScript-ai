@@ -398,18 +398,32 @@ BEGIN
                 END
             AS DECIMAL(18,2))), 0.00)
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        WHERE LOWER(BL.compid) = 'comp-1669'
+        WHERE (LOWER(BL.compid) = 'comp-1669' OR (BL.compid IS NULL AND EXISTS (
+            SELECT 1 
+            FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK) 
+            INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid 
+            INNER JOIN M_Code M2 WITH (NOLOCK) ON MC2.M_Codeid = M2.Row_ID 
+            INNER JOIN Pro_Reg PR2 WITH (NOLOCK) ON M2.Pro_ID = PR2.Pro_ID 
+            WHERE BMC2.Pkid = BL.BuildLoyaltyOrReferralMCodeCheckid AND PR2.Comp_ID = 'Comp-1669'
+        )))
           AND (BL.M_Consumerid = @M_Consumerid OR BL.M_Consumerid IN (
               SELECT M_Consumerid 
               FROM M_Consumer WITH (NOLOCK) 
               WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
           ))
-          AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral');
+          AND LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout');
 
         SELECT 
             @Comp1669RefSum = ISNULL(SUM(ISNULL(BL.Points, 0) + ISNULL(BL.Cash, 0)), 0)
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        WHERE LOWER(BL.compid) = 'comp-1669'
+        WHERE (LOWER(BL.compid) = 'comp-1669' OR (BL.compid IS NULL AND EXISTS (
+            SELECT 1 
+            FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK) 
+            INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid 
+            INNER JOIN M_Code M2 WITH (NOLOCK) ON MC2.M_Codeid = M2.Row_ID 
+            INNER JOIN Pro_Reg PR2 WITH (NOLOCK) ON M2.Pro_ID = PR2.Pro_ID 
+            WHERE BMC2.Pkid = BL.BuildLoyaltyOrReferralMCodeCheckid AND PR2.Comp_ID = 'Comp-1669'
+        )))
           AND (BL.M_Consumerid = @M_Consumerid OR BL.M_Consumerid IN (
               SELECT M_Consumerid 
               FROM M_Consumer WITH (NOLOCK) 
