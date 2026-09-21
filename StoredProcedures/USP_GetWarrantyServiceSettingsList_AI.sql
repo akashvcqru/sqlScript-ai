@@ -83,6 +83,7 @@ BEGIN
         CASE WHEN REG.IsSound = 1 THEN '../Data/Sound/' + SUBSTRING(REG.Comp_ID, 6, 4) + '/' + REG.Pro_ID + '/Loyalty/'+ CONVERT(VARCHAR,REG.Row_ID) +'/' + CONVERT(VARCHAR,REG.Row_ID) + '_H.wav' ELSE '' END AS SoundPath_H,
         CASE WHEN REG.IsSound = 1 THEN '../Data/Sound/' + SUBSTRING(REG.Comp_ID, 6, 4) + '/' + REG.Pro_ID + '/Loyalty/'+ CONVERT(VARCHAR,REG.Row_ID) +'/' + CONVERT(VARCHAR,REG.Row_ID) + '_E.wav' ELSE '' END AS SoundPath_E,
         -- Service is active only when both M_ServiceSubscription (ss) and M_ServiceSubscriptionTrans (sst) have IsActive = 1
+        CAST(CASE WHEN ISNULL(REG.SS_IsActive, 0) = 1 AND ISNULL(REG.SST_IsActive, 1) = 1 THEN 1 ELSE 0 END AS BIT) AS IsActive,
         CAST(CASE WHEN ISNULL(REG.SS_IsActive, 0) = 1 AND ISNULL(REG.SST_IsActive, 1) = 1 THEN 1 ELSE 0 END AS BIT) AS IsCounterFittingServiceActive,
         @TotalRecords AS TotalRecords
     FROM (
@@ -107,7 +108,7 @@ BEGIN
             ss.Comp_ID,
             ss.Pro_ID, 
             ss.PlanName,
-            ss.PlanMasterPeriod,
+            ISNULL(CAST(ss.PlanMasterPeriod AS VARCHAR(50)), '') AS PlanMasterPeriod,
             ss.start_order,
             ss.start_series,
             ss.end_order,
