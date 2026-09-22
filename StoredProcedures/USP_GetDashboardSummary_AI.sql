@@ -1,4 +1,11 @@
-CREATE   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
+USE [Vcqru]
+GO
+/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 9/17/2026 10:21:59 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
     @CompID VARCHAR(50),
@@ -340,26 +347,7 @@ BEGIN
       AND (@CompID <> 'Comp-1669' OR PT.pdate >= '2026-09-08 17:27:20.650');
 
     DECLARE @RedeemAmount DECIMAL(18,2) = 0;
-    IF LOWER(@CompID) = 'comp-1669'
-    BEGIN
-        SELECT @RedeemAmount = ISNULL(SUM(TRY_CAST(ISNULL(PT.Amount, 0) AS DECIMAL(18,2))), 0.00)
-        FROM paytmtransaction PT WITH (NOLOCK)
-        WHERE PT.compid = 'Comp-1669'
-          AND PT.pStatus IN ('Success', 'Accepted', 'ACCEPTED', 'SUCCESS')
-          AND (
-              PT.M_consumerid = CAST(@M_Consumerid AS VARCHAR(50))
-              OR PT.M_consumerid IN (
-                  SELECT CAST(M_Consumerid AS VARCHAR(50))
-                  FROM M_Consumer WITH (NOLOCK)
-                  WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0
-              )
-              OR RIGHT(PT.mobileno, 10) = RIGHT(@MobileNo, 10)
-          );
-    END
-    ELSE
-    BEGIN
-        SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount + @PaytmAmount;
-    END
+    SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount + @PaytmAmount;
 
     -- Calculate precise counts using SP_BL_GetCodesActivityReport_AI logic
     DECLARE @SuccessCodeCount INT = 0;
@@ -410,32 +398,18 @@ BEGIN
                 END
             AS DECIMAL(18,2))), 0.00)
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        WHERE (LOWER(BL.compid) = 'comp-1669' OR (BL.compid IS NULL AND EXISTS (
-            SELECT 1 
-            FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK) 
-            INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid 
-            INNER JOIN M_Code M2 WITH (NOLOCK) ON MC2.M_Codeid = M2.Row_ID 
-            INNER JOIN Pro_Reg PR2 WITH (NOLOCK) ON M2.Pro_ID = PR2.Pro_ID 
-            WHERE BMC2.Pkid = BL.BuildLoyaltyOrReferralMCodeCheckid AND PR2.Comp_ID = 'Comp-1669'
-        )))
+        WHERE LOWER(BL.compid) = 'comp-1669'
           AND (BL.M_Consumerid = @M_Consumerid OR BL.M_Consumerid IN (
               SELECT M_Consumerid 
               FROM M_Consumer WITH (NOLOCK) 
               WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
           ))
-          AND LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout');
+          AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral');
 
         SELECT 
             @Comp1669RefSum = ISNULL(SUM(ISNULL(BL.Points, 0) + ISNULL(BL.Cash, 0)), 0)
         FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        WHERE (LOWER(BL.compid) = 'comp-1669' OR (BL.compid IS NULL AND EXISTS (
-            SELECT 1 
-            FROM BuiltLoyaltyMCodeCheck BMC2 WITH (NOLOCK) 
-            INNER JOIN M_Consumer_M_Code MC2 WITH (NOLOCK) ON BMC2.M_Consumer_MCOdeid = MC2.M_Consumer_MCodeid 
-            INNER JOIN M_Code M2 WITH (NOLOCK) ON MC2.M_Codeid = M2.Row_ID 
-            INNER JOIN Pro_Reg PR2 WITH (NOLOCK) ON M2.Pro_ID = PR2.Pro_ID 
-            WHERE BMC2.Pkid = BL.BuildLoyaltyOrReferralMCodeCheckid AND PR2.Comp_ID = 'Comp-1669'
-        )))
+        WHERE LOWER(BL.compid) = 'comp-1669'
           AND (BL.M_Consumerid = @M_Consumerid OR BL.M_Consumerid IN (
               SELECT M_Consumerid 
               FROM M_Consumer WITH (NOLOCK) 
