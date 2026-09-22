@@ -3,9 +3,9 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-ALTER PROCEDURE [dbo].[USP_BL_ManageBlockUser]
-    @Action VARCHAR(10),        -- 'GET', 'BLOCK', 'ADD', 'UNBLOCK'
-    @Comp_Id VARCHAR(20) = NULL,
+CREATE OR ALTER PROCEDURE [dbo].[USP_BL_ManageDeleteUser]
+    @Action VARCHAR(10),            -- 'GET', 'DELETE', 'UNDELETE'
+    @Comp_Id VARCHAR(20),
     @M_Consumerid INT = NULL,
     @MobileNo VARCHAR(20) = NULL,
     @Search VARCHAR(100) = NULL,
@@ -40,7 +40,7 @@ BEGIN
     END
     ELSE IF @Win = 'WEEK'
     BEGIN
-        SET DATEFIRST 1; -- Monday
+        SET DATEFIRST 1;
         SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
         SET @EndDate   = DATEADD(DAY, 1, @Today);
     END
@@ -94,7 +94,7 @@ BEGIN
     END
 
     -------------------------------------------------
-    -- GET BLOCKED USERS
+    -- GET DELETED USERS
     -------------------------------------------------
     IF @Action = 'GET'
     BEGIN
@@ -107,21 +107,27 @@ BEGIN
                 mc.MobileNo AS MobileNumber,
                 mc.PinCode,
                 mc.City,
-                vks.Block_Date AS block_date
+                ISNULL(du.Entry_date, vks.Entry_date) AS Deleted_Date
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+            LEFT JOIN (
+                SELECT M_Consumerid, comp_id, MAX(Entry_date) AS Entry_date
+                FROM tbl_DeletedUsers WITH (NOLOCK)
+                WHERE comp_id = @Comp_Id
+                GROUP BY M_Consumerid, comp_id
+            ) du ON du.M_Consumerid = mc.M_Consumerid AND du.comp_id = vks.Comp_id
             WHERE vks.Comp_id = @Comp_Id 
-              AND ISNULL(vks.IsBlock, 0) = 1
+              AND vks.IsDelete = 1
               AND (
-                  (vks.Block_Date >= @StartDate AND vks.Block_Date < @EndDate)
-                  OR (vks.Block_Date IS NULL AND @Win = 'ALL')
+                  (du.Entry_date >= @StartDate AND du.Entry_date < @EndDate)
+                  OR (du.Entry_date IS NULL AND @Win = 'ALL')
               )
               AND (
                   @Search IS NULL 
                   OR mc.ConsumerName LIKE '%' + @Search + '%' 
                   OR mc.MobileNo LIKE '%' + @Search + '%'
               )
-            ORDER BY vks.Block_Date DESC;
+            ORDER BY ISNULL(du.Entry_date, vks.Entry_date) DESC;
         END
         ELSE
         BEGIN
@@ -132,21 +138,27 @@ BEGIN
                 mc.MobileNo AS MobileNumber,
                 mc.PinCode,
                 mc.City,
-                vks.Block_Date AS block_date
+                ISNULL(du.Entry_date, vks.Entry_date) AS Deleted_Date
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+            LEFT JOIN (
+                SELECT M_Consumerid, comp_id, MAX(Entry_date) AS Entry_date
+                FROM tbl_DeletedUsers WITH (NOLOCK)
+                WHERE comp_id = @Comp_Id
+                GROUP BY M_Consumerid, comp_id
+            ) du ON du.M_Consumerid = mc.M_Consumerid AND du.comp_id = vks.Comp_id
             WHERE vks.Comp_id = @Comp_Id 
-              AND ISNULL(vks.IsBlock, 0) = 1
+              AND vks.IsDelete = 1
               AND (
-                  (vks.Block_Date >= @StartDate AND vks.Block_Date < @EndDate)
-                  OR (vks.Block_Date IS NULL AND @Win = 'ALL')
+                  (du.Entry_date >= @StartDate AND du.Entry_date < @EndDate)
+                  OR (du.Entry_date IS NULL AND @Win = 'ALL')
               )
               AND (
                   @Search IS NULL 
                   OR mc.ConsumerName LIKE '%' + @Search + '%' 
                   OR mc.MobileNo LIKE '%' + @Search + '%'
               )
-            ORDER BY vks.Block_Date DESC
+            ORDER BY ISNULL(du.Entry_date, vks.Entry_date) DESC
             OFFSET (@Page - 1) * @Limit ROWS FETCH NEXT @Limit ROWS ONLY;
 
             -- Pagination metadata
@@ -157,11 +169,17 @@ BEGIN
                 CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
+            LEFT JOIN (
+                SELECT M_Consumerid, comp_id, MAX(Entry_date) AS Entry_date
+                FROM tbl_DeletedUsers WITH (NOLOCK)
+                WHERE comp_id = @Comp_Id
+                GROUP BY M_Consumerid, comp_id
+            ) du ON du.M_Consumerid = mc.M_Consumerid AND du.comp_id = vks.Comp_id
             WHERE vks.Comp_id = @Comp_Id 
-              AND ISNULL(vks.IsBlock, 0) = 1
+              AND vks.IsDelete = 1
               AND (
-                  (vks.Block_Date >= @StartDate AND vks.Block_Date < @EndDate)
-                  OR (vks.Block_Date IS NULL AND @Win = 'ALL')
+                  (du.Entry_date >= @StartDate AND du.Entry_date < @EndDate)
+                  OR (du.Entry_date IS NULL AND @Win = 'ALL')
               )
               AND (
                   @Search IS NULL 
@@ -171,86 +189,98 @@ BEGIN
         END
     END
     -------------------------------------------------
-    -- BLOCK USER
+    -- DELETE USER
     -------------------------------------------------
-    ELSE IF @Action IN ('BLOCK', 'ADD')
+    ELSE IF @Action = 'DELETE'
     BEGIN
-        DECLARE @TargetConsumerID INT = NULL;
+        DECLARE @DeleteConsumerID INT = NULL;
 
         IF @M_Consumerid IS NOT NULL AND @M_Consumerid > 0
         BEGIN
-            SELECT TOP 1 @TargetConsumerID = mc.M_Consumerid
-            FROM M_Consumer mc WITH (NOLOCK)
-            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
-            WHERE mc.M_Consumerid = @M_Consumerid AND vks.Comp_id = @Comp_Id;
+            SET @DeleteConsumerID = @M_Consumerid;
         END
         ELSE IF @MobileNo IS NOT NULL AND LEN(LTRIM(RTRIM(@MobileNo))) > 0
         BEGIN
-            SELECT TOP 1 @TargetConsumerID = mc.M_Consumerid
+            SELECT TOP 1 @DeleteConsumerID = mc.M_Consumerid
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10)
               AND vks.Comp_id = @Comp_Id;
         END
 
-        IF @TargetConsumerID IS NULL
+        IF @DeleteConsumerID IS NULL
         BEGIN
             SELECT 0 AS Status, 'Consumer is not registered under this company.' AS Message;
             RETURN;
         END
 
+        -- 1. Update tbl_Vendorvisekycstatus
         UPDATE tbl_Vendorvisekycstatus
-        SET IsBlock = 1,
-            Block_Date = GETDATE()
-        WHERE M_consumerId = @TargetConsumerID AND Comp_id = @Comp_Id;
+        SET IsDelete = 1
+        WHERE M_consumerId = @DeleteConsumerID AND Comp_id = @Comp_Id;
 
-        IF @@ROWCOUNT > 0
-        BEGIN
-            SELECT 1 AS Status, 'Consumer marked as Blocked.' AS Message;
-        END
-        ELSE
-        BEGIN
-            SELECT 0 AS Status, 'Failed to block the consumer.' AS Message;
-        END
+        -- 2. Update M_Consumer
+        UPDATE M_Consumer
+        SET IsDelete = 1
+        WHERE M_Consumerid = @DeleteConsumerID;
+
+        -- 3. Insert or refresh record in tbl_DeletedUsers
+        INSERT INTO tbl_DeletedUsers (M_Consumerid, comp_id, Entry_date, IsActive, Updated_date)
+        VALUES (@DeleteConsumerID, @Comp_Id, GETDATE(), 1, GETDATE());
+
+        SELECT 1 AS Status, 'User deleted successfully.' AS Message;
     END
     -------------------------------------------------
-    -- UNBLOCK USER
+    -- UNDELETE USER
     -------------------------------------------------
-    ELSE IF @Action = 'UNBLOCK'
+    ELSE IF @Action = 'UNDELETE'
     BEGIN
-        DECLARE @UnblockConsumerID INT = NULL;
+        DECLARE @UndeleteConsumerID INT = NULL;
 
         IF @M_Consumerid IS NOT NULL AND @M_Consumerid > 0
         BEGIN
-            SET @UnblockConsumerID = @M_Consumerid;
+            SET @UndeleteConsumerID = @M_Consumerid;
         END
         ELSE IF @MobileNo IS NOT NULL AND LEN(LTRIM(RTRIM(@MobileNo))) > 0
         BEGIN
-            SELECT TOP 1 @UnblockConsumerID = mc.M_Consumerid
+            SELECT TOP 1 @UndeleteConsumerID = mc.M_Consumerid
             FROM M_Consumer mc WITH (NOLOCK)
             INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
             WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10)
               AND vks.Comp_id = @Comp_Id;
         END
 
-        IF @UnblockConsumerID IS NULL
+        IF @UndeleteConsumerID IS NULL
         BEGIN
             SELECT 0 AS Status, 'Consumer is not registered under this company.' AS Message;
             RETURN;
         END
 
+        -- 1. Restore tbl_Vendorvisekycstatus
         UPDATE tbl_Vendorvisekycstatus
-        SET IsBlock = 0,
-            Block_Date = NULL
-        WHERE M_consumerId = @UnblockConsumerID AND Comp_id = @Comp_Id;
+        SET IsDelete = 0
+        WHERE M_consumerId = @UndeleteConsumerID AND Comp_id = @Comp_Id;
 
         IF @@ROWCOUNT > 0
         BEGIN
-            SELECT 1 AS Status, 'Consumer unblocked successfully.' AS Message;
+            -- 2. Restore M_Consumer
+            UPDATE M_Consumer
+            SET IsDelete = 0
+            WHERE M_Consumerid = @UndeleteConsumerID;
+
+            -- 3. Deactivate tbl_DeletedUsers records
+            UPDATE tbl_DeletedUsers
+            SET IsActive = 0,
+                Updated_date = GETDATE()
+            WHERE M_Consumerid = @UndeleteConsumerID 
+              AND comp_id = @Comp_Id 
+              AND IsActive = 1;
+
+            SELECT 1 AS Status, 'User undeleted successfully.' AS Message;
         END
         ELSE
         BEGIN
-            SELECT 0 AS Status, 'Consumer not found or not currently blocked.' AS Message;
+            SELECT 0 AS Status, 'User not found or not registered under this company.' AS Message;
         END
     END
 END
