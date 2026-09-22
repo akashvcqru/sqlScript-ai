@@ -583,9 +583,17 @@ BEGIN
         (E.Received_Code1 + E.Received_Code2) AS UniqueCode,
         CASE 
             WHEN MCd.Series_Order IS NOT NULL AND MCd.Series_Serial IS NOT NULL 
-            THEN CONCAT(ISNULL(MCd.Pro_ID, PR.Pro_ID), '-', MCd.Series_Order, '-', MCd.Series_Serial)
+            THEN CONCAT(
+                ISNULL(MCd.Pro_ID, PR.Pro_ID), '-', 
+                CASE WHEN LEN(CAST(MCd.Series_Order AS VARCHAR(20))) < 4 THEN RIGHT('0000' + CAST(MCd.Series_Order AS VARCHAR(20)), 4) ELSE CAST(MCd.Series_Order AS VARCHAR(20)) END, '-', 
+                CASE WHEN LEN(CAST(MCd.Series_Serial AS VARCHAR(20))) < 4 THEN RIGHT('0000' + CAST(MCd.Series_Serial AS VARCHAR(20)), 4) ELSE CAST(MCd.Series_Serial AS VARCHAR(20)) END
+            )
             WHEN E.Series_Order IS NOT NULL AND E.Series_Serial IS NOT NULL
-            THEN CONCAT(ISNULL(MCd.Pro_ID, PR.Pro_ID), '-', E.Series_Order, '-', E.Series_Serial)
+            THEN CONCAT(
+                ISNULL(MCd.Pro_ID, PR.Pro_ID), '-', 
+                CASE WHEN LEN(CAST(E.Series_Order AS VARCHAR(20))) < 4 THEN RIGHT('0000' + CAST(E.Series_Order AS VARCHAR(20)), 4) ELSE CAST(E.Series_Order AS VARCHAR(20)) END, '-', 
+                CASE WHEN LEN(CAST(E.Series_Serial AS VARCHAR(20))) < 4 THEN RIGHT('0000' + CAST(E.Series_Serial AS VARCHAR(20)), 4) ELSE CAST(E.Series_Serial AS VARCHAR(20)) END
+            )
             ELSE '' 
         END AS Series,
         E.Enq_Date,
@@ -710,7 +718,11 @@ BEGIN
         ISNULL(CAST(C.Code1 AS VARCHAR(50)) + CAST(C.Code2 AS VARCHAR(50)), '') AS UniqueCode,
         CASE 
             WHEN C.Series_Order IS NOT NULL AND C.Series_Serial IS NOT NULL 
-            THEN CONCAT(ISNULL(C.Pro_ID, PR.Pro_ID), '-', C.Series_Order, '-', C.Series_Serial)
+            THEN CONCAT(
+                ISNULL(C.Pro_ID, PR.Pro_ID), '-', 
+                CASE WHEN LEN(CAST(C.Series_Order AS VARCHAR(20))) < 4 THEN RIGHT('0000' + CAST(C.Series_Order AS VARCHAR(20)), 4) ELSE CAST(C.Series_Order AS VARCHAR(20)) END, '-', 
+                CASE WHEN LEN(CAST(C.Series_Serial AS VARCHAR(20))) < 4 THEN RIGHT('0000' + CAST(C.Series_Serial AS VARCHAR(20)), 4) ELSE CAST(C.Series_Serial AS VARCHAR(20)) END
+            )
             ELSE '' 
         END AS Series,
         BL.UpdateDate AS Enq_Date,

@@ -1,12 +1,16 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetAssignLabelToProductACList_AI]    Script Date: 18-08-2026 20:30:13 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE OR ALTER PROCEDURE [dbo].[USP_GetAssignLabelToProductACList_AI]
+-- =============================================================================
+-- Author:      AI
+-- Create date: 2026-09-21
+-- Description: Get Warranty Service Settings List (SRV1023) with Pagination and Filters
+-- =============================================================================
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetWarrantyServiceSettingsList_AI]
     @Comp_ID NVARCHAR(50),
     @Search NVARCHAR(MAX) = NULL,
     @Pro_Name NVARCHAR(MAX) = NULL,
@@ -32,7 +36,7 @@ BEGIN
         INNER JOIN Pro_Reg AS p ON ss.Pro_ID = p.Pro_ID
         LEFT JOIN M_ServiceSubscriptionTrans AS sst ON ss.Subscribe_Id = sst.Subscribe_Id 
         WHERE (ss.Comp_ID = @Comp_ID) 
-          AND (ss.Service_ID = 'SRV1018') 
+          AND (ss.Service_ID = 'SRV1023') 
           AND (@Pro_Name IS NULL OR p.Pro_Name LIKE '%' + @Pro_Name + '%')
           AND (@FromDate IS NULL OR ISNULL(sst.Entry_Date, ss.EntryDate) >= @FromDate)
           AND (@ToDate IS NULL OR ISNULL(sst.Entry_Date, ss.EntryDate) <= @ToDate)
@@ -98,7 +102,7 @@ BEGIN
             sst.IsActive AS SST_IsActive,
             ISNULL(sst.IsActive, ss.IsActive) AS IsActive, 
             ISNULL(sst.IsDelete, ISNULL(ss.IsDelete, 0)) AS IsDelete, 
-            ISNULL(ms.ServiceName, 'Anti Counterfeit') AS ServiceName, 
+            ISNULL(ms.ServiceName, 'Warranty') AS ServiceName, 
             p.Pro_Name, 
             ISNULL(mf.IsSound, 0) AS IsSound,
             ss.Comp_ID,
@@ -132,7 +136,7 @@ BEGIN
             )
     ) REG 
     WHERE (REG.Comp_ID = @Comp_ID) 
-      AND (REG.Service_ID = 'SRV1018') 
+      AND (REG.Service_ID = 'SRV1023') 
       AND (@Pro_Name IS NULL OR REG.Pro_Name LIKE '%' + @Pro_Name + '%')
       AND (@FromDate IS NULL OR REG.Pasted_Date >= @FromDate)
       AND (@ToDate IS NULL OR REG.Pasted_Date <= @ToDate)

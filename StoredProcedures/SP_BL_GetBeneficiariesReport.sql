@@ -504,7 +504,7 @@ BEGIN
     INNER JOIN #ConsumerMapping CM ON TRY_CAST(t.M_Consumerid AS INT) = CM.M_ConsumerId
     WHERE t.Comp_Id IN (SELECT Comp_Id FROM @CompanyList)
       AND t.Status = 'Success'
-      AND LEN(ISNULL(t.Code1, '')) > 3
+      AND (@Comp_Id = 'Comp-1669' OR LEN(ISNULL(t.Code1, '')) > 3)
       AND (@StartDate IS NULL OR t.ReqDate >= @StartDate)
       AND (@EndDate   IS NULL OR t.ReqDate <  @EndDate)
     GROUP BY CM.Active_ConsumerId;
@@ -579,12 +579,12 @@ BEGIN
         (ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00)) AS PointsEarned,
         ISNULL(R.RefralAmount, 0.00) AS RefralAmount,
         CASE 
-            WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(PT.PaytmAmount, 0.00)
+            WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
             ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
         END AS RedeemAmount,
         ((ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00) + ISNULL(R.RefralAmount, 0.00)) - 
          CASE 
-            WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(PT.PaytmAmount, 0.00)
+            WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
             ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
          END) AS BalanceAmount,
         B.LastScan
@@ -613,7 +613,7 @@ BEGIN
         (ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00)) > 0
         OR ISNULL(R.RefralAmount, 0.00) > 0
         OR (CASE 
-                WHEN @Comp_Id = 'Comp-1669' THEN ISNULL(PT.PaytmAmount, 0.00)
+                WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
                 ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
             END) > 0
     );

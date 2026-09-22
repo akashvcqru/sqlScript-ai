@@ -33,6 +33,8 @@ BEGIN
             ELSE 'De-Activated' 
         END AS StatusText,
         SST.IsDelete,
+        ISNULL(SS.PlanName, '') AS PlanName,
+        ISNULL(CAST(SS.PlanMasterPeriod AS VARCHAR(50)), '') AS PlanMasterPeriod,
         CT.mastercode,
         CT.Batch_No,
         CT.Dealer_Name,
