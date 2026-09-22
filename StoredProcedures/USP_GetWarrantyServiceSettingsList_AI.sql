@@ -58,7 +58,8 @@ BEGIN
 
     -- Fetch the list with pagination
     SELECT DISTINCT 
-        REG.Row_ID, 
+        ISNULL(REG.SST_Id, 0) AS SST_Id,
+        REG.Subscribe_Id,
         REG.Pro_ID, 
         REG.Points,
         REG.Frequency,
@@ -79,9 +80,9 @@ BEGIN
         REG.end_series,
         REG.FromSeries,
         REG.ToSeries,
-        -- Sound Paths (derived from Row_ID)
-        CASE WHEN REG.IsSound = 1 THEN '../Data/Sound/' + SUBSTRING(REG.Comp_ID, 6, 4) + '/' + REG.Pro_ID + '/Loyalty/'+ CONVERT(VARCHAR,REG.Row_ID) +'/' + CONVERT(VARCHAR,REG.Row_ID) + '_H.wav' ELSE '' END AS SoundPath_H,
-        CASE WHEN REG.IsSound = 1 THEN '../Data/Sound/' + SUBSTRING(REG.Comp_ID, 6, 4) + '/' + REG.Pro_ID + '/Loyalty/'+ CONVERT(VARCHAR,REG.Row_ID) +'/' + CONVERT(VARCHAR,REG.Row_ID) + '_E.wav' ELSE '' END AS SoundPath_E,
+        -- Sound Paths
+        CASE WHEN REG.IsSound = 1 THEN '../Data/Sound/' + SUBSTRING(REG.Comp_ID, 6, 4) + '/' + REG.Pro_ID + '/Loyalty/'+ CONVERT(VARCHAR, ISNULL(CAST(REG.SST_Id AS VARCHAR(50)), REG.Subscribe_Id)) +'/' + CONVERT(VARCHAR, ISNULL(CAST(REG.SST_Id AS VARCHAR(50)), REG.Subscribe_Id)) + '_H.wav' ELSE '' END AS SoundPath_H,
+        CASE WHEN REG.IsSound = 1 THEN '../Data/Sound/' + SUBSTRING(REG.Comp_ID, 6, 4) + '/' + REG.Pro_ID + '/Loyalty/'+ CONVERT(VARCHAR, ISNULL(CAST(REG.SST_Id AS VARCHAR(50)), REG.Subscribe_Id)) +'/' + CONVERT(VARCHAR, ISNULL(CAST(REG.SST_Id AS VARCHAR(50)), REG.Subscribe_Id)) + '_E.wav' ELSE '' END AS SoundPath_E,
         -- Service is active only when both M_ServiceSubscription (ss) and M_ServiceSubscriptionTrans (sst) have IsActive = 1
         CAST(CASE WHEN ISNULL(REG.SS_IsActive, 0) = 1 AND ISNULL(REG.SST_IsActive, 1) = 1 THEN 1 ELSE 0 END AS BIT) AS IsActive,
         CAST(CASE WHEN ISNULL(REG.SS_IsActive, 0) = 1 AND ISNULL(REG.SST_IsActive, 1) = 1 THEN 1 ELSE 0 END AS BIT) AS IsCounterFittingServiceActive,
@@ -89,8 +90,8 @@ BEGIN
     FROM (
         SELECT 
             ss.Service_ID, 
-            ISNULL(CAST(sst.SST_Id AS VARCHAR(50)), ss.Subscribe_Id) AS Row_ID, 
-            sst.Subscribe_Id, 
+            sst.SST_Id, 
+            ss.Subscribe_Id, 
             ISNULL(sst.Points, 0) AS Points, 
             ISNULL(sst.Frequency, ss.PlanMasterPeriod) AS Frequency, 
             ISNULL(sst.IsCashConvert, 0) AS IsCashConvert, 
