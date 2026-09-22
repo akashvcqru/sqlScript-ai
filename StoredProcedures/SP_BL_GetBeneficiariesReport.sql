@@ -291,7 +291,7 @@ BEGIN
 
     IF @Comp_Id = 'Comp-1669'
     BEGIN
-        -- ISOLATED SPECIFICALLY FOR COMP-1669 (Multi-Service Head & Assistant Mechanics)
+        -- ISOLATED SPECIFICALLY FOR COMP-1669 (Multi-Service Head & Assistant Mechanics matched to SP_BL_GetCodesActivityReport_AI)
         INSERT INTO #Benefit (M_Consumerid, PointsEarned, LastScan)
         SELECT 
             CM.Active_ConsumerId AS M_Consumerid,
@@ -307,12 +307,33 @@ BEGIN
                 END
             AS DECIMAL(18,2))) AS PointsEarned,
             MAX(BL.UpdateDate) AS LastScan
-        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        FROM (
+            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+            WHERE BL.compid = 'Comp-1669'
+              AND LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout')
+              AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
+              AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
+
+            UNION ALL
+
+            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+            INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
+                ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+            INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
+                ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+            INNER JOIN M_Code M WITH (NOLOCK) 
+                ON MC.M_Codeid = M.Row_ID
+            INNER JOIN Pro_Reg PR WITH (NOLOCK) 
+                ON M.Pro_ID = PR.Pro_ID
+            WHERE BL.compid IS NULL
+              AND PR.Comp_ID = 'Comp-1669'
+              AND LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout')
+              AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
+              AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
+        ) BL
         INNER JOIN #ConsumerMapping CM ON BL.M_Consumerid = CM.M_ConsumerId
-        WHERE BL.compid = 'Comp-1669'
-          AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
-          AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
-          AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
         GROUP BY CM.Active_ConsumerId;
     END
     ELSE
