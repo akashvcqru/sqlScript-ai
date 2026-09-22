@@ -1,11 +1,4 @@
-USE [Vcqru]
-GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 9/17/2026 10:21:59 AM ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
+CREATE   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
     @CompID VARCHAR(50),
@@ -347,7 +340,26 @@ BEGIN
       AND (@CompID <> 'Comp-1669' OR PT.pdate >= '2026-09-08 17:27:20.650');
 
     DECLARE @RedeemAmount DECIMAL(18,2) = 0;
-    SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount + @PaytmAmount;
+    IF LOWER(@CompID) = 'comp-1669'
+    BEGIN
+        SELECT @RedeemAmount = ISNULL(SUM(TRY_CAST(ISNULL(PT.Amount, 0) AS DECIMAL(18,2))), 0.00)
+        FROM paytmtransaction PT WITH (NOLOCK)
+        WHERE PT.compid = 'Comp-1669'
+          AND PT.pStatus IN ('Success', 'Accepted', 'ACCEPTED', 'SUCCESS')
+          AND (
+              PT.M_consumerid = CAST(@M_Consumerid AS VARCHAR(50))
+              OR PT.M_consumerid IN (
+                  SELECT CAST(M_Consumerid AS VARCHAR(50))
+                  FROM M_Consumer WITH (NOLOCK)
+                  WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0
+              )
+              OR RIGHT(PT.mobileno, 10) = RIGHT(@MobileNo, 10)
+          );
+    END
+    ELSE
+    BEGIN
+        SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount + @PaytmAmount;
+    END
 
     -- Calculate precise counts using SP_BL_GetCodesActivityReport_AI logic
     DECLARE @SuccessCodeCount INT = 0;
