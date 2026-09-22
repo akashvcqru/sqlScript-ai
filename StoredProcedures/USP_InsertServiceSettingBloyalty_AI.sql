@@ -147,6 +147,7 @@ BEGIN
 
         IF ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> ''
         BEGIN
+            -- Parse SeriesStart (handles "0000-0400" or "BP17-0000-0400")
             IF @SeriesStart LIKE '%-%-%'
             BEGIN
                 DECLARE @StartP2 VARCHAR(50) = SUBSTRING(@SeriesStart, CHARINDEX('-', @SeriesStart) + 1, LEN(@SeriesStart));
@@ -159,6 +160,7 @@ BEGIN
                 SET @StartSerial = TRY_CAST(SUBSTRING(@SeriesStart, CHARINDEX('-', @SeriesStart) + 1, LEN(@SeriesStart)) AS INT);
             END
 
+            -- Parse SeriesEnd (handles "0000-0450" or "BP17-0000-0450")
             IF @SeriesEnd LIKE '%-%-%'
             BEGIN
                 DECLARE @EndP2 VARCHAR(50) = SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd));
@@ -169,6 +171,65 @@ BEGIN
             BEGIN
                 SET @EndOrder = TRY_CAST(LEFT(@SeriesEnd, CHARINDEX('-', @SeriesEnd) - 1) AS INT);
                 SET @EndSerial = TRY_CAST(SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd)) AS INT);
+            END
+
+            IF @StartOrder IS NULL OR @StartSerial IS NULL OR @EndOrder IS NULL OR @EndSerial IS NULL
+            BEGIN
+                ROLLBACK TRANSACTION;
+                SELECT 0 AS success, 'Invalid series format in SeriesStart/SeriesEnd. Expected format: 0000-0400 or Prefix-0000-0400.' AS message;
+                RETURN;
+            END
+
+            IF @StartOrder > @EndOrder OR (@StartOrder = @EndOrder AND @StartSerial > @EndSerial)
+            BEGIN
+                ROLLBACK TRANSACTION;
+                SELECT 0 AS success, 'SeriesStart (' + @SeriesStart + ') cannot be greater than SeriesEnd (' + @SeriesEnd + ').' AS message;
+                RETURN;
+            END
+
+            -- Check availability in M_Code (or M_Code_PFL)
+            DECLARE @ExistingCount INT = 0, @AvailableCount INT = 0;
+
+            IF @Comp_ID = 'Comp-1693'
+            BEGIN
+                SELECT 
+                    @ExistingCount = COUNT(1),
+                    @AvailableCount = SUM(CASE WHEN Batch_No IS NULL OR Batch_No = '' THEN 1 ELSE 0 END)
+                FROM M_Code_PFL WITH (NOLOCK)
+                WHERE Pro_ID = @Pro_ID
+                  AND ((Series_Order = @StartOrder AND Series_Order = @EndOrder AND Series_Serial BETWEEN @StartSerial AND @EndSerial)
+                       OR (@StartOrder < @EndOrder AND ((Series_Order = @StartOrder AND Series_Serial >= @StartSerial) OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial) OR (Series_Order > @StartOrder AND Series_Order < @EndOrder))));
+            END
+            ELSE
+            BEGIN
+                SELECT 
+                    @ExistingCount = COUNT(1),
+                    @AvailableCount = SUM(CASE WHEN Batch_No IS NULL OR Batch_No = '' THEN 1 ELSE 0 END)
+                FROM M_Code WITH (NOLOCK)
+                WHERE Pro_ID = @Pro_ID
+                  AND ((Series_Order = @StartOrder AND Series_Order = @EndOrder AND Series_Serial BETWEEN @StartSerial AND @EndSerial)
+                       OR (@StartOrder < @EndOrder AND ((Series_Order = @StartOrder AND Series_Serial >= @StartSerial) OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial) OR (Series_Order > @StartOrder AND Series_Order < @EndOrder))));
+            END
+
+            IF ISNULL(@ExistingCount, 0) = 0
+            BEGIN
+                ROLLBACK TRANSACTION;
+                SELECT 0 AS success, 'The specified series range ' + @SeriesStart + ' to ' + @SeriesEnd + ' does not exist for product ' + @Pro_ID + '.' AS message;
+                RETURN;
+            END
+
+            IF ISNULL(@AvailableCount, 0) = 0
+            BEGIN
+                ROLLBACK TRANSACTION;
+                SELECT 0 AS success, 'No available codes in range ' + @SeriesStart + ' to ' + @SeriesEnd + ' for product ' + @Pro_ID + '. All ' + CAST(@ExistingCount AS VARCHAR(10)) + ' codes are already assigned to another batch.' AS message;
+                RETURN;
+            END
+
+            IF @AvailableCount < @ExistingCount
+            BEGIN
+                ROLLBACK TRANSACTION;
+                SELECT 0 AS success, 'Only ' + CAST(ISNULL(@AvailableCount, 0) AS VARCHAR(10)) + ' of ' + CAST(@ExistingCount AS VARCHAR(10)) + ' codes are available in range ' + @SeriesStart + ' to ' + @SeriesEnd + ' for product ' + @Pro_ID + '. Some codes are already assigned to another batch.' AS message;
+                RETURN;
             END
         END
 
@@ -219,55 +280,132 @@ BEGIN
         BEGIN
             DECLARE @NewTPro_RowID BIGINT;
 
-            INSERT INTO T_Pro
-            (
-                Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date, Series_Limit
-            )
-            VALUES
-            (
-                @Pro_ID, @Batch_No, ISNULL(@MRP, 0),
-                CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
-                CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
-                @Comments, ISNULL(@EntryDate, GETDATE()),
-                CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
-                     THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
-                     ELSE NULL END
-            );
-            SET @NewTPro_RowID = SCOPE_IDENTITY();
+            SELECT TOP 1 @NewTPro_RowID = Row_ID 
+            FROM T_Pro WITH (NOLOCK) 
+            WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
 
-            -- 7. Batch assignment in M_Code
-            DECLARE @Qty INT = 0;
-            IF @StartOrder IS NOT NULL AND @EndOrder IS NOT NULL
+            IF @NewTPro_RowID IS NULL
             BEGIN
-                UPDATE M_Code WITH (ROWLOCK)
-                SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50))
-                WHERE Pro_ID = @Pro_ID 
-                  AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
-                  AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial))
-                  AND (Series_Order BETWEEN @StartOrder AND @EndOrder)
-                  AND (Batch_No IS NULL OR Batch_No = '');
-
-                SET @Qty = @@ROWCOUNT;
-            END
-            ELSE IF ISNULL(@BatchSize, 0) > 0
-            BEGIN
-                ;WITH CTE AS (
-                    SELECT TOP (@BatchSize) Batch_No
-                    FROM M_Code WITH (ROWLOCK)
-                    WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                INSERT INTO T_Pro
+                (
+                    Pro_ID, Batch_No, MRP, Mfd_Date, Exp_Date, Comments, Entry_Date, Series_Limit
                 )
-                UPDATE CTE
-                SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50));
-
-                SET @Qty = @@ROWCOUNT;
+                VALUES
+                (
+                    @Pro_ID, @Batch_No, ISNULL(@MRP, 0),
+                    CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END,
+                    CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END,
+                    @Comments, ISNULL(@EntryDate, GETDATE()),
+                    CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
+                         THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
+                         ELSE NULL END
+                );
+                SET @NewTPro_RowID = SCOPE_IDENTITY();
             END
             ELSE
             BEGIN
-                UPDATE M_Code WITH (ROWLOCK)
-                SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50))
-                WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '');
+                UPDATE T_Pro
+                SET MRP = ISNULL(@MRP, MRP),
+                    Mfd_Date = CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE Mfd_Date END,
+                    Exp_Date = CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE Exp_Date END,
+                    Comments = ISNULL(@Comments, Comments),
+                    Series_Limit = CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
+                                        THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
+                                        ELSE Series_Limit END
+                WHERE Row_ID = @NewTPro_RowID;
+            END
 
-                SET @Qty = @@ROWCOUNT;
+            -- 7. Batch assignment in M_Code / M_Code_PFL
+            DECLARE @Qty INT = 0;
+            DECLARE @UpdatedCodes TABLE (
+                Series_Order INT,
+                Series_Serial INT
+            );
+
+            IF @StartOrder IS NOT NULL AND @EndOrder IS NOT NULL
+            BEGIN
+                IF @Comp_ID = 'Comp-1693'
+                BEGIN
+                    UPDATE M_Code_PFL WITH (ROWLOCK)
+                    SET Batch_No = CAST(@NewTPro_RowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes
+                    WHERE Pro_ID = @Pro_ID
+                      AND ((Series_Order = @StartOrder AND Series_Order = @EndOrder AND Series_Serial BETWEEN @StartSerial AND @EndSerial)
+                           OR (@StartOrder < @EndOrder AND ((Series_Order = @StartOrder AND Series_Serial >= @StartSerial) OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial) OR (Series_Order > @StartOrder AND Series_Order < @EndOrder))))
+                      AND (Batch_No IS NULL OR Batch_No = '');
+
+                    SET @Qty = @@ROWCOUNT;
+                END
+                ELSE
+                BEGIN
+                    UPDATE M_Code WITH (ROWLOCK)
+                    SET Batch_No = CAST(@NewTPro_RowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes
+                    WHERE Pro_ID = @Pro_ID
+                      AND ((Series_Order = @StartOrder AND Series_Order = @EndOrder AND Series_Serial BETWEEN @StartSerial AND @EndSerial)
+                           OR (@StartOrder < @EndOrder AND ((Series_Order = @StartOrder AND Series_Serial >= @StartSerial) OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial) OR (Series_Order > @StartOrder AND Series_Order < @EndOrder))))
+                      AND (Batch_No IS NULL OR Batch_No = '');
+
+                    SET @Qty = @@ROWCOUNT;
+                END
+            END
+            ELSE IF @Comp_ID = 'Comp-1693'
+            BEGIN
+                IF ISNULL(@BatchSize, 0) > 0
+                BEGIN
+                    ;WITH CTE AS (
+                        SELECT TOP (@BatchSize) Batch_No, Series_Order, Series_Serial
+                        FROM M_Code_PFL WITH (ROWLOCK)
+                        WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                    )
+                    UPDATE CTE
+                    SET Batch_No = CAST(@NewTPro_RowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes;
+
+                    SET @Qty = @@ROWCOUNT;
+                END
+                ELSE
+                BEGIN
+                    ;WITH CTE AS (
+                        SELECT TOP (50000) Batch_No, Series_Order, Series_Serial
+                        FROM M_Code_PFL WITH (ROWLOCK)
+                        WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                    )
+                    UPDATE CTE
+                    SET Batch_No = CAST(@NewTPro_RowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes;
+
+                    SET @Qty = @@ROWCOUNT;
+                END
+            END
+            ELSE
+            BEGIN
+                IF ISNULL(@BatchSize, 0) > 0
+                BEGIN
+                    ;WITH CTE AS (
+                        SELECT TOP (@BatchSize) Batch_No, Series_Order, Series_Serial
+                        FROM M_Code WITH (ROWLOCK)
+                        WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                    )
+                    UPDATE CTE
+                    SET Batch_No = CAST(@NewTPro_RowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes;
+
+                    SET @Qty = @@ROWCOUNT;
+                END
+                ELSE
+                BEGIN
+                    ;WITH CTE AS (
+                        SELECT TOP (50000) Batch_No, Series_Order, Series_Serial
+                        FROM M_Code WITH (ROWLOCK)
+                        WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                    )
+                    UPDATE CTE
+                    SET Batch_No = CAST(@NewTPro_RowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes;
+
+                    SET @Qty = @@ROWCOUNT;
+                END
             END
 
             -- 8. Update Series_Limit in T_Pro if not already set by SeriesStart/SeriesEnd
