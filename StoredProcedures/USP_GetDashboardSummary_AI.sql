@@ -266,7 +266,7 @@ BEGIN
         AS DECIMAL(18,2))), 0) as RefCash
     INTO #ReferralStats
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-    INNER JOIN @CompanyList CL ON (BL.compid = CL.Comp_Id OR (LOWER(@CompID) <> 'comp-1669' AND ISNULL(BL.compid, '') = ''))
+    INNER JOIN @CompanyList CL ON (BL.compid = CL.Comp_Id OR (ISNULL(BL.compid, '') = '' AND BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL))
     WHERE (
           BL.M_Consumerid = @M_Consumerid 
           OR BL.M_Consumerid IN (
@@ -276,19 +276,8 @@ BEGIN
           )
       )
       AND (
-          (LOWER(@CompID) = 'comp-1669' AND LOWER(ISNULL(BL.ServiceName, '')) IN ('refral', 'referral'))
-          OR
-          (LOWER(@CompID) <> 'comp-1669' AND (
-              BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
-              OR LOWER(ISNULL(BL.ServiceName, '')) IN ('refral', 'referral')
-              OR NOT EXISTS (
-                  SELECT 1 
-                  FROM BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
-                  INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
-                  INNER JOIN #UserScans US WITH (NOLOCK) ON MC.M_Codeid = US.M_Codeid
-                  WHERE BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
-              )
-          ))
+          BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
+          OR LOWER(ISNULL(BL.ServiceName, '')) IN ('refral', 'referral')
       );
 
     ---------------------------------------------------------
