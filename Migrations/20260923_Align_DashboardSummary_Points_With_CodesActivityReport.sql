@@ -351,10 +351,44 @@ BEGIN
           )
           OR RIGHT(PT.mobileno, 10) = RIGHT(@MobileNo, 10)
       )
-      AND (@CompID <> 'Comp-1669' OR PT.pdate >= '2026-09-08 17:27:20.650');
-
     DECLARE @RedeemAmount DECIMAL(18,2) = 0;
-    SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount + @PaytmAmount;
+    IF LOWER(@CompID) = 'comp-1669'
+    BEGIN
+        DECLARE @Comp1669Paytm DECIMAL(18,2) = 0;
+        SELECT @Comp1669Paytm = ISNULL(SUM(TRY_CAST(ISNULL(pt.Amount, 0) AS DECIMAL(18,2))), 0)
+        FROM paytmtransaction pt WITH (NOLOCK)
+        WHERE LOWER(pt.compId) = 'comp-1669'
+          AND pt.pStatus IN ('Success', 'Accepted', 'ACCEPTED', 'SUCCESS')
+          AND (
+              pt.M_consumerid = CAST(@M_Consumerid AS VARCHAR(50)) 
+              OR pt.M_consumerid IN (
+                  SELECT CAST(M_Consumerid AS VARCHAR(50))
+                  FROM M_Consumer WITH (NOLOCK) 
+                  WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0
+              )
+              OR RIGHT(pt.mobileno, 10) = RIGHT(@MobileNo, 10)
+          );
+
+        DECLARE @Comp1669UPI DECIMAL(18,2) = 0;
+        SELECT @Comp1669UPI = ISNULL(SUM(TRY_CAST(ISNULL(t.Amount, t.Points_Val) AS DECIMAL(18,2))), 0)
+        FROM tblUPITransactionDetails t WITH (NOLOCK)
+        WHERE LOWER(t.Comp_Id) = 'comp-1669'
+          AND t.Status = 'Success'
+          AND (
+              t.M_Consumerid = CAST(@M_Consumerid AS VARCHAR(50)) 
+              OR t.M_Consumerid IN (
+                  SELECT CAST(M_Consumerid AS VARCHAR(50))
+                  FROM M_Consumer WITH (NOLOCK) 
+                  WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0
+              )
+          );
+
+        SET @RedeemAmount = @Comp1669Paytm + @Comp1669UPI;
+    END
+    ELSE
+    BEGIN
+        SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount + @PaytmAmount;
+    END
 
     -- Calculate precise counts using SP_BL_GetCodesActivityReport_AI logic
     DECLARE @SuccessCodeCount INT = 0;
@@ -411,7 +445,7 @@ BEGIN
               FROM M_Consumer WITH (NOLOCK) 
               WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
           ))
-          AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral');
+          AND LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout');
 
         SELECT 
             @Comp1669RefSum = ISNULL(SUM(ISNULL(BL.Points, 0) + ISNULL(BL.Cash, 0)), 0)
