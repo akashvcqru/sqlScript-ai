@@ -229,6 +229,11 @@ BEGIN
             RIGHT('00000' + CAST(m.Code1 AS VARCHAR(5)), 5),
             RIGHT('00000000' + CAST(m.Code2 AS VARCHAR(8)), 8)
         ) AS CompleteCode,
+        CASE 
+            WHEN m.Pro_ID IS NOT NULL AND (m.Series_Order IS NOT NULL OR m.Series_Serial IS NOT NULL)
+            THEN CONCAT(m.Pro_ID, '-', RIGHT('0000' + CAST(ISNULL(m.Series_Order, 0) AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(ISNULL(m.Series_Serial, 0) AS VARCHAR(4)), 4))
+            ELSE NULL 
+        END AS SerialNumber,
         m.Batch_No AS BatchNo,
         m.Pro_ID AS ProId,
         p.Pro_Name AS ProductName,
@@ -247,6 +252,7 @@ BEGIN
           OR CAST(m.Code2 AS NVARCHAR(20)) LIKE '%' + @Search + '%'
           OR CONCAT(m.Code1, m.Code2) LIKE '%' + @Search + '%'
           OR CONCAT(m.Code1, '-', m.Code2) LIKE '%' + @Search + '%'
+          OR (m.Pro_ID IS NOT NULL AND CONCAT(m.Pro_ID, '-', RIGHT('0000' + CAST(ISNULL(m.Series_Order, 0) AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(ISNULL(m.Series_Serial, 0) AS VARCHAR(4)), 4)) LIKE '%' + @Search + '%')
           OR m.Batch_No LIKE '%' + @Search + '%'
           OR m.Pro_ID LIKE '%' + @Search + '%'
           OR p.Pro_Name LIKE '%' + @Search + '%'
@@ -260,6 +266,7 @@ BEGIN
         SELECT 
             Row_ID,
             CompleteCode,
+            SerialNumber,
             BatchNo,
             ProId,
             ProductName,
@@ -284,6 +291,7 @@ BEGIN
     SELECT 
         Row_ID,
         CompleteCode,
+        SerialNumber,
         BatchNo,
         ProId,
         ProductName,
