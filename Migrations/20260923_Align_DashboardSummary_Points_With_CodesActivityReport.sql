@@ -376,7 +376,7 @@ BEGIN
     END
     ELSE
     BEGIN
-        SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount + @PaytmAmount;
+        SET @RedeemAmount = @BPointsAmount + @TransactionsAmount + @UPIAmount + @ClaimsAmount;
     END
 
     -- Calculate precise counts using SP_BL_GetCodesActivityReport_AI logic
