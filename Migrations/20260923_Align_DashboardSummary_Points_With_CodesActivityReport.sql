@@ -1,11 +1,19 @@
+-- Migration Script: Align USP_GetDashboardSummary_AI points with SP_BL_GetCodesActivityReport_AI
+-- Date: 2026-09-23
+-- Target DB: Production (Vcqru)
+-- Description:
+--   Update USP_GetDashboardSummary_AI point calculations so that TotalPoints matches 
+--   the sum of won points from SP_BL_GetCodesActivityReport_AI (including earned scan 
+--   points beyond base frequency and orphan referral points).
+
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 9/17/2026 10:21:59 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-ALTER   PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
+
+ALTER PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
     @CompID VARCHAR(50),
@@ -462,44 +470,44 @@ BEGIN
         RETURN;
     END
 
-    -- Result Set 2: Service-Wise Stats
-    SELECT 
-        ms.Service_ID,
-        ms_name.ServiceName,
-        ISNULL(cp.ServiceTotalPoints, 0) as ServiceTotalPoints,
-        ISNULL(cp.ServiceTotalCash, 0) as ServiceTotalCash
-    FROM (SELECT DISTINCT Service_ID, Comp_ID FROM M_ServiceSubscription WHERE IsActive = 1) ms
-    LEFT JOIN M_Service ms_name ON ms_name.Service_ID = ms.Service_ID
-    LEFT JOIN #ConfiguredPoints cp ON cp.Service_ID = ms.Service_ID
-    WHERE ms.Comp_ID = @CompID
-    UNION ALL
-    -- Include Referral/KYC if they have data
-    SELECT 
-        'SRV1000' as Service_ID, -- Generic ID for other rewards
-        'Other Rewards' as ServiceName,
-        RefPoints as ServiceTotalPoints,
-        RefCash as ServiceTotalCash
-    FROM #ReferralStats
-    WHERE RefPoints > 0 OR RefCash > 0;
+    -- Result Set 2: Service Wise Breakup (Return empty if @HasServiceWiseGifts = 0)
+    IF @HasServiceWiseGifts = 1
+    BEGIN
+        SELECT 
+            s.Service_ID,
+            s.Service_Name,
+            g.gift_id,
+            g.Gift_name,
+            g.gift_value,
+            g.image_path,
+            g.Remarks,
+            ISNULL(cp.ServiceTotalPoints, 0) AS TotalPoints
+        FROM Claim_gift g WITH (NOLOCK)
+        INNER JOIN M_Service s WITH (NOLOCK) ON g.Service_id = s.Service_ID
+        LEFT JOIN #ConfiguredPoints cp ON cp.Service_ID = s.Service_ID
+        WHERE g.CompID = @CompID
+          AND g.Isdelete = 0;
+    END
+    ELSE
+    BEGIN
+        SELECT 
+            CAST(NULL AS VARCHAR(50)) AS Service_ID,
+            CAST(NULL AS VARCHAR(100)) AS Service_Name,
+            CAST(NULL AS VARCHAR(50)) AS gift_id,
+            CAST(NULL AS VARCHAR(100)) AS Gift_name,
+            CAST(NULL AS DECIMAL(18,2)) AS gift_value,
+            CAST(NULL AS VARCHAR(500)) AS image_path,
+            CAST(NULL AS VARCHAR(500)) AS Remarks,
+            CAST(NULL AS DECIMAL(18,2)) AS TotalPoints
+        WHERE 1 = 0;
+    END
 
-    -- Result Set 3: Claim Amounts Service-Wise
-    SELECT Service_ID, SUM(ClaimAmount) as ClaimAmount
-    FROM (
-        SELECT 
-            ISNULL(Service_ID, 'SRV1001') as Service_ID,
-            Amount as ClaimAmount
-        FROM ClaimDetails cl
-        INNER JOIN @CompanyList CL2 ON cl.Comp_id = CL2.Comp_Id
-        WHERE RIGHT(cl.Mobileno, 10) = RIGHT(@MobileNo, 10) AND cl.Isapproved <> 2
-        UNION ALL
-        SELECT 
-            'SRV1029' as Service_ID,
-            ISNULL(Points_Val, Amount) as ClaimAmount
-        FROM tblUPITransactionDetails 
-        WHERE RIGHT(Mobileno, 10) = RIGHT(@MobileNo, 10) 
-          AND (Status = 'Success' OR (Status = 'Pending' AND ReqDate >= DATEADD(day, -30, GETDATE()))) 
-          AND Comp_id = @CompID 
-          AND Code2 > 0
-    ) t
-    GROUP BY Service_ID;
+    -- Cleanup
+    DROP TABLE IF EXISTS #UserScans;
+    DROP TABLE IF EXISTS #EarnedPoints;
+    DROP TABLE IF EXISTS #ConfigPoints;
+    DROP TABLE IF EXISTS #ScanServices;
+    DROP TABLE IF EXISTS #ConfiguredPoints;
+    DROP TABLE IF EXISTS #ReferralStats;
 END
+GO
