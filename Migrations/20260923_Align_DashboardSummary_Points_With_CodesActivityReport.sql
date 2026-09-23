@@ -229,7 +229,7 @@ BEGIN
         SUM(
             CASE 
                 WHEN LOWER(@CompID) = 'comp-1669' THEN ISNULL([dbo].[fnPointSp](EP.Points), 0)
-                ELSE ISNULL(EP.Points, 0)
+                ELSE ISNULL(EP.Points, ISNULL(CP.ConfigPoints, 0))
             END
         ) AS ServiceTotalPoints,
         SUM(
