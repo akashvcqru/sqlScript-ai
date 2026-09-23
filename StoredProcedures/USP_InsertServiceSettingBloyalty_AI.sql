@@ -298,7 +298,7 @@ BEGIN
                     @Comments, ISNULL(@EntryDate, GETDATE()),
                     CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
                          THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
-                         ELSE NULL END
+                         ELSE '' END
                 );
                 SET @NewTPro_RowID = SCOPE_IDENTITY();
             END
@@ -311,7 +311,7 @@ BEGIN
                     Comments = ISNULL(@Comments, Comments),
                     Series_Limit = CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
                                         THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
-                                        ELSE Series_Limit END
+                                        ELSE ISNULL(Series_Limit, '') END
                 WHERE Row_ID = @NewTPro_RowID;
             END
 

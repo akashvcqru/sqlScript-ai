@@ -242,7 +242,9 @@ BEGIN
             (
                 @Pro_ID, @Batch_No, 
                 @Comments, ISNULL(@EntryDate, GETDATE()),
-                CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd)
+                CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
+                     THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
+                     ELSE '' END
             );
             SET @NewTPro_RowID = SCOPE_IDENTITY();
         END

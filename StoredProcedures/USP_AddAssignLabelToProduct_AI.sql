@@ -142,7 +142,7 @@ BEGIN
             CASE WHEN @Warranty > 0 THEN 1 ELSE 0 END,
             CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
                  THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
-                 ELSE NULL END
+                 ELSE '' END
         );
 
         SET @NewRowID = SCOPE_IDENTITY();
