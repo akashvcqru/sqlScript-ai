@@ -151,24 +151,27 @@ BEGIN
             M_Codeid,
             1 AS rn,
             Service_ID,
-            SUM(Points) AS Points,UpdateDate
+            SUM(Points) AS Points,
+            MAX(UpdateDate) AS UpdateDate
         FROM #EarnedPointsRaw
-        GROUP BY M_Codeid, Service_ID,UpdateDate;
+        GROUP BY M_Codeid, Service_ID;
     END
     ELSE
     BEGIN
         INSERT INTO #EarnedPoints (M_Codeid, rn, Service_ID, Points,UpdateDate)
         SELECT
             M_Codeid,
-            ROW_NUMBER() OVER (PARTITION BY M_Codeid ORDER BY BLoyalty_PointEarnedID ASC) AS rn,
+            1 AS rn,
             Service_ID,
-            Points,UpdateDate
-        FROM #EarnedPointsRaw;
+            MAX(Points) AS Points,
+            MAX(UpdateDate) AS UpdateDate
+        FROM #EarnedPointsRaw
+        GROUP BY M_Codeid, Service_ID;
     END
 
     DROP TABLE IF EXISTS #EarnedPointsRaw;
 
-    CREATE CLUSTERED INDEX IX_EarnedPoints_MCodeid ON #EarnedPoints(M_Codeid, rn);
+    CREATE CLUSTERED INDEX IX_EarnedPoints_MCodeid ON #EarnedPoints(M_Codeid);
 
     -- Get Config Points
     SELECT 
@@ -237,7 +240,7 @@ BEGIN
     FROM #UserScans US
     LEFT JOIN #ScanServices SS ON US.M_Codeid = SS.M_Codeid
     LEFT JOIN #ConfigPoints CP ON CP.M_Codeid = SS.M_Codeid AND CP.Service_ID = SS.Service_ID
-    LEFT JOIN #EarnedPoints EP ON EP.M_Codeid = SS.M_Codeid AND EP.Service_ID = SS.Service_ID AND (@CompID = 'Comp-1669' OR EP.rn = US.rn)
+    LEFT JOIN #EarnedPoints EP ON EP.M_Codeid = SS.M_Codeid AND EP.Service_ID = SS.Service_ID
     WHERE (US.rn <= ISNULL(CP.Frequency, 1) OR ISNULL(EP.Points, 0) > 0)
     GROUP BY COALESCE(SS.Service_ID, 'SRV1001');
 
