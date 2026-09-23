@@ -42,7 +42,9 @@ BEGIN
     -- 2. Construct Date Range
     -------------------------------------------------
     DECLARE @StartDate DATE, @EndDate DATE;
-    DECLARE @Today DATE = CAST(GETDATE() AS DATE);
+    DECLARE @Today DATE = CAST(DATEADD(MINUTE, 330, GETUTCDATE()) AS DATE); -- Convert to IST before taking date
+    DECLARE @ThisWeekStart DATE;
+    DECLARE @ThisMonthStart DATE;
     DECLARE @Win NVARCHAR(20) = UPPER(LTRIM(RTRIM(ISNULL(@datePreset,''))));
     
     IF @Win = '' OR @Win = 'NULL' SET @Win = 'ALL';
@@ -66,7 +68,7 @@ BEGIN
     ELSE IF @Win = 'LASTWEEK'
     BEGIN
         SET DATEFIRST 1;
-        DECLARE @ThisWeekStart DATE = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
+        SET @ThisWeekStart = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @Today), @Today);
         SET @StartDate = DATEADD(DAY, -7, @ThisWeekStart);
         SET @EndDate   = @ThisWeekStart;
     END
@@ -77,7 +79,7 @@ BEGIN
     END
     ELSE IF @Win = 'LASTMONTH'
     BEGIN
-        DECLARE @ThisMonthStart DATE = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
+        SET @ThisMonthStart = DATEFROMPARTS(YEAR(@Today), MONTH(@Today), 1);
         SET @StartDate = DATEADD(MONTH, -1, @ThisMonthStart);
         SET @EndDate   = @ThisMonthStart;
     END
@@ -113,34 +115,7 @@ BEGIN
     END
 
     ------------------------------------------------------
-    -- Step 1: Pre-filter M_Code (Deduplicated per code pair)
-    ------------------------------------------------------
-    IF OBJECT_ID('tempdb..#tempM_Code') IS NOT NULL DROP TABLE #tempM_Code;
-    
-    IF @Comp_ID <> 'Comp-1693'
-    BEGIN
-        ;WITH DistinctCodes AS (
-            SELECT 
-                a.Code1, 
-                a.Code2, 
-                a.Pro_ID,
-                a.Use_Count,
-                ROW_NUMBER() OVER (PARTITION BY a.Code1, a.Code2 ORDER BY a.Use_Count DESC) AS rn
-            FROM M_Code a WITH (NOLOCK)
-            INNER JOIN Pro_Reg b WITH (NOLOCK) ON a.Pro_ID = b.Pro_ID 
-            WHERE b.Comp_ID = @Comp_ID
-              AND a.Use_Count > 0
-        )
-        SELECT Code1, Code2, Pro_ID
-        INTO #tempM_Code 
-        FROM DistinctCodes
-        WHERE rn = 1;
-
-        CREATE INDEX IX_tempM_Code_Codes ON #tempM_Code(Code1, Code2);
-    END
-
-    ------------------------------------------------------
-    -- Step 2: Pre-filter Pro_Enq (Filtered for Invalid Scans)
+    -- Step 1: Pre-filter Pro_Enq (Filtered for Invalid Scans: Is_Success = 0)
     ------------------------------------------------------
     IF OBJECT_ID('tempdb..#tempPro_Enq') IS NOT NULL DROP TABLE #tempPro_Enq;
 
@@ -185,15 +160,13 @@ BEGIN
             pe.Enq_Date, 
             pe.Dial_Mode
         FROM Pro_Enq pe WITH (NOLOCK)
-        LEFT JOIN #tempM_Code mc ON LTRIM(RTRIM(CAST(mc.Code1 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code1 AS VARCHAR(50)))) 
-              AND LTRIM(RTRIM(CAST(mc.Code2 AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(pe.Received_Code2 AS VARCHAR(50))))
         WHERE pe.Comp_ID = @Comp_ID
           AND pe.Enq_Date >= @CompanyStartDate
           AND pe.Enq_Date >= @StartDate
           AND pe.Enq_Date < @EndDate
           AND (@StateFilter IS NULL OR pe.State = @StateFilter)
           AND (@DialModeFilter IS NULL OR pe.Dial_Mode = @DialModeFilter)
-          AND (mc.Pro_ID IS NULL OR pe.Is_Success NOT IN (1, 2)) -- Matches Live Tracking 'Invalid' logic
+          AND (pe.Is_Success = '0' OR pe.Is_Success = 0)
           AND (@Search IS NULL OR (
                 pe.MobileNo LIKE '%'+@Search+'%' OR 
                 pe.Received_Code1 LIKE '%'+@Search+'%' OR 
