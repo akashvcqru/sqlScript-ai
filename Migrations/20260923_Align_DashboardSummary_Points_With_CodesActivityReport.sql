@@ -3,8 +3,7 @@
 -- Target DB: Production (Vcqru)
 -- Description:
 --   Update USP_GetDashboardSummary_AI point calculations so that TotalPoints matches 
---   the sum of won points from SP_BL_GetCodesActivityReport_AI (including earned scan 
---   points beyond base frequency, orphan referral points, and MAX(Points) per code scan).
+--   the sum of won points from SP_BL_GetCodesActivityReport_AI (ISNULL(EP.Points, 0)).
 
 USE [Vcqru]
 GO
@@ -181,10 +180,9 @@ BEGIN
 
     CREATE CLUSTERED INDEX IX_EarnedPoints_MCodeid ON #EarnedPoints(M_Codeid);
 
-    -- Get Config Points
     SELECT 
         US.M_Codeid,
-        SS.Service_ID,
+        MAX(SS.Service_ID) AS Service_ID,
         MAX(CAST(
             CASE 
                 WHEN @CompID = 'Comp-1669' THEN
@@ -211,13 +209,9 @@ BEGIN
       AND (@CompID <> 'Comp-1669' OR SS.Service_ID = 'SRV1001')
       AND (US.Series_Order > SS.start_order OR (US.Series_Order = SS.start_order AND US.Series_Serial >= SS.start_series))
       AND (US.Series_Order < SS.end_order OR (US.Series_Order = SS.end_order AND US.Series_Serial <= SS.end_series))
-    GROUP BY US.M_Codeid, SS.Service_ID;
+    GROUP BY US.M_Codeid;
 
     CREATE CLUSTERED INDEX IX_ConfigPoints_MCodeid ON #ConfigPoints(M_Codeid);
-
-    SELECT M_Codeid, Service_ID INTO #ScanServices FROM #ConfigPoints
-    UNION
-    SELECT M_Codeid, Service_ID FROM #EarnedPoints;
 
 	DECLARE @Vrkabel_User_Type INT = NULL;
     IF LOWER(@CompID) = 'comp-1669'
@@ -231,11 +225,11 @@ BEGIN
 
     -- Aggregate into #ConfiguredPoints
     SELECT
-        COALESCE(SS.Service_ID, 'SRV1001') AS Service_ID,
+        COALESCE(EP.Service_ID, CP.Service_ID, 'SRV1001') AS Service_ID,
         SUM(
             CASE 
                 WHEN LOWER(@CompID) = 'comp-1669' THEN ISNULL([dbo].[fnPointSp](EP.Points), 0)
-                ELSE ISNULL(EP.Points, ISNULL(CP.ConfigPoints, 0))
+                ELSE ISNULL(EP.Points, 0)
             END
         ) AS ServiceTotalPoints,
         SUM(
@@ -246,18 +240,9 @@ BEGIN
         ) AS ServiceTotalCash
     INTO #ConfiguredPoints
     FROM #UserScans US
-    LEFT JOIN #ScanServices SS ON US.M_Codeid = SS.M_Codeid
-    LEFT JOIN #ConfigPoints CP ON CP.M_Codeid = SS.M_Codeid AND CP.Service_ID = SS.Service_ID
-    LEFT JOIN #EarnedPoints EP ON EP.M_Codeid = SS.M_Codeid AND EP.Service_ID = SS.Service_ID
-    WHERE (US.rn <= ISNULL(CP.Frequency, 1) OR ISNULL(EP.Points, 0) > 0)
-    GROUP BY COALESCE(SS.Service_ID, 'SRV1001');
-
-    -- Include orphan scan points that didn't join to #UserScans into #ConfiguredPoints
-    INSERT INTO #ConfiguredPoints (Service_ID, ServiceTotalPoints, ServiceTotalCash)
-    SELECT Service_ID, SUM(Points), 0
-    FROM #EarnedPoints
-    WHERE M_Codeid NOT IN (SELECT M_Codeid FROM #UserScans)
-    GROUP BY Service_ID;
+    LEFT JOIN #EarnedPoints EP ON US.M_Codeid = EP.M_Codeid
+    LEFT JOIN #ConfigPoints CP ON US.M_Codeid = CP.M_Codeid
+    GROUP BY COALESCE(EP.Service_ID, CP.Service_ID, 'SRV1001');
 
     ---------------------------------------------------------
     -- PRECISE POINT/CASH SUM FOR TOTAL (DUPLICATION FREE)
