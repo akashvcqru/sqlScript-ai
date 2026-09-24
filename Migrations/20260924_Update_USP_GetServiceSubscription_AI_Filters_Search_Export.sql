@@ -1,6 +1,6 @@
 -- =============================================
--- Procedure: USP_GetServiceSubscription_AI
--- Description: Fetch all service subscriptions for a company with Search, Filters and Export support
+-- Migration: 20260924_Update_USP_GetServiceSubscription_AI_Filters_Search_Export.sql
+-- Description: Update USP_GetServiceSubscription_AI with Search, Filters and isExport support
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetServiceSubscription_AI]
     @Comp_ID       NVARCHAR(50),
