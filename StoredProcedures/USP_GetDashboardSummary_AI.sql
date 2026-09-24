@@ -162,11 +162,11 @@ BEGIN
         SELECT
             M_Codeid,
             1 AS rn,
-            Service_ID,
+            MAX(Service_ID) AS Service_ID,
             MAX(Points) AS Points,
             MAX(UpdateDate) AS UpdateDate
         FROM #EarnedPointsRaw
-        GROUP BY M_Codeid, Service_ID;
+        GROUP BY M_Codeid;
     END
 
     DROP TABLE IF EXISTS #EarnedPointsRaw;
