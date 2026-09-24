@@ -1,23 +1,28 @@
+-- Migration: 20260924_Fix_CodesActivityReport_Duplicate_Success_Frequency_Points.sql
+-- Purpose: Fix duplicate success scan entries in SP_BL_GetCodesActivityReport_AI where multiple Is_Success=1 scans exist for the same code.
+--          Enforces code frequency validation (E.rn <= ISNULL(CP.TotalFrequency, 1)):
+--          - Only valid scans within configured frequency earn Points / WornPoint and show 'Verified'.
+--          - Duplicate / over-frequency Is_Success=1 scans receive 0 Points / WornPoint and show 'Already Scanned', aligning with BLoyaltyPointsEarned and GetBeneficiariesReport.
+
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetCodesActivityReport_AI]    Script Date: 9/17/2026 7:17:07 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-ALTER   PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetCodesActivityReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
-     @FromDate DATE  = NULL,                -- NEW
+    @FromDate DATE  = NULL,                -- NEW
     @ToDate DATE  = NULL,                  -- NEW
     @CodeStatusFilter NVARCHAR(20) = NULL,     -- NEW (Verified, Already Scanned, Invalid)
-     @StateFilter NVARCHAR(100) = NULL,       -- âœ… NEW
+    @StateFilter NVARCHAR(100) = NULL,       -- âœ… NEW
     @DialModeFilter NVARCHAR(50) = NULL,     -- âœ… NEW
     @Page INT = NULL,                        -- âœ… NEW
     @Limit INT = NULL,                      -- âœ… NEW
-     @IsExport BIT =NULL,
-       @Search nvarchar(30) = null
+    @IsExport BIT =NULL,
+    @Search nvarchar(30) = null
 AS
 BEGIN
   SET NOCOUNT ON;
@@ -95,7 +100,7 @@ BEGIN
         ELSE IF (@datePreset = 'LASTYEAR')
         BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1);
-            SET @EndDate   = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
         END
         ELSE IF (@datePreset = 'ALL' OR @datePreset IS NULL OR LTRIM(RTRIM(@datePreset)) = '' OR @datePreset = 'NULL')
         BEGIN
@@ -1004,3 +1009,4 @@ BEGIN
         );
     END
 END
+GO
