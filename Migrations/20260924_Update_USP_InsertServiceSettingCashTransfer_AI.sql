@@ -1,12 +1,7 @@
--- ============================================================
--- Stored Procedure: USP_InsertServiceSettingCashTransfer_AI
--- Purpose        : Insert Cash Transfer (SRV1005) service setting.
---                  Always creates a new record in M_ServiceSubscription
---                  and M_ServiceSubscriptionTrans, copying plan values
---                  from the last inserted record for SRV1005.
---                  Supports batch generation, series range allocation,
---                  and direct cash/points configuration.
--- ============================================================
+-- Migration: Update USP_InsertServiceSettingCashTransfer_AI
+-- Date: 2026-09-24
+-- Description: Updates USP_InsertServiceSettingCashTransfer_AI to support auto-subscription creation, batch creation in T_Pro, series range validation, and fast code allocation in M_Code/M_Code_PFL.
+
 CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingCashTransfer_AI]
     @Comp_ID        VARCHAR(50),
     @Pro_ID         VARCHAR(50),
