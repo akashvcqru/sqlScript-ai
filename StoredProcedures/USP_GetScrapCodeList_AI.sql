@@ -109,9 +109,21 @@ BEGIN
             RIGHT('00000000' + CAST(m.Code2 AS VARCHAR(8)), 8)
         ) AS CompleteCode,
         CASE 
-            WHEN m.Pro_ID IS NOT NULL AND (m.Series_Order IS NOT NULL OR m.Series_Serial IS NOT NULL)
-            THEN CONCAT(m.Pro_ID, '-', RIGHT('0000' + CAST(ISNULL(m.Series_Order, 0) AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(ISNULL(m.Series_Serial, 0) AS VARCHAR(4)), 4))
-            ELSE NULL 
+            WHEN (m.Pro_ID IS NOT NULL OR p.Pro_ID IS NOT NULL) AND (m.Series_Order IS NOT NULL OR m.Series_Serial IS NOT NULL)
+            THEN CONCAT(
+                ISNULL(m.Pro_ID, p.Pro_ID), '-', 
+                CASE 
+                    WHEN LEN(CAST(ISNULL(m.Series_Order, 0) AS VARCHAR(20))) < 4 
+                    THEN RIGHT('0000' + CAST(ISNULL(m.Series_Order, 0) AS VARCHAR(20)), 4) 
+                    ELSE CAST(m.Series_Order AS VARCHAR(20)) 
+                END, '-', 
+                CASE 
+                    WHEN LEN(CAST(ISNULL(m.Series_Serial, 0) AS VARCHAR(20))) < 4 
+                    THEN RIGHT('0000' + CAST(ISNULL(m.Series_Serial, 0) AS VARCHAR(20)), 4) 
+                    ELSE CAST(m.Series_Serial AS VARCHAR(20)) 
+                END
+            )
+            ELSE '' 
         END AS SerialNumber,
         m.Batch_No AS BatchNo,
         m.Pro_ID AS ProId,
