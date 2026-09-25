@@ -40,16 +40,15 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingCashTransfer_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
-    SET XACT_ABORT ON;
 
     IF @Service_ID IS NULL OR LTRIM(RTRIM(@Service_ID)) = ''
         SET @Service_ID = 'SRV1005';
 
-    IF @Points IS NULL AND @IsCash IS NOT NULL
-        SET @Points = @IsCash;
-
     IF @IsCash IS NULL AND @Points IS NOT NULL
         SET @IsCash = @Points;
+
+    -- For Cash Transfer (SRV1005), Points must always be 0, and amount stored in IsCash
+    SET @Points = 0;
 
     IF @MRP IS NULL
         SET @MRP = 0;
