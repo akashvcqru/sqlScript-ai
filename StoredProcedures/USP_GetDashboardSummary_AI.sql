@@ -475,6 +475,9 @@ BEGIN
     END
 
     -- Result Set 2: Service-Wise Stats
+    DECLARE @ServiceWiseList NVARCHAR(MAX);
+    SELECT TOP 1 @ServiceWiseList = ServiceWiseList FROM Comp_Reg WITH (NOLOCK) WHERE Comp_ID = @CompID;
+
     SELECT 
         ms.Service_ID,
         ms_name.ServiceName,
@@ -483,7 +486,12 @@ BEGIN
     FROM (SELECT DISTINCT Service_ID, Comp_ID FROM M_ServiceSubscription WHERE IsActive = 1) ms
     LEFT JOIN M_Service ms_name ON ms_name.Service_ID = ms.Service_ID
     LEFT JOIN #ConfiguredPoints cp ON cp.Service_ID = ms.Service_ID
-    WHERE ms.Comp_ID = @CompID and cp.Service_ID in ('SRV1001','SRV1029')
+    WHERE ms.Comp_ID = @CompID 
+      AND cp.Service_ID IN (
+          SELECT LTRIM(RTRIM(value)) 
+          FROM STRING_SPLIT(ISNULL(NULLIF(LTRIM(RTRIM(@ServiceWiseList)), ''), 'SRV1001,SRV1029'), ',')
+          WHERE LTRIM(RTRIM(value)) <> ''
+      )
     UNION ALL
     -- Include Referral/KYC if they have data
     SELECT 
