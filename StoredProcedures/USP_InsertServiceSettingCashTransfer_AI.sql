@@ -51,6 +51,20 @@ BEGIN
     IF @IsCash IS NULL AND @Points IS NOT NULL
         SET @IsCash = @Points;
 
+    IF @MRP IS NULL
+        SET @MRP = 0;
+
+    IF @Mfd_Date IS NULL OR LTRIM(RTRIM(@Mfd_Date)) = ''
+        SET @Mfd_Date = CONVERT(VARCHAR(50), GETDATE(), 120);
+
+    IF @Exp_Date IS NULL OR LTRIM(RTRIM(@Exp_Date)) = ''
+    BEGIN
+        IF @DateTo IS NOT NULL
+            SET @Exp_Date = CONVERT(VARCHAR(50), @DateTo, 120);
+        ELSE
+            SET @Exp_Date = CONVERT(VARCHAR(50), DATEADD(YEAR, 1, GETDATE()), 120);
+    END
+
     BEGIN TRY
         BEGIN TRANSACTION;
 

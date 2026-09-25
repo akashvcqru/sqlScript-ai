@@ -40,6 +40,21 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingTracTraceV2_AI]
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    IF @MRP IS NULL
+        SET @MRP = 0;
+
+    IF @Mfd_Date IS NULL OR LTRIM(RTRIM(@Mfd_Date)) = ''
+        SET @Mfd_Date = CONVERT(VARCHAR(50), GETDATE(), 120);
+
+    IF @Exp_Date IS NULL OR LTRIM(RTRIM(@Exp_Date)) = ''
+    BEGIN
+        IF @DateTo IS NOT NULL AND LTRIM(RTRIM(@DateTo)) <> ''
+            SET @Exp_Date = @DateTo;
+        ELSE
+            SET @Exp_Date = CONVERT(VARCHAR(50), DATEADD(YEAR, 1, GETDATE()), 120);
+    END
+
     BEGIN TRY
         BEGIN TRANSACTION;
 
