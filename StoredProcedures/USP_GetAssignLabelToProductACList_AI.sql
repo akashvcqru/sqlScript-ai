@@ -68,11 +68,10 @@ BEGIN
         REG.Comp_ID,  
         REG.Pro_Name,
         REG.ServiceName,
-        REG.servicerange,
+        REG.SeriesStart,
+        REG.SeriesEnd,
         REG.PlanName,
         REG.PlanMasterPeriod,
-        REG.FromSeries,
-        REG.ToSeries,
         REG.Batch_No,
         REG.Tpro_Id,
         -- Sound Paths
@@ -113,9 +112,8 @@ BEGIN
             ss.end_series,
             TP.Tpro_Id,
             ISNULL(TP.Batch_No, '') AS Batch_No,
-            CASE WHEN ss.start_order IS NULL THEN '' ELSE CONCAT(ss.start_order,'-',ss.start_series,',',CONCAT(ss.end_order,'-',ss.end_series)) END AS servicerange,
-            ISNULL(tr.FromSeries, CASE WHEN ss.start_order IS NULL THEN '' ELSE CONCAT(ss.Pro_ID, '-', RIGHT('0000' + CAST(ss.start_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(ss.start_series AS VARCHAR(4)), 4)) END) AS FromSeries,
-            ISNULL(tr.ToSeries, CASE WHEN ss.end_order IS NULL THEN '' ELSE CONCAT(ss.Pro_ID, '-', RIGHT('0000' + CAST(ss.end_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(ss.end_series AS VARCHAR(4)), 4)) END) AS ToSeries
+            ISNULL(tr.FromSeries, CASE WHEN ss.start_order IS NULL THEN '' ELSE CONCAT(ss.Pro_ID, '-', RIGHT('0000' + CAST(ss.start_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(ss.start_series AS VARCHAR(4)), 4)) END) AS SeriesStart,
+            ISNULL(tr.ToSeries, CASE WHEN ss.end_order IS NULL THEN '' ELSE CONCAT(ss.Pro_ID, '-', RIGHT('0000' + CAST(ss.end_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(ss.end_series AS VARCHAR(4)), 4)) END) AS SeriesEnd
         FROM M_ServiceSubscription AS ss
         INNER JOIN Pro_Reg AS p ON ss.Pro_ID = p.Pro_ID
         LEFT JOIN M_Service AS ms ON ss.Service_ID = ms.Service_ID 
@@ -157,9 +155,8 @@ BEGIN
           OR REG.Pro_Name LIKE '%' + @Search + '%'
           OR REG.Pro_ID LIKE '%' + @Search + '%'
           OR REG.PlanName LIKE '%' + @Search + '%'
-          OR REG.FromSeries LIKE '%' + @Search + '%'
-          OR REG.ToSeries LIKE '%' + @Search + '%'
-          OR REG.servicerange LIKE '%' + @Search + '%'
+          OR REG.SeriesStart LIKE '%' + @Search + '%'
+          OR REG.SeriesEnd LIKE '%' + @Search + '%'
           OR REG.Comments LIKE '%' + @Search + '%'
       )
     ORDER BY REG.EntryDate DESC

@@ -28,9 +28,8 @@ BEGIN
            SS.Service_ID,
            P.Pro_Name, 
            S.ServiceName, 
-           CASE WHEN SS.start_order IS NOT NULL AND SS.start_series IS NOT NULL 
-                THEN CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR) + ' to ' + CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR) 
-                ELSE 'All' END AS servicerange, 
+           ISNULL(CT.SeriesStart, CASE WHEN SS.start_order IS NOT NULL AND SS.start_series IS NOT NULL THEN CONCAT(SS.Pro_ID, '-', RIGHT('0000' + CAST(SS.start_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(SS.start_series AS VARCHAR(4)), 4)) ELSE '' END) AS SeriesStart,
+           ISNULL(CT.SeriesEnd, CASE WHEN SS.end_order IS NOT NULL AND SS.end_series IS NOT NULL THEN CONCAT(SS.Pro_ID, '-', RIGHT('0000' + CAST(SS.end_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(SS.end_series AS VARCHAR(4)), 4)) ELSE '' END) AS SeriesEnd,
            ISNULL(SST.DateFrom, SS.DateFrom) AS DateFrom, 
            ISNULL(SST.DateTo, SS.DateTo) AS DateTo, 
            ISNULL(SST.Entry_Date, SS.EntryDate) AS EntryDate,
@@ -76,7 +75,8 @@ BEGIN
           OR CAST(SS.end_series AS VARCHAR) LIKE '%' + @SeriesSerialNo + '%'
           OR (CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR)) LIKE '%' + @SeriesSerialNo + '%'
           OR (CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR)) LIKE '%' + @SeriesSerialNo + '%'
-          OR (CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR) + ' to ' + CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR)) LIKE '%' + @SeriesSerialNo + '%'
+          OR (CONCAT(SS.Pro_ID, '-', RIGHT('0000' + CAST(SS.start_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(SS.start_series AS VARCHAR(4)), 4))) LIKE '%' + @SeriesSerialNo + '%'
+          OR (CONCAT(SS.Pro_ID, '-', RIGHT('0000' + CAST(SS.end_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(SS.end_series AS VARCHAR(4)), 4))) LIKE '%' + @SeriesSerialNo + '%'
           OR CT.SeriesStart LIKE '%' + @SeriesSerialNo + '%'
           OR CT.SeriesEnd LIKE '%' + @SeriesSerialNo + '%'
       )
@@ -92,7 +92,8 @@ BEGIN
           OR CAST(SS.end_series AS VARCHAR) LIKE '%' + @Search + '%'
           OR (CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR)) LIKE '%' + @Search + '%'
           OR (CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR)) LIKE '%' + @Search + '%'
-          OR (CAST(SS.start_order AS VARCHAR) + '-' + CAST(SS.start_series AS VARCHAR) + ' to ' + CAST(SS.end_order AS VARCHAR) + '-' + CAST(SS.end_series AS VARCHAR)) LIKE '%' + @Search + '%'
+          OR (CONCAT(SS.Pro_ID, '-', RIGHT('0000' + CAST(SS.start_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(SS.start_series AS VARCHAR(4)), 4))) LIKE '%' + @Search + '%'
+          OR (CONCAT(SS.Pro_ID, '-', RIGHT('0000' + CAST(SS.end_order AS VARCHAR(4)), 4), '-', RIGHT('0000' + CAST(SS.end_series AS VARCHAR(4)), 4))) LIKE '%' + @Search + '%'
           OR CT.SeriesStart LIKE '%' + @Search + '%'
           OR CT.SeriesEnd LIKE '%' + @Search + '%'
       )
