@@ -39,7 +39,7 @@ begin
 			sst.*,ss.Service_ID,ss.Comp_ID,ss.Pro_ID,MSR.* from M_ServiceSubscriptionTrans sst 
 			inner join #blankseries ss on (sst.Subscribe_Id= ss.Subscribe_Id   and isnull(ss.isActive,0) = 1)
 			left outer join M_ServiceRules MSR on sst.SST_Id = MSR.SST_Id 
-			where ss.Pro_ID =@pro_id 			
+			where ss.Pro_ID =@pro_id 	 and  GETDATE() BETWEEN sst.DateFrom AND sst.DateTo			
 			and isnull(sst.IsActive,0) =1 and isnull(sst.IsDelete,0) = 0 
 		select 0
 	end
@@ -50,7 +50,7 @@ begin
 			sst.*,ss.Service_ID,ss.Comp_ID,ss.Pro_ID,MSR.*from M_ServiceSubscriptionTrans sst 
 			inner join #fillseries ss on (sst.Subscribe_Id= ss.Subscribe_Id   and isnull(ss.isActive,0) = 1)
 			left outer join M_ServiceRules MSR on sst.SST_Id = MSR.SST_Id 
-			where ss.Pro_ID = @pro_id 			
+			where ss.Pro_ID = @pro_id 	 and  GETDATE() BETWEEN sst.DateFrom AND sst.DateTo			
 			and isnull(sst.IsActive,0) =1 and isnull(sst.IsDelete,0) = 0 
 			and concat(format(@seriesorder,'000#'),format(@seriesserial,'000#')) between concat(format(ss.start_order,'000#'),format(ss.[start_series],'000#')) and concat(format(ss.end_order,'000#'),format(ss.[end_series],'000#'))
 		select 0

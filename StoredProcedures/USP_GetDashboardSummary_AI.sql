@@ -483,7 +483,7 @@ BEGIN
     FROM (SELECT DISTINCT Service_ID, Comp_ID FROM M_ServiceSubscription WHERE IsActive = 1) ms
     LEFT JOIN M_Service ms_name ON ms_name.Service_ID = ms.Service_ID
     LEFT JOIN #ConfiguredPoints cp ON cp.Service_ID = ms.Service_ID
-    WHERE ms.Comp_ID = @CompID
+    WHERE ms.Comp_ID = @CompID and cp.Service_ID in ('SRV1001','SRV1029')
     UNION ALL
     -- Include Referral/KYC if they have data
     SELECT 
