@@ -149,7 +149,6 @@ BEGIN
             ORDER BY vks.Block_Date DESC
             OFFSET (@Page - 1) * @Limit ROWS FETCH NEXT @Limit ROWS ONLY;
 
-            -- Pagination metadata
             SELECT 
                 COUNT(1) AS TotalRecords,
                 @Page AS CurrentPage,
@@ -171,7 +170,7 @@ BEGIN
         END
     END
     -------------------------------------------------
-    -- BLOCK USER
+    -- BLOCK USER (Only updates tbl_Vendorvisekycstatus)
     -------------------------------------------------
     ELSE IF @Action IN ('BLOCK', 'ADD')
     BEGIN
@@ -196,7 +195,7 @@ BEGIN
             RETURN;
         END
 
-        -- Update or insert tbl_Vendorvisekycstatus for this company
+        -- Only update/insert vendor-specific block status in tbl_Vendorvisekycstatus
         IF EXISTS (SELECT 1 FROM tbl_Vendorvisekycstatus WITH (NOLOCK) WHERE M_consumerId = @TargetConsumerID AND Comp_id = @Comp_Id)
         BEGIN
             UPDATE tbl_Vendorvisekycstatus
@@ -210,16 +209,10 @@ BEGIN
             VALUES (@Comp_Id, @TargetConsumerID, 1, GETDATE(), GETDATE());
         END
 
-        -- Legacy synchronization on M_Consumer
-        UPDATE M_Consumer
-        SET IsActive = '1',
-            IsDelete = '1'
-        WHERE M_Consumerid = @TargetConsumerID;
-
         SELECT 1 AS Status, 'Consumer marked as Blocked.' AS Message;
     END
     -------------------------------------------------
-    -- UNBLOCK USER
+    -- UNBLOCK USER (Only updates tbl_Vendorvisekycstatus)
     -------------------------------------------------
     ELSE IF @Action = 'UNBLOCK'
     BEGIN
@@ -242,15 +235,11 @@ BEGIN
             RETURN;
         END
 
+        -- Only update vendor-specific unblock status in tbl_Vendorvisekycstatus
         UPDATE tbl_Vendorvisekycstatus
         SET IsBlock = 0,
             Block_Date = NULL
         WHERE M_consumerId = @UnblockConsumerID AND Comp_id = @Comp_Id;
-
-        UPDATE M_Consumer
-        SET IsActive = '1',
-            IsDelete = '0'
-        WHERE M_Consumerid = @UnblockConsumerID;
 
         SELECT 1 AS Status, 'Consumer unblocked successfully.' AS Message;
     END
