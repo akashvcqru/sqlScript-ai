@@ -489,7 +489,7 @@ BEGIN
     WHERE ms.Comp_ID = @CompID 
       AND cp.Service_ID IN (
           SELECT LTRIM(RTRIM(value)) 
-          FROM STRING_SPLIT(ISNULL(NULLIF(LTRIM(RTRIM(@ServiceWiseList)), ''), 'SRV1001,SRV1029'), ',')
+          FROM STRING_SPLIT(ISNULL(LTRIM(RTRIM(@ServiceWiseList)), ''), ',')
           WHERE LTRIM(RTRIM(value)) <> ''
       )
     UNION ALL
