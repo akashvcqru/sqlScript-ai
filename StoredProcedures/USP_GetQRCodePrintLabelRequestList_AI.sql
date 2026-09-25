@@ -38,7 +38,6 @@ BEGIN
                    B.Pro_Name, 
                    C.Label_Name as LabelType, 
                    C.Label_Size, 
-                   C.Label_Prise, 
                    A.Qty as RequestedLabels,
                    (CASE 
                         WHEN A.Flag = '0' THEN 'Pending' 
@@ -63,7 +62,6 @@ BEGIN
                CTE.Pro_Name, 
                CTE.LabelType, 
                CTE.Label_Size, 
-               CTE.Label_Prise, 
                CTE.RequestedLabels,
                CTE.RequestStatusFlag,
                CTE.Tracking_No, 
@@ -111,7 +109,6 @@ BEGIN
                    B.Pro_Name, 
                    C.Label_Name as LabelType, 
                    C.Label_Size, 
-                   C.Label_Prise, 
                    A.Qty as RequestedLabels,
                    (CASE 
                         WHEN A.Flag = '0' THEN 'Pending' 
@@ -140,7 +137,6 @@ BEGIN
                CTE.Pro_Name, 
                CTE.LabelType, 
                CTE.Label_Size, 
-               CTE.Label_Prise, 
                CTE.RequestedLabels,
                CTE.RequestStatusFlag,
                CTE.Tracking_No, 
