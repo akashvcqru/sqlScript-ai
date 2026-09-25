@@ -189,7 +189,7 @@ BEGIN
         END
     END
     -------------------------------------------------
-    -- DELETE USER
+    -- DELETE USER (Only updates tbl_Vendorvisekycstatus and tbl_DeletedUsers)
     -------------------------------------------------
     ELSE IF @Action = 'DELETE'
     BEGIN
@@ -197,41 +197,44 @@ BEGIN
 
         IF @M_Consumerid IS NOT NULL AND @M_Consumerid > 0
         BEGIN
-            SET @DeleteConsumerID = @M_Consumerid;
+            SELECT TOP 1 @DeleteConsumerID = mc.M_Consumerid
+            FROM M_Consumer mc WITH (NOLOCK)
+            WHERE mc.M_Consumerid = @M_Consumerid;
         END
         ELSE IF @MobileNo IS NOT NULL AND LEN(LTRIM(RTRIM(@MobileNo))) > 0
         BEGIN
             SELECT TOP 1 @DeleteConsumerID = mc.M_Consumerid
             FROM M_Consumer mc WITH (NOLOCK)
-            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
-            WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10)
-              AND vks.Comp_id = @Comp_Id;
+            WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10);
         END
 
         IF @DeleteConsumerID IS NULL
         BEGIN
-            SELECT 0 AS Status, 'Consumer is not registered under this company.' AS Message;
+            SELECT 0 AS Status, 'Consumer is not registered in the system.' AS Message;
             RETURN;
         END
 
-        -- 1. Update tbl_Vendorvisekycstatus
-        UPDATE tbl_Vendorvisekycstatus
-        SET IsDelete = 1
-        WHERE M_consumerId = @DeleteConsumerID AND Comp_id = @Comp_Id;
+        -- 1. Update or insert in tbl_Vendorvisekycstatus
+        IF EXISTS (SELECT 1 FROM tbl_Vendorvisekycstatus WITH (NOLOCK) WHERE M_consumerId = @DeleteConsumerID AND Comp_id = @Comp_Id)
+        BEGIN
+            UPDATE tbl_Vendorvisekycstatus
+            SET IsDelete = 1
+            WHERE M_consumerId = @DeleteConsumerID AND Comp_id = @Comp_Id;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO tbl_Vendorvisekycstatus (Comp_id, M_consumerId, IsDelete, Entry_date)
+            VALUES (@Comp_Id, @DeleteConsumerID, 1, GETDATE());
+        END
 
-        -- 2. Update M_Consumer
-        UPDATE M_Consumer
-        SET IsDelete = 1
-        WHERE M_Consumerid = @DeleteConsumerID;
-
-        -- 3. Insert or refresh record in tbl_DeletedUsers
+        -- 2. Insert or refresh record in tbl_DeletedUsers
         INSERT INTO tbl_DeletedUsers (M_Consumerid, comp_id, Entry_date, IsActive, Updated_date)
         VALUES (@DeleteConsumerID, @Comp_Id, GETDATE(), 1, GETDATE());
 
         SELECT 1 AS Status, 'User deleted successfully.' AS Message;
     END
     -------------------------------------------------
-    -- UNDELETE USER
+    -- UNDELETE USER (Only updates tbl_Vendorvisekycstatus and tbl_DeletedUsers)
     -------------------------------------------------
     ELSE IF @Action = 'UNDELETE'
     BEGIN
@@ -245,14 +248,12 @@ BEGIN
         BEGIN
             SELECT TOP 1 @UndeleteConsumerID = mc.M_Consumerid
             FROM M_Consumer mc WITH (NOLOCK)
-            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
-            WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10)
-              AND vks.Comp_id = @Comp_Id;
+            WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10);
         END
 
         IF @UndeleteConsumerID IS NULL
         BEGIN
-            SELECT 0 AS Status, 'Consumer is not registered under this company.' AS Message;
+            SELECT 0 AS Status, 'Consumer is not registered.' AS Message;
             RETURN;
         END
 
@@ -261,27 +262,15 @@ BEGIN
         SET IsDelete = 0
         WHERE M_consumerId = @UndeleteConsumerID AND Comp_id = @Comp_Id;
 
-        IF @@ROWCOUNT > 0
-        BEGIN
-            -- 2. Restore M_Consumer
-            UPDATE M_Consumer
-            SET IsDelete = 0
-            WHERE M_Consumerid = @UndeleteConsumerID;
+        -- 2. Deactivate tbl_DeletedUsers records
+        UPDATE tbl_DeletedUsers
+        SET IsActive = 0,
+            Updated_date = GETDATE()
+        WHERE M_Consumerid = @UndeleteConsumerID 
+          AND comp_id = @Comp_Id 
+          AND IsActive = 1;
 
-            -- 3. Deactivate tbl_DeletedUsers records
-            UPDATE tbl_DeletedUsers
-            SET IsActive = 0,
-                Updated_date = GETDATE()
-            WHERE M_Consumerid = @UndeleteConsumerID 
-              AND comp_id = @Comp_Id 
-              AND IsActive = 1;
-
-            SELECT 1 AS Status, 'User undeleted successfully.' AS Message;
-        END
-        ELSE
-        BEGIN
-            SELECT 0 AS Status, 'User not found or not registered under this company.' AS Message;
-        END
+        SELECT 1 AS Status, 'User undeleted successfully.' AS Message;
     END
 END
 GO
