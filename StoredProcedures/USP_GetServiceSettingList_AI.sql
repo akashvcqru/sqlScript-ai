@@ -33,6 +33,7 @@ BEGIN
                 ELSE 'All' END AS servicerange, 
            ISNULL(SST.DateFrom, SS.DateFrom) AS DateFrom, 
            ISNULL(SST.DateTo, SS.DateTo) AS DateTo, 
+           ISNULL(SST.Entry_Date, SS.EntryDate) AS EntryDate,
            SST.Points, 
            SST.IsCashConvert, 
            SST.IsCash, 
@@ -42,6 +43,7 @@ BEGIN
            CASE WHEN SST.IsActive = 1 THEN 'Activated' ELSE 'De-Activated' END AS StatusText, 
            SST.IsDelete, 
            ISNULL(CT.Batch_No, TP.Batch_No) AS Batch_No,
+           TP.Tpro_Id,
            ISNULL(SS.PlanName, '') AS PlanName,
            ISNULL(CAST(SS.PlanMasterPeriod AS VARCHAR(50)), '') AS PlanMasterPeriod,
            COUNT(*) OVER() as TotalRecords
@@ -50,8 +52,17 @@ BEGIN
     INNER JOIN Pro_Reg P WITH (NOLOCK) ON SS.Pro_ID = P.Pro_ID
     INNER JOIN M_Service S WITH (NOLOCK) ON SS.Service_ID = S.Service_ID
     LEFT JOIN codeassign_tractrac CT WITH (NOLOCK) ON SST.SST_Id = CT.SST_Id
-    LEFT JOIN T_Pro TP WITH (NOLOCK) ON SS.Pro_ID = TP.Pro_ID 
-         AND (TP.Comments = SST.Comments OR (TP.Entry_Date >= DATEADD(SECOND, -10, SST.Entry_Date) AND TP.Entry_Date <= DATEADD(SECOND, 10, SST.Entry_Date)))
+    OUTER APPLY (
+        SELECT TOP 1 Row_ID AS Tpro_Id, Batch_No 
+        FROM T_Pro WITH (NOLOCK) 
+        WHERE Pro_ID = SS.Pro_ID 
+          AND (
+              (SS.start_order IS NOT NULL AND Series_Limit LIKE '%' + CAST(SS.start_order AS VARCHAR) + '%')
+              OR (Comments = SST.Comments AND Comments IS NOT NULL AND Comments <> '')
+              OR (Entry_Date >= DATEADD(SECOND, -30, ISNULL(SST.Entry_Date, SS.EntryDate)) AND Entry_Date <= DATEADD(SECOND, 30, ISNULL(SST.Entry_Date, SS.EntryDate)))
+          )
+        ORDER BY Row_ID DESC
+    ) TP
     WHERE SS.Comp_ID = @Comp_ID 
       AND (SST.IsDelete = 0 OR SST.IsDelete IS NULL) 
       AND (@Pro_ID IS NULL OR SS.Pro_ID = @Pro_ID OR SS.Pro_ID LIKE '%' + @Pro_ID + '%') 
