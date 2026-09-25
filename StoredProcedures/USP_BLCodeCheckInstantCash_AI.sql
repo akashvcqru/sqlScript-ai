@@ -498,11 +498,12 @@ BEGIN
             Service_ID VARCHAR(50),
             Points DECIMAL(18,2),
             Frequency INT,
-            IsCash DECIMAL(18,2)
+            IsCash DECIMAL(18,2),
+            IsCashConvert INT
         );
 
-        INSERT INTO @Services (SST_Id, Service_ID, Points, Frequency, IsCash)
-        SELECT sst.SST_Id, ss.Service_ID, ISNULL(sst.Points, 0), ISNULL(sst.Frequency, 1), ISNULL(sst.IsCash, 0)
+        INSERT INTO @Services (SST_Id, Service_ID, Points, Frequency, IsCash, IsCashConvert)
+        SELECT sst.SST_Id, ss.Service_ID, ISNULL(sst.Points, 0), ISNULL(sst.Frequency, 1), ISNULL(sst.IsCash, 0), ISNULL(sst.IsCashConvert, 0)
         FROM M_ServiceSubscription ss WITH (NOLOCK)
         INNER JOIN M_ServiceSubscriptionTrans sst WITH (NOLOCK) ON ss.Subscribe_Id = sst.Subscribe_Id
         WHERE ss.Pro_ID = @Pro_ID
@@ -518,12 +519,12 @@ BEGIN
           );
 
         -- C. Process services
-        DECLARE @CurrSST BIGINT, @CurrServiceID VARCHAR(50), @CurrPoints DECIMAL(18,2), @CurrFreq INT, @CurrIsCash DECIMAL(18,2);
+        DECLARE @CurrSST BIGINT, @CurrServiceID VARCHAR(50), @CurrPoints DECIMAL(18,2), @CurrFreq INT, @CurrIsCash DECIMAL(18,2), @CurrIsCashConvert INT;
         DECLARE @EarningAmount DECIMAL(18,2) = 0;
         
-        DECLARE ServiceCursor CURSOR LOCAL FAST_FORWARD FOR SELECT SST_Id, Service_ID, Points, Frequency, IsCash FROM @Services;
+        DECLARE ServiceCursor CURSOR LOCAL FAST_FORWARD FOR SELECT SST_Id, Service_ID, Points, Frequency, IsCash, IsCashConvert FROM @Services;
         OPEN ServiceCursor;
-        FETCH NEXT FROM ServiceCursor INTO @CurrSST, @CurrServiceID, @CurrPoints, @CurrFreq, @CurrIsCash;
+        FETCH NEXT FROM ServiceCursor INTO @CurrSST, @CurrServiceID, @CurrPoints, @CurrFreq, @CurrIsCash, @CurrIsCashConvert;
 
         WHILE @@FETCH_STATUS = 0
         BEGIN
@@ -535,34 +536,39 @@ BEGIN
 
             IF (@countFrequncy % ISNULL(@CurrFreq, 1) = 0)
             BEGIN
-                DECLARE @AwardedAmount DECIMAL(18,2) = CASE WHEN @CurrIsCash > 0 THEN @CurrIsCash ELSE @CurrPoints END;
+                DECLARE @AwardedAmount DECIMAL(18,2) = 0;
+                IF (@CurrIsCashConvert = 1)
+                BEGIN
+                    SET @AwardedAmount = CASE WHEN @CurrIsCash > 0 THEN @CurrIsCash ELSE @CurrPoints END;
+                END
+                ELSE IF (@CurrIsCash > 0)
+                BEGIN
+                    SET @AwardedAmount = @CurrIsCash;
+                END
 
                 -- Limit Check for SRV1029
-                IF @CurrServiceID = 'SRV1029' AND @TodaySum + @AwardedAmount > @DailyLimit AND @DailyLimit > 0
+                IF @CurrServiceID = 'SRV1029' AND @CurrIsCashConvert = 1 AND @TodaySum + @AwardedAmount > @DailyLimit AND @DailyLimit > 0
                 BEGIN
                     -- Optionally cap it or return limit message
-                    -- For now, let's proceed but mark as limit reached if user wants a message
                     SET @AwardedAmount = CASE WHEN @DailyLimit > @TodaySum THEN @DailyLimit - @TodaySum ELSE 0 END;
                     
                     IF @AwardedAmount <= 0
                     BEGIN
                         SET @AwardMessage = ' Daily transfer limit reached.';
-                        -- We still keep loyalty record if user wants, or skip?
-                        -- User said "cap the amount or return a limit exceeded message"
                     END
                 END
 
-                IF @AwardedAmount > 0 OR (@IsClaimReq = 0 AND @IsApprovalReq = 0)
+                IF (@CurrIsCashConvert = 1 AND @AwardedAmount > 0) OR (@CurrPoints > 0) OR (@IsClaimReq = 0 AND @IsApprovalReq = 0)
                 BEGIN
                     INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, compid, code1, code2, Cash, Points, Service_ID)
-                    VALUES (@Pkid, @CurrSST, @M_Consumerid, GETDATE(), @ActualComp_ID, @dCode1, @dCode2, @CurrIsCash, @CurrPoints, @CurrServiceID);
+                    VALUES (@Pkid, @CurrSST, @M_Consumerid, GETDATE(), @ActualComp_ID, @dCode1, @dCode2, CASE WHEN @CurrIsCashConvert = 1 THEN @AwardedAmount ELSE @CurrIsCash END, @CurrPoints, @CurrServiceID);
 
                     UPDATE BuiltLoyaltyMCodeCheck SET IsPointsAssigned = 1 WHERE sst_id = @CurrSST AND M_Cunsumerid = @M_Consumerid;
                     
                     SET @EarningAmount = @AwardedAmount;
 
-                    -- Table Updates if NO Claim/Approval Req
-                    IF @CurrServiceID = 'SRV1029'
+                    -- Table Updates if NO Claim/Approval Req (ONLY when SRV1029 AND IsCashConvert = 1)
+                    IF @CurrServiceID = 'SRV1029' AND @CurrIsCashConvert = 1
                     BEGIN
                         -- Capture return data for SRV1029 specifically to avoid being overwritten by other services
                         SET @ReturnAmount = @EarningAmount;
@@ -680,24 +686,24 @@ BEGIN
 
                             SET @TransactionID = SCOPE_IDENTITY();
                             SET @ReturnTransactionID = @TransactionID;
-
-                            -- Removed Credit entry to tblCashWalletBalance as per user request (only Debit entry is needed)
+                            SET @ReturnIsPayoutAllowed = 1;
                         END
                     END
-                    ELSE IF @CurrServiceID IN ('SRV1001', 'SRV1005')
+                    ELSE IF @CurrServiceID IN ('SRV1001', 'SRV1005', 'SRV1029')
                     BEGIN
-                        -- Capture return data for SRV1001 or SRV1005 if SRV1029 is not already set
+                        -- If IsCashConvert = 0 or non-instant service, payout is NOT allowed on code scan
                         IF @ReturnServiceID IS NULL OR @ReturnServiceID = '' OR @ReturnServiceID NOT IN ('SRV1029')
                         BEGIN
-                            SET @ReturnAmount = @EarningAmount;
+                            SET @ReturnAmount = @CurrPoints;
                             SET @ReturnServiceID = @CurrServiceID;
+                            SET @ReturnIsPayoutAllowed = 0;
                         END
                     END
                 END
                 
                 SET @AwardMessage = @AwardMessage + ' Amount ' + CAST(@EarningAmount AS NVARCHAR(20)) + ' awarded. ';
             END
-            FETCH NEXT FROM ServiceCursor INTO @CurrSST, @CurrServiceID, @CurrPoints, @CurrFreq, @CurrIsCash;
+            FETCH NEXT FROM ServiceCursor INTO @CurrSST, @CurrServiceID, @CurrPoints, @CurrFreq, @CurrIsCash, @CurrIsCashConvert;
         END
 
         CLOSE ServiceCursor;
@@ -706,23 +712,25 @@ BEGIN
         -------------------------------------------------------------------
         -- 7. FETCH MESSAGE
         -------------------------------------------------------------------
+        DECLARE @TargetServiceMsg VARCHAR(50) = ISNULL(NULLIF(@ReturnServiceID, ''), 'SRV1029');
+
         SELECT TOP 1 @Message = Message_Text 
         FROM LandingPage_CodeCheckMessages 
         WHERE Comp_ID = @ActualComp_ID 
-          AND (Service_ID = 'SRV1029' OR Service_ID IS NULL)
+          AND (Service_ID = @TargetServiceMsg OR Service_ID = 'SRV1029' OR Service_ID IS NULL)
           AND Message_Type = 'Success' 
           AND IsActive = 1
-        ORDER BY CASE WHEN Service_ID = 'SRV1029' THEN 0 ELSE 1 END;
+        ORDER BY CASE WHEN Service_ID = @TargetServiceMsg THEN 0 WHEN Service_ID = 'SRV1029' THEN 1 ELSE 2 END;
 
         IF @Message = '' OR @Message IS NULL
         BEGIN
             SELECT TOP 1 @Message = Message_Text 
             FROM LandingPage_CodeCheckMessages 
             WHERE Comp_ID = 'Default' 
-              AND (Service_ID = 'SRV1029' OR Service_ID IS NULL)
+              AND (Service_ID = @TargetServiceMsg OR Service_ID = 'SRV1029' OR Service_ID IS NULL)
               AND Message_Type = 'Success' 
               AND IsActive = 1
-            ORDER BY CASE WHEN Service_ID = 'SRV1029' THEN 0 ELSE 1 END;
+            ORDER BY CASE WHEN Service_ID = @TargetServiceMsg THEN 0 WHEN Service_ID = 'SRV1029' THEN 1 ELSE 2 END;
         END
 
         IF @Message = '' OR @Message IS NULL SET @Message = 'Success! Code Verified.';
@@ -730,6 +738,15 @@ BEGIN
         IF @ConsumerBalance < 0
         BEGIN
             SET @Message = @Message + ' Note: adjusted points your outstanding balance.';
+        END
+
+        -- Suppress payment message if payout is not allowed or not SRV1029
+        IF @ReturnIsPayoutAllowed = 0 OR @ReturnServiceID <> 'SRV1029'
+        BEGIN
+            SET @Message = REPLACE(@Message, 'Payment is in process. It will be initiated within 24 hours.', '');
+            SET @Message = REPLACE(@Message, 'Payment is in process.', '');
+            SET @Message = RTRIM(LTRIM(@Message));
+            IF @Message = '' SET @Message = 'Success! Code Verified.';
         END
 
         COMMIT TRANSACTION;
