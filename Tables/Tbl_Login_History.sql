@@ -16,6 +16,7 @@ CREATE TABLE [dbo].[Tbl_Login_History](
 	[Message] [varchar](200) NULL,
 	[Latitude] [varchar](50) NULL,
 	[Longitude] [varchar](50) NULL,
+	[LastSeenTime] [datetime] NULL,
 PRIMARY KEY CLUSTERED 
 (
 	[Id] ASC

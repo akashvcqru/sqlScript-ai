@@ -5,7 +5,8 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_GetLoginHistory_AllCompanies_Admin_AI]
     @ToDate DATETIME = NULL,
     @Offset INT = 0,
     @Limit INT = 10,
-    @IsExport BIT = 0
+    @IsExport BIT = 0,
+    @IsOnline BIT = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -95,7 +96,10 @@ BEGIN
         LEFT JOIN Comp_Reg cr WITH (NOLOCK) ON cr.Comp_ID = lh.Comp_ID
         WHERE (@Search IS NULL OR lh.Comp_ID LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
           AND (@StartDate IS NULL OR lh.LoginTime >= @StartDate)
-          AND (@EndDate IS NULL OR lh.LoginTime < @EndDate);
+          AND (@EndDate IS NULL OR lh.LoginTime < @EndDate)
+          AND (@IsOnline IS NULL 
+               OR (@IsOnline = 1 AND lh.LastSeenTime >= DATEADD(MINUTE, -5, GETDATE()))
+               OR (@IsOnline = 0 AND (lh.LastSeenTime IS NULL OR lh.LastSeenTime < DATEADD(MINUTE, -5, GETDATE()))));
     END
 
     -- Query for login history list
@@ -104,6 +108,11 @@ BEGIN
         lh.Comp_ID,
         cr.Comp_Name AS CompName,
         lh.LoginTime,
+        lh.LastSeenTime,
+        CAST(CASE 
+            WHEN lh.LastSeenTime >= DATEADD(MINUTE, -5, GETDATE()) THEN 1 
+            ELSE 0 
+        END AS BIT) AS IsOnline,
         lh.IPAddress,
         lh.BrowserInfo,
         lh.DeviceInfo,
@@ -120,6 +129,9 @@ BEGIN
     WHERE (@Search IS NULL OR lh.Comp_ID LIKE '%' + @Search + '%' OR cr.Comp_Name LIKE '%' + @Search + '%')
       AND (@StartDate IS NULL OR lh.LoginTime >= @StartDate)
       AND (@EndDate IS NULL OR lh.LoginTime < @EndDate)
+      AND (@IsOnline IS NULL 
+           OR (@IsOnline = 1 AND lh.LastSeenTime >= DATEADD(MINUTE, -5, GETDATE()))
+           OR (@IsOnline = 0 AND (lh.LastSeenTime IS NULL OR lh.LastSeenTime < DATEADD(MINUTE, -5, GETDATE()))))
     ORDER BY lh.LoginTime DESC
     OFFSET (CASE WHEN @IsExport = 1 THEN 0 ELSE @Offset END) ROWS
     FETCH NEXT (CASE WHEN @IsExport = 1 THEN 100000000 ELSE @Limit END) ROWS ONLY;
