@@ -181,37 +181,42 @@ BEGIN
         BEGIN
             SELECT TOP 1 @TargetConsumerID = mc.M_Consumerid
             FROM M_Consumer mc WITH (NOLOCK)
-            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
-            WHERE mc.M_Consumerid = @M_Consumerid AND vks.Comp_id = @Comp_Id;
+            WHERE mc.M_Consumerid = @M_Consumerid;
         END
         ELSE IF @MobileNo IS NOT NULL AND LEN(LTRIM(RTRIM(@MobileNo))) > 0
         BEGIN
             SELECT TOP 1 @TargetConsumerID = mc.M_Consumerid
             FROM M_Consumer mc WITH (NOLOCK)
-            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
-            WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10)
-              AND vks.Comp_id = @Comp_Id;
+            WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10);
         END
 
         IF @TargetConsumerID IS NULL
         BEGIN
-            SELECT 0 AS Status, 'Consumer is not registered under this company.' AS Message;
+            SELECT 0 AS Status, 'Consumer is not registered in the system.' AS Message;
             RETURN;
         END
 
-        UPDATE tbl_Vendorvisekycstatus
-        SET IsBlock = 1,
-            Block_Date = GETDATE()
-        WHERE M_consumerId = @TargetConsumerID AND Comp_id = @Comp_Id;
-
-        IF @@ROWCOUNT > 0
+        -- Update or insert tbl_Vendorvisekycstatus for this company
+        IF EXISTS (SELECT 1 FROM tbl_Vendorvisekycstatus WITH (NOLOCK) WHERE M_consumerId = @TargetConsumerID AND Comp_id = @Comp_Id)
         BEGIN
-            SELECT 1 AS Status, 'Consumer marked as Blocked.' AS Message;
+            UPDATE tbl_Vendorvisekycstatus
+            SET IsBlock = 1,
+                Block_Date = GETDATE()
+            WHERE M_consumerId = @TargetConsumerID AND Comp_id = @Comp_Id;
         END
         ELSE
         BEGIN
-            SELECT 0 AS Status, 'Failed to block the consumer.' AS Message;
+            INSERT INTO tbl_Vendorvisekycstatus (Comp_id, M_consumerId, IsBlock, Block_Date, Entry_date)
+            VALUES (@Comp_Id, @TargetConsumerID, 1, GETDATE(), GETDATE());
         END
+
+        -- Legacy synchronization on M_Consumer
+        UPDATE M_Consumer
+        SET IsActive = '1',
+            IsDelete = '1'
+        WHERE M_Consumerid = @TargetConsumerID;
+
+        SELECT 1 AS Status, 'Consumer marked as Blocked.' AS Message;
     END
     -------------------------------------------------
     -- UNBLOCK USER
@@ -228,14 +233,12 @@ BEGIN
         BEGIN
             SELECT TOP 1 @UnblockConsumerID = mc.M_Consumerid
             FROM M_Consumer mc WITH (NOLOCK)
-            INNER JOIN tbl_Vendorvisekycstatus vks WITH (NOLOCK) ON mc.M_Consumerid = vks.M_consumerId
-            WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10)
-              AND vks.Comp_id = @Comp_Id;
+            WHERE RIGHT(mc.MobileNo, 10) = RIGHT(@MobileNo, 10);
         END
 
         IF @UnblockConsumerID IS NULL
         BEGIN
-            SELECT 0 AS Status, 'Consumer is not registered under this company.' AS Message;
+            SELECT 0 AS Status, 'Consumer is not registered.' AS Message;
             RETURN;
         END
 
@@ -244,14 +247,12 @@ BEGIN
             Block_Date = NULL
         WHERE M_consumerId = @UnblockConsumerID AND Comp_id = @Comp_Id;
 
-        IF @@ROWCOUNT > 0
-        BEGIN
-            SELECT 1 AS Status, 'Consumer unblocked successfully.' AS Message;
-        END
-        ELSE
-        BEGIN
-            SELECT 0 AS Status, 'Consumer not found or not currently blocked.' AS Message;
-        END
+        UPDATE M_Consumer
+        SET IsActive = '1',
+            IsDelete = '0'
+        WHERE M_Consumerid = @UnblockConsumerID;
+
+        SELECT 1 AS Status, 'Consumer unblocked successfully.' AS Message;
     END
 END
 GO
