@@ -127,6 +127,13 @@ BEGIN
             -- Manual Parsing
             IF @SeriesStart LIKE '%-%-%'
             BEGIN
+                DECLARE @StartPrefix VARCHAR(50) = LEFT(@SeriesStart, CHARINDEX('-', @SeriesStart) - 1);
+                IF UPPER(LTRIM(RTRIM(@StartPrefix))) <> UPPER(LTRIM(RTRIM(@Pro_ID)))
+                BEGIN
+                    ROLLBACK TRANSACTION;
+                    SELECT 0 AS success, 'Enter series proid not match Selected product' AS message;
+                    RETURN;
+                END
                 DECLARE @StartP2 VARCHAR(50) = SUBSTRING(@SeriesStart, CHARINDEX('-', @SeriesStart) + 1, LEN(@SeriesStart));
                 SET @StartOrder = CAST(LEFT(@StartP2, CHARINDEX('-', @StartP2) - 1) AS INT);
                 SET @StartSerial = CAST(SUBSTRING(@StartP2, CHARINDEX('-', @StartP2) + 1, LEN(@StartP2)) AS INT);
@@ -139,6 +146,13 @@ BEGIN
 
             IF @SeriesEnd LIKE '%-%-%'
             BEGIN
+                DECLARE @EndPrefix VARCHAR(50) = LEFT(@SeriesEnd, CHARINDEX('-', @SeriesEnd) - 1);
+                IF UPPER(LTRIM(RTRIM(@EndPrefix))) <> UPPER(LTRIM(RTRIM(@Pro_ID)))
+                BEGIN
+                    ROLLBACK TRANSACTION;
+                    SELECT 0 AS success, 'Enter series proid not match Selected product' AS message;
+                    RETURN;
+                END
                 DECLARE @EndP2 VARCHAR(50) = SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd));
                 SET @EndOrder = CAST(LEFT(@EndP2, CHARINDEX('-', @EndP2) - 1) AS INT);
                 SET @EndSerial = CAST(SUBSTRING(@EndP2, CHARINDEX('-', @EndP2) + 1, LEN(@EndP2)) AS INT);
@@ -147,6 +161,14 @@ BEGIN
             BEGIN
                 SET @EndOrder = CAST(LEFT(@SeriesEnd, CHARINDEX('-', @SeriesEnd) - 1) AS INT);
                 SET @EndSerial = CAST(SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd)) AS INT);
+            END
+
+            -- Validate that both Start code and End code exist in M_Code
+            IF NOT EXISTS (SELECT 1 FROM M_Code WITH (NOLOCK) WHERE Pro_ID = @Pro_ID AND Series_Order = @StartOrder AND Series_Serial = @StartSerial)
+               OR NOT EXISTS (SELECT 1 FROM M_Code WITH (NOLOCK) WHERE Pro_ID = @Pro_ID AND Series_Order = @EndOrder AND Series_Serial = @EndSerial)
+            BEGIN
+                SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
+                ROLLBACK TRANSACTION; RETURN;
             END
 
             -- Existence validation
@@ -158,8 +180,18 @@ BEGIN
 
             IF @ExistingCount = 0
             BEGIN
-                SELECT 0 AS success, 'The specified code range does not exist in the system.' AS message;
+                SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
                 ROLLBACK TRANSACTION; RETURN;
+            END
+
+            IF @StartOrder = @EndOrder
+            BEGIN
+                DECLARE @ExpectedRangeCount INT = (@EndSerial - @StartSerial) + 1;
+                IF @ExistingCount < @ExpectedRangeCount
+                BEGIN
+                    SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
+                    ROLLBACK TRANSACTION; RETURN;
+                END
             END
 
             -- BatchSize Validation
@@ -230,7 +262,7 @@ BEGIN
               AND (Batch_No IS NOT NULL AND Batch_No <> '')
         )
         BEGIN
-            SELECT 0 AS success, 'These codes (or master code) are already assigned to another batch.' AS message;
+            SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
             ROLLBACK TRANSACTION; RETURN;
         END
 

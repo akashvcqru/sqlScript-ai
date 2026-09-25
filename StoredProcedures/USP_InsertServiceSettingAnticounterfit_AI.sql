@@ -137,6 +137,13 @@ BEGIN
             -- Parse SeriesStart (handles "0000-0400" or "BP17-0000-0400")
             IF @SeriesStart LIKE '%-%-%'
             BEGIN
+                DECLARE @StartPrefix VARCHAR(50) = LEFT(@SeriesStart, CHARINDEX('-', @SeriesStart) - 1);
+                IF UPPER(LTRIM(RTRIM(@StartPrefix))) <> UPPER(LTRIM(RTRIM(@Pro_ID)))
+                BEGIN
+                    ROLLBACK TRANSACTION;
+                    SELECT 0 AS success, 'Enter series proid not match Selected product' AS message;
+                    RETURN;
+                END
                 DECLARE @StartP2 VARCHAR(50) = SUBSTRING(@SeriesStart, CHARINDEX('-', @SeriesStart) + 1, LEN(@SeriesStart));
                 SET @StartOrder = TRY_CAST(LEFT(@StartP2, CHARINDEX('-', @StartP2) - 1) AS INT);
                 SET @StartSerial = TRY_CAST(SUBSTRING(@StartP2, CHARINDEX('-', @StartP2) + 1, LEN(@StartP2)) AS INT);
@@ -150,6 +157,13 @@ BEGIN
             -- Parse SeriesEnd (handles "0000-0450" or "BP17-0000-0450")
             IF @SeriesEnd LIKE '%-%-%'
             BEGIN
+                DECLARE @EndPrefix VARCHAR(50) = LEFT(@SeriesEnd, CHARINDEX('-', @SeriesEnd) - 1);
+                IF UPPER(LTRIM(RTRIM(@EndPrefix))) <> UPPER(LTRIM(RTRIM(@Pro_ID)))
+                BEGIN
+                    ROLLBACK TRANSACTION;
+                    SELECT 0 AS success, 'Enter series proid not match Selected product' AS message;
+                    RETURN;
+                END
                 DECLARE @EndP2 VARCHAR(50) = SUBSTRING(@SeriesEnd, CHARINDEX('-', @SeriesEnd) + 1, LEN(@SeriesEnd));
                 SET @EndOrder = TRY_CAST(LEFT(@EndP2, CHARINDEX('-', @EndP2) - 1) AS INT);
                 SET @EndSerial = TRY_CAST(SUBSTRING(@EndP2, CHARINDEX('-', @EndP2) + 1, LEN(@EndP2)) AS INT);
@@ -171,6 +185,31 @@ BEGIN
             BEGIN
                 ROLLBACK TRANSACTION;
                 SELECT 0 AS success, 'SeriesStart (' + @SeriesStart + ') cannot be greater than SeriesEnd (' + @SeriesEnd + ').' AS message;
+                RETURN;
+            END
+
+            -- Validate that both Start code and End code exist in M_Code
+            DECLARE @StartCodeExists BIT = 0, @EndCodeExists BIT = 0;
+
+            IF @Comp_ID = 'Comp-1693'
+            BEGIN
+                IF EXISTS (SELECT 1 FROM M_Code_PFL WITH (NOLOCK) WHERE Pro_ID = @Pro_ID AND Series_Order = @StartOrder AND Series_Serial = @StartSerial)
+                    SET @StartCodeExists = 1;
+                IF EXISTS (SELECT 1 FROM M_Code_PFL WITH (NOLOCK) WHERE Pro_ID = @Pro_ID AND Series_Order = @EndOrder AND Series_Serial = @EndSerial)
+                    SET @EndCodeExists = 1;
+            END
+            ELSE
+            BEGIN
+                IF EXISTS (SELECT 1 FROM M_Code WITH (NOLOCK) WHERE Pro_ID = @Pro_ID AND Series_Order = @StartOrder AND Series_Serial = @StartSerial)
+                    SET @StartCodeExists = 1;
+                IF EXISTS (SELECT 1 FROM M_Code WITH (NOLOCK) WHERE Pro_ID = @Pro_ID AND Series_Order = @EndOrder AND Series_Serial = @EndSerial)
+                    SET @EndCodeExists = 1;
+            END
+
+            IF @StartCodeExists = 0 OR @EndCodeExists = 0
+            BEGIN
+                ROLLBACK TRANSACTION;
+                SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
                 RETURN;
             END
 
@@ -198,24 +237,21 @@ BEGIN
                        OR (@StartOrder < @EndOrder AND ((Series_Order = @StartOrder AND Series_Serial >= @StartSerial) OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial) OR (Series_Order > @StartOrder AND Series_Order < @EndOrder))));
             END
 
-            IF ISNULL(@ExistingCount, 0) = 0
+            IF @StartOrder = @EndOrder
             BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'The specified series range ' + @SeriesStart + ' to ' + @SeriesEnd + ' does not exist for product ' + @Pro_ID + '.' AS message;
-                RETURN;
+                DECLARE @ExpectedCount INT = (@EndSerial - @StartSerial) + 1;
+                IF @ExistingCount < @ExpectedCount
+                BEGIN
+                    ROLLBACK TRANSACTION;
+                    SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
+                    RETURN;
+                END
             END
 
-            IF ISNULL(@AvailableCount, 0) = 0
+            IF ISNULL(@ExistingCount, 0) = 0 OR ISNULL(@AvailableCount, 0) = 0 OR @AvailableCount < @ExistingCount
             BEGIN
                 ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'No available codes in range ' + @SeriesStart + ' to ' + @SeriesEnd + ' for product ' + @Pro_ID + '. All ' + CAST(@ExistingCount AS VARCHAR(10)) + ' codes are already assigned to another batch.' AS message;
-                RETURN;
-            END
-
-            IF @AvailableCount < @ExistingCount
-            BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Only ' + CAST(ISNULL(@AvailableCount, 0) AS VARCHAR(10)) + ' of ' + CAST(@ExistingCount AS VARCHAR(10)) + ' codes are available in range ' + @SeriesStart + ' to ' + @SeriesEnd + ' for product ' + @Pro_ID + '. Some codes are already assigned to another batch.' AS message;
+                SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
                 RETURN;
             END
         END
