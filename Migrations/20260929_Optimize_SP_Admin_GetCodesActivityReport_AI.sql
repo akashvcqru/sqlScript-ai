@@ -1,9 +1,9 @@
 -- Migration: 20260929_Optimize_SP_Admin_GetCodesActivityReport_AI.sql
--- Purpose: Optimize SP_Admin_GetCodesActivityReport_AI to fetch fast directly from Pro_Enq using minimal joins and latest 1-week/today records to avoid execution timeout.
+-- Purpose: Optimize SP_Admin_GetCodesActivityReport_AI and remove ServiceName & Points from response keys.
 
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_Admin_GetCodesActivityReport_AI]    Script Date: 9/29/2026 3:30:00 PM ******/
+/****** Object:  StoredProcedure [dbo].[SP_Admin_GetCodesActivityReport_AI]    Script Date: 9/29/2026 3:55:00 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -114,7 +114,7 @@ BEGIN
     END
 
     ----------------------------------------------------
-    -- 2. FETCH MATCHING ENQUIRIES FROM PRO_ENQ
+    -- 2. FETCH MATCHING ENQUIRIES DIRECTLY FROM PRO_ENQ
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#Enq') IS NOT NULL DROP TABLE #Enq;
 
@@ -167,20 +167,9 @@ BEGIN
         ISNULL(CR.Comp_Name, ISNULL(E.Comp_ID, '')) AS CompanyName,
         ISNULL(E.MobileNo, '') AS MobileNo,
         (ISNULL(E.Received_Code1, '') + ISNULL(E.Received_Code2, '')) AS UniqueCode,
-        ISNULL(PR.Pro_Name, 'Unknown Product') AS Pro_Name,
-        ISNULL(MS.ServiceName, '') AS ServiceName,
+        PR.Pro_Name AS Pro_Name,
         E.Enq_Date AS Enq_Date,
         ISNULL(E.Dial_Mode, '') AS Dial_Mode,
-        CAST(
-            CASE 
-                WHEN E.Is_Success = 1 OR E.Is_Success = '1' THEN 
-                    CASE 
-                        WHEN SST.Points IS NOT NULL AND TRY_CAST(SST.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(SST.Points AS DECIMAL(18,2))
-                        ELSE ISNULL(TRY_CAST(SST.IsCash AS DECIMAL(18,2)), 0.00)
-                    END
-                ELSE 0.00 
-            END AS VARCHAR(50)
-        ) AS Points,
         CASE 
             WHEN E.Is_Success = 1 OR E.Is_Success = '1' THEN 'Verified'
             WHEN E.Is_Success = 2 OR E.Is_Success = '2' THEN 'Already Scanned'
@@ -203,8 +192,6 @@ BEGIN
         ON SS.Subscribe_Id = SST.Subscribe_Id
     LEFT JOIN dbo.Pro_Reg PR WITH (NOLOCK) 
         ON PR.Pro_ID = SS.Pro_ID
-    LEFT JOIN dbo.M_Service MS WITH (NOLOCK) 
-        ON MS.Service_ID = SS.Service_ID
     ORDER BY E.Enq_Date DESC;
 
     -- Cleanup

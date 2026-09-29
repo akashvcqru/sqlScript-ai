@@ -1,6 +1,6 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_Admin_GetCodesActivityReport_AI]    Script Date: 9/29/2026 3:30:00 PM ******/
+/****** Object:  StoredProcedure [dbo].[SP_Admin_GetCodesActivityReport_AI]    Script Date: 9/29/2026 3:55:00 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -8,12 +8,12 @@ GO
 
 -- ====================================================================
 -- Stored Procedure: SP_Admin_GetCodesActivityReport_AI
--- Purpose: Fast & Optimized Codes Activity Report for Admin directly from Pro_Enq
+-- Purpose: Ultra-Fast Codes Activity Report for Admin directly from Pro_Enq with Product Name
 -- Used By: AdminVendorReportController (/api/AdminVendorReport/GetCodesActivityReportAdmin)
 -- Features:
---   - Directly queries Pro_Enq with minimum joins (Pro_Enq + Comp_Reg + Service Subscription lookups on paged slice)
---   - Defaults to latest records (Today / Last 1 Week) for instant sub-second response
---   - Retains exact response schema without changing request/response keys
+--   - Directly queries Pro_Enq with date range filtering (Today / Last 1 Week)
+--   - Product Name (Pro_Name) & Company Name (Comp_Name) joined only on the 10 paginated rows (instantaneous)
+--   - Removed ServiceName & Points from response
 -- ====================================================================
 CREATE OR ALTER PROCEDURE [dbo].[SP_Admin_GetCodesActivityReport_AI]
     @Comp_Id          VARCHAR(50)   = NULL,
@@ -120,7 +120,7 @@ BEGIN
     END
 
     ----------------------------------------------------
-    -- 2. FETCH MATCHING ENQUIRIES FROM PRO_ENQ
+    -- 2. FETCH MATCHING ENQUIRIES DIRECTLY FROM PRO_ENQ
     ----------------------------------------------------
     IF OBJECT_ID('tempdb..#Enq') IS NOT NULL DROP TABLE #Enq;
 
@@ -173,20 +173,9 @@ BEGIN
         ISNULL(CR.Comp_Name, ISNULL(E.Comp_ID, '')) AS CompanyName,
         ISNULL(E.MobileNo, '') AS MobileNo,
         (ISNULL(E.Received_Code1, '') + ISNULL(E.Received_Code2, '')) AS UniqueCode,
-        ISNULL(PR.Pro_Name, 'Unknown Product') AS Pro_Name,
-        ISNULL(MS.ServiceName, '') AS ServiceName,
+        PR.Pro_Name AS Pro_Name,
         E.Enq_Date AS Enq_Date,
         ISNULL(E.Dial_Mode, '') AS Dial_Mode,
-        CAST(
-            CASE 
-                WHEN E.Is_Success = 1 OR E.Is_Success = '1' THEN 
-                    CASE 
-                        WHEN SST.Points IS NOT NULL AND TRY_CAST(SST.Points AS DECIMAL(18,2)) > 0 THEN TRY_CAST(SST.Points AS DECIMAL(18,2))
-                        ELSE ISNULL(TRY_CAST(SST.IsCash AS DECIMAL(18,2)), 0.00)
-                    END
-                ELSE 0.00 
-            END AS VARCHAR(50)
-        ) AS Points,
         CASE 
             WHEN E.Is_Success = 1 OR E.Is_Success = '1' THEN 'Verified'
             WHEN E.Is_Success = 2 OR E.Is_Success = '2' THEN 'Already Scanned'
@@ -209,8 +198,6 @@ BEGIN
         ON SS.Subscribe_Id = SST.Subscribe_Id
     LEFT JOIN dbo.Pro_Reg PR WITH (NOLOCK) 
         ON PR.Pro_ID = SS.Pro_ID
-    LEFT JOIN dbo.M_Service MS WITH (NOLOCK) 
-        ON MS.Service_ID = SS.Service_ID
     ORDER BY E.Enq_Date DESC;
 
     -- Cleanup
