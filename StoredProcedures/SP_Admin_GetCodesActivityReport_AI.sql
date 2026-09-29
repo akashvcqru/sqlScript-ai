@@ -192,12 +192,15 @@ BEGIN
     ) E
     LEFT JOIN dbo.Comp_Reg CR WITH (NOLOCK) 
         ON CR.Comp_ID = E.Comp_ID
+    LEFT JOIN dbo.M_Code MC WITH (NOLOCK)
+        ON MC.Code1 = TRY_CAST(E.Received_Code1 AS NUMERIC(5,0))
+       AND MC.Code2 = TRY_CAST(E.Received_Code2 AS NUMERIC(8,0))
     LEFT JOIN dbo.M_ServiceSubscriptionTrans SST WITH (NOLOCK) 
         ON SST.SST_Id = E.SST_ID
     LEFT JOIN dbo.M_ServiceSubscription SS WITH (NOLOCK) 
         ON SS.Subscribe_Id = SST.Subscribe_Id
     LEFT JOIN dbo.Pro_Reg PR WITH (NOLOCK) 
-        ON PR.Pro_ID = SS.Pro_ID
+        ON PR.Pro_ID = COALESCE(MC.Pro_ID, SS.Pro_ID)
     ORDER BY E.Enq_Date DESC;
 
     -- Cleanup

@@ -1,10 +1,10 @@
 -- =============================================
 -- Author:      AI
 -- Create date: 2026-03-16
--- Updated:     2026-09-22
+-- Updated:     2026-09-29
 -- Description: Add product label assignment and update codes
---              Supports SeriesStart/SeriesEnd with availability pre-validation
---              as well as legacy SeriesData JSON.
+--              Supports Auto-Calculation of unassigned codes based on BatchSize/available codes,
+--              as well as SeriesStart/SeriesEnd and legacy SeriesData JSON.
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_AddAssignLabelToProduct_AI]
     @Comp_ID NVARCHAR(50),
@@ -13,6 +13,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_AddAssignLabelToProduct_AI]
     @MRP NUMERIC(10, 2) = NULL,
     @Mfd_Date DATETIME = NULL,
     @Exp_Date DATETIME = NULL,
+    @BatchSize BIGINT = NULL,
     @Comments NVARCHAR(100) = NULL,
     @Warranty INT = NULL,
     @SeriesStart VARCHAR(100) = NULL,
@@ -80,7 +81,7 @@ BEGIN
             BEGIN
                 SELECT 
                     @ExistingCount = COUNT(1),
-                    @AvailableCount = SUM(CASE WHEN Batch_No IS NULL OR Batch_No = '' THEN 1 ELSE 0 END)
+                    @AvailableCount = SUM(CASE WHEN (Batch_No IS NULL OR Batch_No = '') AND (ScrapeFlag IS NULL OR ScrapeFlag = 0) AND Print_Status = 1 AND DispatchFlag = 1 AND ReceiveFlag = 1 THEN 1 ELSE 0 END)
                 FROM M_Code_PFL WITH (NOLOCK)
                 WHERE Pro_ID = @Pro_ID
                   AND ((Series_Order = @StartOrder AND Series_Order = @EndOrder AND Series_Serial BETWEEN @StartSerial AND @EndSerial)
@@ -90,7 +91,7 @@ BEGIN
             BEGIN
                 SELECT 
                     @ExistingCount = COUNT(1),
-                    @AvailableCount = SUM(CASE WHEN Batch_No IS NULL OR Batch_No = '' THEN 1 ELSE 0 END)
+                    @AvailableCount = SUM(CASE WHEN (Batch_No IS NULL OR Batch_No = '') AND (ScrapeFlag IS NULL OR ScrapeFlag = 0) AND Print_Status = 1 AND DispatchFlag = 1 AND ReceiveFlag = 1 THEN 1 ELSE 0 END)
                 FROM M_Code WITH (NOLOCK)
                 WHERE Pro_ID = @Pro_ID
                   AND ((Series_Order = @StartOrder AND Series_Order = @EndOrder AND Series_Serial BETWEEN @StartSerial AND @EndSerial)
@@ -107,7 +108,7 @@ BEGIN
             IF ISNULL(@AvailableCount, 0) = 0
             BEGIN
                 ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'No available codes in range ' + @SeriesStart + ' to ' + @SeriesEnd + ' for product ' + @Pro_ID + '. All ' + CAST(@ExistingCount AS VARCHAR(10)) + ' codes are already assigned to another batch.' AS message;
+                SELECT 0 AS success, 'No available codes in range ' + @SeriesStart + ' to ' + @SeriesEnd + ' for product ' + @Pro_ID + '. All ' + CAST(@ExistingCount AS VARCHAR(10)) + ' codes are already assigned or not ready.' AS message;
                 RETURN;
             END
 
@@ -128,6 +129,7 @@ BEGIN
             [Batch_No], 
             [Entry_Date], 
             [Comments], 
+            [WarrantyDurationMonth],
             [IsWarranty],
             [Series_Limit]
         )
@@ -139,7 +141,8 @@ BEGIN
             @Batch_No_Text, 
             GETDATE(), 
             @Comments, 
-            CASE WHEN @Warranty > 0 THEN 1 ELSE 0 END,
+            @Warranty,
+            CASE WHEN ISNULL(@Warranty, 0) > 0 THEN 1 ELSE 0 END,
             CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
                  THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
                  ELSE '' END
@@ -155,6 +158,7 @@ BEGIN
 
         IF @StartOrder IS NOT NULL AND @EndOrder IS NOT NULL
         BEGIN
+            -- Manual Series Range Update
             IF @Comp_ID = 'Comp-1693'
             BEGIN
                 UPDATE M_Code_PFL WITH (ROWLOCK)
@@ -163,7 +167,11 @@ BEGIN
                 WHERE Pro_ID = @Pro_ID
                   AND ((Series_Order = @StartOrder AND Series_Order = @EndOrder AND Series_Serial BETWEEN @StartSerial AND @EndSerial)
                        OR (@StartOrder < @EndOrder AND ((Series_Order = @StartOrder AND Series_Serial >= @StartSerial) OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial) OR (Series_Order > @StartOrder AND Series_Order < @EndOrder))))
-                  AND (Batch_No IS NULL OR Batch_No = '');
+                  AND (Batch_No IS NULL OR Batch_No = '')
+                  AND (ScrapeFlag IS NULL OR ScrapeFlag = 0)
+                  AND Print_Status = 1
+                  AND DispatchFlag = 1
+                  AND ReceiveFlag = 1;
             END
             ELSE
             BEGIN
@@ -173,11 +181,16 @@ BEGIN
                 WHERE Pro_ID = @Pro_ID
                   AND ((Series_Order = @StartOrder AND Series_Order = @EndOrder AND Series_Serial BETWEEN @StartSerial AND @EndSerial)
                        OR (@StartOrder < @EndOrder AND ((Series_Order = @StartOrder AND Series_Serial >= @StartSerial) OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial) OR (Series_Order > @StartOrder AND Series_Order < @EndOrder))))
-                  AND (Batch_No IS NULL OR Batch_No = '');
+                  AND (Batch_No IS NULL OR Batch_No = '')
+                  AND (ScrapeFlag IS NULL OR ScrapeFlag = 0)
+                  AND Print_Status = 1
+                  AND DispatchFlag = 1
+                  AND ReceiveFlag = 1;
             END
         END
         ELSE IF @SeriesData IS NOT NULL AND @SeriesData <> '' AND @SeriesData <> '[]'
         BEGIN
+            -- JSON Series List Update
             IF @Comp_ID = 'Comp-1693'
             BEGIN
                 UPDATE mc
@@ -193,7 +206,11 @@ BEGIN
                       AND mc.Series_Order = json.SeriesInitial
                       AND mc.Series_Serial >= json.SeriesFrom
                       AND mc.Series_Serial <= json.SeriesTo
-                WHERE mc.Batch_No IS NULL OR mc.Batch_No = '';
+                WHERE (mc.Batch_No IS NULL OR mc.Batch_No = '')
+                  AND (mc.ScrapeFlag IS NULL OR mc.ScrapeFlag = 0)
+                  AND mc.Print_Status = 1
+                  AND mc.DispatchFlag = 1
+                  AND mc.ReceiveFlag = 1;
             END
             ELSE
             BEGIN
@@ -210,7 +227,99 @@ BEGIN
                       AND mc.Series_Order = json.SeriesInitial
                       AND mc.Series_Serial >= json.SeriesFrom
                       AND mc.Series_Serial <= json.SeriesTo
-                WHERE mc.Batch_No IS NULL OR mc.Batch_No = '';
+                WHERE (mc.Batch_No IS NULL OR mc.Batch_No = '')
+                  AND (mc.ScrapeFlag IS NULL OR mc.ScrapeFlag = 0)
+                  AND mc.Print_Status = 1
+                  AND mc.DispatchFlag = 1
+                  AND mc.ReceiveFlag = 1;
+            END
+        END
+        ELSE
+        BEGIN
+            -- Auto-calculate and allocate available codes based on BatchSize or all available unassigned codes
+            DECLARE @AllocQty BIGINT = @BatchSize;
+            IF @AllocQty IS NULL OR @AllocQty <= 0
+            BEGIN
+                SELECT @AllocQty = ISNULL(BatchSize, 0) FROM Pro_Reg WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID;
+            END
+
+            IF @Comp_ID = 'Comp-1693'
+            BEGIN
+                IF @AllocQty > 0
+                BEGIN
+                    ;WITH AvailableCodes AS (
+                        SELECT TOP (@AllocQty) Row_ID
+                        FROM M_Code_PFL WITH (ROWLOCK)
+                        WHERE Pro_ID = @Pro_ID
+                          AND (Batch_No IS NULL OR Batch_No = '')
+                          AND (ScrapeFlag IS NULL OR ScrapeFlag = 0)
+                          AND Print_Status = 1
+                          AND DispatchFlag = 1
+                          AND ReceiveFlag = 1
+                        ORDER BY Series_Order ASC, Series_Serial ASC
+                    )
+                    UPDATE mc
+                    SET mc.Batch_No = CAST(@NewRowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes
+                    FROM M_Code_PFL mc
+                    INNER JOIN AvailableCodes ac ON mc.Row_ID = ac.Row_ID;
+                END
+                ELSE
+                BEGIN
+                    UPDATE mc
+                    SET mc.Batch_No = CAST(@NewRowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes
+                    FROM M_Code_PFL mc WITH (ROWLOCK)
+                    WHERE mc.Pro_ID = @Pro_ID
+                      AND (mc.Batch_No IS NULL OR mc.Batch_No = '')
+                      AND (mc.ScrapeFlag IS NULL OR mc.ScrapeFlag = 0)
+                      AND mc.Print_Status = 1
+                      AND mc.DispatchFlag = 1
+                      AND mc.ReceiveFlag = 1;
+                END
+            END
+            ELSE
+            BEGIN
+                IF @AllocQty > 0
+                BEGIN
+                    ;WITH AvailableCodes AS (
+                        SELECT TOP (@AllocQty) Row_ID
+                        FROM M_Code WITH (ROWLOCK)
+                        WHERE Pro_ID = @Pro_ID
+                          AND (Batch_No IS NULL OR Batch_No = '')
+                          AND (ScrapeFlag IS NULL OR ScrapeFlag = 0)
+                          AND Print_Status = 1
+                          AND DispatchFlag = 1
+                          AND ReceiveFlag = 1
+                        ORDER BY Series_Order ASC, Series_Serial ASC
+                    )
+                    UPDATE mc
+                    SET mc.Batch_No = CAST(@NewRowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes
+                    FROM M_Code mc
+                    INNER JOIN AvailableCodes ac ON mc.Row_ID = ac.Row_ID;
+                END
+                ELSE
+                BEGIN
+                    UPDATE mc
+                    SET mc.Batch_No = CAST(@NewRowID AS NVARCHAR(50))
+                    OUTPUT inserted.Series_Order, inserted.Series_Serial INTO @UpdatedCodes
+                    FROM M_Code mc WITH (ROWLOCK)
+                    WHERE mc.Pro_ID = @Pro_ID
+                      AND (mc.Batch_No IS NULL OR mc.Batch_No = '')
+                      AND (mc.ScrapeFlag IS NULL OR mc.ScrapeFlag = 0)
+                      AND mc.Print_Status = 1
+                      AND mc.DispatchFlag = 1
+                      AND mc.ReceiveFlag = 1;
+                END
+            END
+
+            -- Check if any codes were allocated
+            IF NOT EXISTS (SELECT 1 FROM @UpdatedCodes)
+            BEGIN
+                ROLLBACK TRANSACTION;
+                SELECT 0 AS success, 'No available codes found for product ' + @Pro_ID + ' to assign.' AS message;
+                RETURN;
             END
         END
 
