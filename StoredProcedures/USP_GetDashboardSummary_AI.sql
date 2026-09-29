@@ -158,12 +158,12 @@ BEGIN
     END
     ELSE
     BEGIN
-        INSERT INTO #EarnedPoints (M_Codeid, rn, Service_ID, Points,UpdateDate)
+        INSERT INTO #EarnedPoints (M_Codeid, rn, Service_ID, Points, UpdateDate)
         SELECT
             M_Codeid,
             1 AS rn,
             MAX(Service_ID) AS Service_ID,
-            MAX(Points) AS Points,
+            CASE WHEN @CompID = 'Comp-1669' THEN SUM(Points) ELSE MAX(Points) END AS Points,
             MAX(UpdateDate) AS UpdateDate
         FROM #EarnedPointsRaw
         GROUP BY M_Codeid;
@@ -235,6 +235,7 @@ BEGIN
     FROM #UserScans US
     LEFT JOIN #EarnedPoints EP ON US.M_Codeid = EP.M_Codeid
     LEFT JOIN #ConfigPoints CP ON US.M_Codeid = CP.M_Codeid
+    WHERE US.rn <= ISNULL(CP.Frequency, 1)
     GROUP BY COALESCE(EP.Service_ID, CP.Service_ID, 'SRV1001');
 
     ---------------------------------------------------------
@@ -247,6 +248,7 @@ BEGIN
         @TotalConfigPoints = ISNULL(SUM(ServiceTotalPoints), 0),
         @TotalConfigCash = ISNULL(SUM(ServiceTotalCash), 0)
     FROM #ConfiguredPoints;
+
 
     -- Referral Stats (TRUE referral points ONLY: BuildLoyaltyOrReferralMCodeCheckid IS NULL or ServiceName referral)
     SELECT 
@@ -365,7 +367,7 @@ BEGIN
               )
           );
 
-        SET @RedeemAmount = @Comp1669Paytm + @Comp1669UPI;
+        SET @RedeemAmount = @Comp1669Paytm + @Comp1669UPI + @ClaimsAmount;
     END
     ELSE
     BEGIN
