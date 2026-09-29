@@ -1,3 +1,6 @@
+-- Migration: 20260929_Optimize_SP_Admin_GetCodesActivityReport_AI.sql
+-- Purpose: Optimize SP_Admin_GetCodesActivityReport_AI to fetch fast directly from Pro_Enq using minimal joins and latest 1-week/today records to avoid execution timeout.
+
 USE [Vcqru]
 GO
 /****** Object:  StoredProcedure [dbo].[SP_Admin_GetCodesActivityReport_AI]    Script Date: 9/29/2026 3:30:00 PM ******/
@@ -6,15 +9,6 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- ====================================================================
--- Stored Procedure: SP_Admin_GetCodesActivityReport_AI
--- Purpose: Fast & Optimized Codes Activity Report for Admin directly from Pro_Enq
--- Used By: AdminVendorReportController (/api/AdminVendorReport/GetCodesActivityReportAdmin)
--- Features:
---   - Directly queries Pro_Enq with minimum joins (Pro_Enq + Comp_Reg + Service Subscription lookups on paged slice)
---   - Defaults to latest records (Today / Last 1 Week) for instant sub-second response
---   - Retains exact response schema without changing request/response keys
--- ====================================================================
 CREATE OR ALTER PROCEDURE [dbo].[SP_Admin_GetCodesActivityReport_AI]
     @Comp_Id          VARCHAR(50)   = NULL,
     @datePreset       NVARCHAR(50)  = 'TODAY', -- Today (default), Week (7 days)
