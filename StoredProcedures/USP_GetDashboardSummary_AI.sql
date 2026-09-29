@@ -367,7 +367,7 @@ BEGIN
               )
           );
 
-        SET @RedeemAmount = @Comp1669Paytm + @Comp1669UPI;
+        SET @RedeemAmount = @Comp1669Paytm + @Comp1669UPI + @ClaimsAmount;
     END
     ELSE
     BEGIN
