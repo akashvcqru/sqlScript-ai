@@ -382,8 +382,9 @@ BEGIN
                         CASE
                             WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                                 CASE 
-                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                                 END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
@@ -399,8 +400,9 @@ BEGIN
                         CASE
                             WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                                 CASE 
-                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                                 END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
@@ -426,7 +428,6 @@ BEGIN
         LEFT JOIN M_Consumer Cons WITH (NOLOCK)
             ON BL.M_Consumerid = Cons.M_Consumerid
         WHERE BL.compid = @Comp_Id
-          AND (@Comp_Id <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout'))
 
         UNION ALL
 
@@ -440,8 +441,9 @@ BEGIN
                         CASE
                             WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                                 CASE 
-                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                                 END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
@@ -457,8 +459,9 @@ BEGIN
                         CASE
                             WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                                 CASE 
-                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                                 END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
@@ -487,7 +490,6 @@ BEGIN
             ON BL.M_Consumerid = Cons.M_Consumerid
         WHERE BL.compid IS NULL
           AND PR.Comp_ID = @Comp_Id
-          AND (@Comp_Id <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout'))
     ) x
     GROUP BY M_Codeid, MobileNo;
 
@@ -690,8 +692,8 @@ BEGIN
             ELSE 0 
         END AS Points,
         CASE 
-            WHEN E.Is_Success = 1 THEN 'Verified'
-            WHEN E.Is_Success = 2 THEN 'Already Scanned'
+            WHEN E.Is_Success = 1 AND E.rn <= ISNULL(CP.TotalFrequency, 1) THEN 'Verified'
+            WHEN E.Is_Success = 2 OR (E.Is_Success = 1 AND E.rn > ISNULL(CP.TotalFrequency, 1)) THEN 'Already Scanned'
             ELSE 'Invalid'
         END AS Result,
 			E.Latitude,
@@ -718,13 +720,21 @@ BEGIN
         MCd.LabelRequestId
 		FROM
 		(
-			SELECT *,
+			SELECT E_sub.*,
 				   CASE 
-					   WHEN Is_Success = 1 
-					   THEN ROW_NUMBER() OVER (PARTITION BY Received_Code1, Received_Code2, Is_Success ORDER BY Enq_Date ASC)
+					   WHEN E_sub.Is_Success = 1 
+					   THEN ROW_NUMBER() OVER (
+                           PARTITION BY E_sub.Received_Code1, E_sub.Received_Code2, E_sub.Is_Success 
+                           ORDER BY 
+                               CASE WHEN MC_sub.IsActive = 0 THEN 2 ELSE 1 END,
+                               E_sub.Enq_Date ASC
+                       )
 					   ELSE 1
 				   END AS rn
-			FROM #Enq
+			FROM #Enq E_sub
+            LEFT JOIN M_Consumer MC_sub WITH (NOLOCK) 
+                ON (MC_sub.MobileNo = E_sub.MobileNo OR (LEN(E_sub.MobileNo) >= 10 AND RIGHT(MC_sub.MobileNo, 10) = RIGHT(E_sub.MobileNo, 10))) 
+               AND MC_sub.IsDelete = 0
 		) E
         LEFT JOIN M_Consumer MC ON (MC.MobileNo = E.MobileNo OR (LEN(E.MobileNo) >= 10 AND RIGHT(MC.MobileNo, 10) = RIGHT(E.MobileNo, 10))) AND MC.IsDelete = '0'
         LEFT JOIN tbl_Vendorvisekycstatus cc ON mc.M_Consumerid = cc.M_consumerId AND cc.comp_id = @comp_id
@@ -824,8 +834,9 @@ BEGIN
                     CASE
                         WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                             CASE 
-                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                    THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                             END
                         WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                         ELSE 0.00
@@ -854,8 +865,9 @@ BEGIN
                     CASE
                         WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                             CASE 
-                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                    THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                             END
                         WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                         ELSE 0.00
@@ -877,7 +889,7 @@ BEGIN
     LEFT JOIN dbo.M_ServiceSubscriptionTrans SST WITH (NOLOCK) ON SST.SST_Id = BL.SST_id
     LEFT JOIN dbo.M_ServiceSubscription SS WITH (NOLOCK) ON SS.Subscribe_Id = SST.Subscribe_Id
     LEFT JOIN dbo.M_Service MS WITH (NOLOCK) ON MS.Service_ID = SS.Service_ID
-    WHERE BL.compid = @Comp_Id
+    WHERE (BL.compid = @Comp_Id OR (@Comp_Id = 'Comp-1669' AND BL.compid IS NULL AND PR.Pro_ID IS NOT NULL))
       AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
       AND (
           BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
