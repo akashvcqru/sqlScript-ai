@@ -23,6 +23,17 @@ BEGIN
 
         SELECT
             j.Drive AS [Drive],
+            j.TotalGB AS [TotalSpace_GB],
+            j.UsedGB AS [UsedSpace_GB],
+            j.FreeGB AS [FreeSpace_GB],
+            j.UsedPercent AS [UsedPercent],
+            j.FreePercent AS [FreePercent],
+            CASE
+                WHEN j.FreePercent < 10 THEN 'CRITICAL'
+                WHEN j.FreePercent < 20 THEN 'WARNING'
+                ELSE 'HEALTHY'
+            END AS [DiskStatus],
+            -- Legacy display aliases
             j.TotalGB AS [Total Space GB],
             j.UsedGB AS [Used Space GB],
             j.FreeGB AS [Free Space GB],
@@ -53,6 +64,17 @@ BEGIN
     BEGIN
         SELECT DISTINCT
             UPPER(vs.volume_mount_point) AS [Drive],
+            CAST(vs.total_bytes / (1024.0 * 1024 * 1024) AS DECIMAL(18,2)) AS [TotalSpace_GB],
+            CAST((vs.total_bytes - vs.available_bytes) / (1024.0 * 1024 * 1024) AS DECIMAL(18,2)) AS [UsedSpace_GB],
+            CAST(vs.available_bytes / (1024.0 * 1024 * 1024) AS DECIMAL(18,2)) AS [FreeSpace_GB],
+            CAST(((vs.total_bytes - vs.available_bytes) * 100.0 / vs.total_bytes) AS DECIMAL(10,2)) AS [UsedPercent],
+            CAST((vs.available_bytes * 100.0 / vs.total_bytes) AS DECIMAL(10,2)) AS [FreePercent],
+            CASE
+                WHEN (vs.available_bytes * 100.0 / vs.total_bytes) < 10 THEN 'CRITICAL'
+                WHEN (vs.available_bytes * 100.0 / vs.total_bytes) < 20 THEN 'WARNING'
+                ELSE 'HEALTHY'
+            END AS [DiskStatus],
+            -- Legacy display aliases
             CAST(vs.total_bytes / (1024.0 * 1024 * 1024) AS DECIMAL(18,2)) AS [Total Space GB],
             CAST((vs.total_bytes - vs.available_bytes) / (1024.0 * 1024 * 1024) AS DECIMAL(18,2)) AS [Used Space GB],
             CAST(vs.available_bytes / (1024.0 * 1024 * 1024) AS DECIMAL(18,2)) AS [Free Space GB],
