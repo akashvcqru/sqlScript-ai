@@ -292,7 +292,10 @@ BEGIN
 
     IF @Comp_Id = 'Comp-1669'
     BEGIN
-        -- ISOLATED SPECIFICALLY FOR COMP-1669 (Multi-Service Head & Assistant Mechanics matched to SP_BL_GetCodesActivityReport_AI)
+        -- ISOLATED SPECIFICALLY FOR COMP-1669
+        -- UpdateDate <= '2026-09-10 19:41:55.383' → Points + 10%  (Points * 1.10)
+        -- UpdateDate >  '2026-09-10 19:41:55.383' → Points as-is
+        -- ServiceName filter REMOVED (all services included)
         INSERT INTO #Benefit (M_Consumerid, PointsEarned, LastScan)
         SELECT 
             CM.Active_ConsumerId AS M_Consumerid,
@@ -300,8 +303,9 @@ BEGIN
                 CASE 
                     WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                         CASE 
-                            WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                            ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                            WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10   -- old records: Points + 10%
+                            ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))              -- new records: Points as-is
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                     ELSE 0.00
@@ -309,16 +313,15 @@ BEGIN
             AS DECIMAL(18,2))) AS PointsEarned,
             MAX(BL.UpdateDate) AS LastScan
         FROM (
-            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate
+            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate, BL.ServiceName
             FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
             WHERE BL.compid = 'Comp-1669'
-              AND LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout')
               AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
               AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
 
             UNION ALL
 
-            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate
+            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate, BL.ServiceName
             FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
             INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
                 ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
@@ -330,7 +333,6 @@ BEGIN
                 ON M.Pro_ID = PR.Pro_ID
             WHERE BL.compid IS NULL
               AND PR.Comp_ID = 'Comp-1669'
-              AND LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout')
               AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
               AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
         ) BL

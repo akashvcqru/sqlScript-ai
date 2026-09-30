@@ -382,8 +382,9 @@ BEGIN
                         CASE
                             WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                                 CASE 
-                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                                 END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
@@ -399,8 +400,9 @@ BEGIN
                         CASE
                             WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                                 CASE 
-                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                                 END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
@@ -426,7 +428,6 @@ BEGIN
         LEFT JOIN M_Consumer Cons WITH (NOLOCK)
             ON BL.M_Consumerid = Cons.M_Consumerid
         WHERE BL.compid = @Comp_Id
-          AND (@Comp_Id <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout'))
 
         UNION ALL
 
@@ -440,8 +441,9 @@ BEGIN
                         CASE
                             WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                                 CASE 
-                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                                 END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
@@ -457,8 +459,9 @@ BEGIN
                         CASE
                             WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                                 CASE 
-                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                    ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                                 END
                             WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                             ELSE 0.00
@@ -487,7 +490,6 @@ BEGIN
             ON BL.M_Consumerid = Cons.M_Consumerid
         WHERE BL.compid IS NULL
           AND PR.Comp_ID = @Comp_Id
-          AND (@Comp_Id <> 'Comp-1669' OR LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout'))
     ) x
     GROUP BY M_Codeid, MobileNo;
 
@@ -824,8 +826,9 @@ BEGIN
                     CASE
                         WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                             CASE 
-                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                    THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                             END
                         WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                         ELSE 0.00
@@ -854,8 +857,9 @@ BEGIN
                     CASE
                         WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                             CASE 
-                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
-                                ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                    THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10  -- old records: Points + 10%
+                                ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))             -- new records: Points as-is
                             END
                         WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
                         ELSE 0.00
