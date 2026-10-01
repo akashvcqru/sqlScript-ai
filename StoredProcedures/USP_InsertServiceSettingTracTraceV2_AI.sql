@@ -58,6 +58,15 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
+        -- Check if Batch already exists in T_Pro (e.g. created by AddAssignLabelToProduct API)
+        DECLARE @ExistingTPro_RowID BIGINT = NULL;
+        IF @Batch_No IS NOT NULL AND @Batch_No <> ''
+        BEGIN
+            SELECT TOP 1 @ExistingTPro_RowID = Row_ID 
+            FROM T_Pro WITH (NOLOCK) 
+            WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
+        END
+
         -- 0.1 Parse SeriesStart / SeriesEnd
         DECLARE @StartOrder INT, @StartSerial INT;
         DECLARE @EndOrder   INT, @EndSerial   INT;
@@ -260,6 +269,7 @@ BEGIN
                   )
               )
               AND (Batch_No IS NOT NULL AND Batch_No <> '')
+              AND (@ExistingTPro_RowID IS NULL OR Batch_No <> CAST(@ExistingTPro_RowID AS VARCHAR(50)))
         )
         BEGIN
             SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
@@ -373,8 +383,12 @@ BEGIN
         -- =========================================================================
         -- STEP 4: BATCH MASTER IN T_Pro (Create or Fetch)
         -- =========================================================================
-        DECLARE @NewTPro_RowID BIGINT;
-        SELECT @NewTPro_RowID = Row_ID FROM T_Pro WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
+        DECLARE @NewTPro_RowID BIGINT = @ExistingTPro_RowID;
+
+        IF @NewTPro_RowID IS NULL AND @Batch_No IS NOT NULL AND @Batch_No <> ''
+        BEGIN
+            SELECT @NewTPro_RowID = Row_ID FROM T_Pro WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
+        END
 
         IF @NewTPro_RowID IS NULL
         BEGIN
@@ -396,34 +410,50 @@ BEGIN
             );
             SET @NewTPro_RowID = SCOPE_IDENTITY();
         END
+        ELSE
+        BEGIN
+            UPDATE T_Pro
+            SET MRP = ISNULL(@MRP, MRP),
+                Mfd_Date = CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE Mfd_Date END,
+                Exp_Date = CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE Exp_Date END,
+                Comments = ISNULL(@Comments, Comments),
+                Series_Limit = CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
+                                    THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
+                                    ELSE ISNULL(Series_Limit, '') END
+            WHERE Row_ID = @NewTPro_RowID;
+        END
 
         -- =========================================================================
         -- STEP 5: LOCK CODES IN M_Code
+        -- PERFORMANCE OPTIMIZATION: Only update M_Code if batch was NOT already assigned!
         -- =========================================================================
-        UPDATE M_Code
-        SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)),
-            print_status = 1 
-        WHERE Pro_ID = @Pro_ID 
-          AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
-          AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial))
-          AND (Series_Order BETWEEN @StartOrder AND @EndOrder)
-          AND (Batch_No IS NULL OR Batch_No = '');
-
-        -- If MasterCode is outside the series, update its Batch_No separately
-        IF @IsMasterInBatch = 0 AND @MasterOrd IS NOT NULL AND @MasterSer IS NOT NULL
+        IF @ExistingTPro_RowID IS NULL
         BEGIN
             UPDATE M_Code
             SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)),
-                print_status = 1
+                print_status = 1 
             WHERE Pro_ID = @Pro_ID 
-              AND Series_Order = @MasterOrd 
-              AND Series_Serial = @MasterSer;
-        END
+              AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
+              AND (Series_Order < @EndOrder OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial))
+              AND (Series_Order BETWEEN @StartOrder AND @EndOrder)
+              AND (Batch_No IS NULL OR Batch_No = '');
 
-        -- Set Series_Limit helper procedure if available
-        IF EXISTS (SELECT 1 FROM sys.objects WHERE name = 'UpdateM_codeByBatch_No' AND type = 'P')
-        BEGIN
-            EXEC UpdateM_codeByBatch_No @NewTPro_RowID, @Pro_ID;
+            -- If MasterCode is outside the series, update its Batch_No separately
+            IF @IsMasterInBatch = 0 AND @MasterOrd IS NOT NULL AND @MasterSer IS NOT NULL
+            BEGIN
+                UPDATE M_Code
+                SET Batch_No = CAST(@NewTPro_RowID AS VARCHAR(50)),
+                    print_status = 1
+                WHERE Pro_ID = @Pro_ID 
+                  AND Series_Order = @MasterOrd 
+                  AND Series_Serial = @MasterSer;
+            END
+
+            -- Set Series_Limit helper procedure if available
+            IF EXISTS (SELECT 1 FROM sys.objects WHERE name = 'UpdateM_codeByBatch_No' AND type = 'P')
+            BEGIN
+                EXEC UpdateM_codeByBatch_No @NewTPro_RowID, @Pro_ID;
+            END
         END
 
         -- =========================================================================
