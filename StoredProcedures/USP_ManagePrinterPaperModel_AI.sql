@@ -25,7 +25,6 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_ManagePrinterPaperModel_AI]
     @Margin_Top_MM DECIMAL(10,2) = 0,
     @Margin_Left_MM DECIMAL(10,2) = 0,
     @Description NVARCHAR(250) = NULL,
-    @Display_Order INT = 0,
     @IsActive BIT = 1,
     -- List & Filter Parameters
     @DateFrom DATETIME = NULL,
@@ -63,7 +62,6 @@ BEGIN
                 Margin_Top_MM, 
                 Margin_Left_MM, 
                 Description, 
-                Display_Order, 
                 Comp_ID, 
                 Entry_date,
                 IsActive,
@@ -96,13 +94,12 @@ BEGIN
             Margin_Top_MM, 
             Margin_Left_MM, 
             Description, 
-            Display_Order, 
             Comp_ID, 
             Entry_date,
             IsActive,
             TotalRecords
         FROM FilteredModels
-        ORDER BY Display_Order ASC, Id ASC
+        ORDER BY Id ASC
         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
     END
 
@@ -132,12 +129,12 @@ BEGIN
         INSERT INTO [dbo].[M_Printer_Paper_Master] (
             Model_Code, Model_Name, Paper_Type, Label_Width_MM, Label_Height_MM, 
             Columns_Per_Row, Rows_Per_Page, Gap_X_MM, Gap_Y_MM, Margin_Top_MM, Margin_Left_MM, 
-            Description, IsActive, Display_Order, Comp_ID, Entry_date
+            Description, IsActive, Comp_ID, Entry_date
         )
         VALUES (
             @Model_Code, LTRIM(RTRIM(@Model_Name)), @Paper_Type, @Label_Width_MM, @Label_Height_MM, 
             @Cols, @Rows, @Gap_X_MM, @Gap_Y_MM, @Margin_Top_MM, @Margin_Left_MM, 
-            @Description, ISNULL(@IsActive, 1), @Display_Order, @Comp_ID, GETDATE()
+            @Description, ISNULL(@IsActive, 1), @Comp_ID, GETDATE()
         );
 
         DECLARE @NewId INT = SCOPE_IDENTITY();
@@ -167,7 +164,6 @@ BEGIN
             Margin_Top_MM = ISNULL(@Margin_Top_MM, Margin_Top_MM),
             Margin_Left_MM = ISNULL(@Margin_Left_MM, Margin_Left_MM),
             Description = ISNULL(@Description, Description),
-            Display_Order = ISNULL(@Display_Order, Display_Order),
             IsActive = ISNULL(@IsActive, IsActive)
         WHERE Id = @Id;
 
@@ -201,7 +197,7 @@ BEGIN
         SELECT 
             Id, Model_Code, Model_Name, Paper_Type, Label_Width_MM, Label_Height_MM, 
             Columns_Per_Row, Rows_Per_Page, Gap_X_MM, Gap_Y_MM, Margin_Top_MM, Margin_Left_MM, 
-            Description, Display_Order, Comp_ID, Entry_date, IsActive
+            Description, Comp_ID, Entry_date, IsActive
         FROM [dbo].[M_Printer_Paper_Master] WITH (NOLOCK)
         WHERE Id = @Id;
     END
