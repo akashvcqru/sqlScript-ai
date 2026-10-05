@@ -43,7 +43,12 @@ declare @frstcnt int
 declare @compid1 nvarchar(50)  
 
 select @compid1=pr.comp_id from  M_Code mc inner join pro_reg pr on pr.Pro_ID=mc.Pro_ID where mc.Code1=@Received_Code1 and mc.Code2=@Received_Code2  
-SELECT @M_Consumerid =M_Consumerid FROM [M_Consumer] WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete=0  ORDER BY Entry_Date DESC;  
+IF ISNULL(@M_Codeid, 0) = 0
+BEGIN
+    SELECT TOP 1 @M_Codeid = Row_ID, @Proid = ISNULL(@Proid, Pro_ID) 
+    FROM M_Code (NOLOCK) 
+    WHERE Code1 = TRY_CAST(@Received_Code1 AS NUMERIC(18,0)) AND Code2 = TRY_CAST(@Received_Code2 AS NUMERIC(18,0));
+END
 
 IF ISNULL(@SST_ID, 0) = 0
 BEGIN
@@ -66,7 +71,8 @@ INNER JOIN M_ServiceSubscriptionTrans sst (NOLOCK) ON s.Subscribe_Id = sst.Subsc
 INNER JOIN M_Code c (NOLOCK) ON s.Pro_ID = c.Pro_ID
 WHERE c.Code1 = TRY_CAST(@Received_Code1 AS NUMERIC(18,0)) AND c.Code2 = TRY_CAST(@Received_Code2 AS NUMERIC(18,0))
   AND s.IsActive = 1 AND ISNULL(s.IsDelete, 0) = 0
-  AND sst.IsActive = 1 AND ISNULL(sst.IsDelete, 0) = 0;
+  AND sst.IsActive = 1 AND ISNULL(sst.IsDelete, 0) = 0
+  AND (ISNULL(@SST_ID, 0) = 0 OR sst.SST_Id = @SST_ID);
 
   --Tej Multivendor kyc
  DECLARE @cntTj INT = 0,  
@@ -125,7 +131,7 @@ Begin
 if @Is_Success = 1   
 begin   
 declare @cnt int = 0   
-select @cnt = count(*) from pro_enq  where Is_Success = 1 and Received_Code1 = @Received_Code1 and Received_Code2 = @Received_Code2  
+select @cnt = count(*) from pro_enq where Is_Success = 1 and Received_Code1 = @Received_Code1 and Received_Code2 = @Received_Code2 and (ISNULL(@SST_ID, 0) = 0 OR SST_ID = @SST_ID)  
 if (@cnt < ISNULL(@Frequency, 1) OR (@cnt = 1 AND ( @Compid = 'Comp-1669' or @Compid ='Comp-1819') )   )  
 begin  
  INSERT INTO [Pro_Enq]([Dial_Mode],[Enq_Date],[Mode_Detail],[MobileNo],  
