@@ -203,8 +203,8 @@ BEGIN
                 END
             END
 
-            -- BatchSize Validation
-            IF @BatchSize IS NOT NULL AND @BatchSize > 0
+            -- BatchSize Validation (skip if batch is already created via AddAssignLabelToProduct)
+            IF @ExistingTPro_RowID IS NULL AND @BatchSize IS NOT NULL AND @BatchSize > 0
             BEGIN
                 DECLARE @CalculatedCount INT;
                 IF @StartOrder = @EndOrder
