@@ -128,31 +128,20 @@ BEGIN
         SET @IsAdminVerify_Last = ISNULL(@IsAdminVerify_Last, 1);
         SET @TransType_Last = ISNULL(@TransType_Last, 'Service');
 
-        -- 2. Resolve or generate Subscribe_Id
-        IF ISNULL(@Subscribe_Id, '') = ''
+        -- 2. Generate a new Subscribe_Id every time
+        DECLARE @PrPrefix VARCHAR(50), @PrStart BIGINT;
+        SELECT TOP 1 @PrPrefix = PrPrefix, @PrStart = PrStart 
+        FROM Code_Gen WITH (UPDLOCK, HOLDLOCK) 
+        WHERE Prfor = 'Subscription';
+
+        IF @PrPrefix IS NULL
         BEGIN
-            SELECT TOP 1 @Subscribe_Id = Subscribe_Id
-            FROM M_ServiceSubscription WITH (NOLOCK)
-            WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID
-            ORDER BY EntryDate DESC;
-
-            IF @Subscribe_Id IS NULL
-            BEGIN
-                DECLARE @PrPrefix VARCHAR(50), @PrStart BIGINT;
-                SELECT TOP 1 @PrPrefix = PrPrefix, @PrStart = PrStart 
-                FROM Code_Gen WITH (UPDLOCK, HOLDLOCK) 
-                WHERE Prfor = 'Subscription';
-
-                IF @PrPrefix IS NULL
-                BEGIN
-                    SET @Subscribe_Id = 'SSI' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
-                END
-                ELSE
-                BEGIN
-                    SET @Subscribe_Id = @PrPrefix + CAST(@PrStart AS VARCHAR(50));
-                    UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'Subscription' AND PrPrefix = @PrPrefix;
-                END
-            END
+            SET @Subscribe_Id = 'SSI' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
+        END
+        ELSE
+        BEGIN
+            SET @Subscribe_Id = @PrPrefix + CAST(@PrStart AS VARCHAR(50));
+            UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'Subscription' AND PrPrefix = @PrPrefix;
         END
 
         -- 2.1 Check if this Batch already exists in T_Pro (e.g. created via AddAssignLabelToProduct)
@@ -328,86 +317,47 @@ BEGIN
             WHERE Pro_ID = @Pro_ID AND (Batch_No = @Batch_No OR Row_ID = TRY_CAST(@Batch_No AS BIGINT));
         END
 
-        -- 4. Insert or update M_ServiceSubscription
-        IF NOT EXISTS (SELECT 1 FROM M_ServiceSubscription WITH (NOLOCK) WHERE Subscribe_Id = @Subscribe_Id)
-        BEGIN
-            INSERT INTO M_ServiceSubscription
-            (
-                Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName,
-                PlanMasterPeriod, PlanSalePeriod, PlanMasterPrice, PlanSalePrice,
-                DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify,
-                TransType, start_order, start_series, end_order, end_series
-            )
-            VALUES
-            (
-                @Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, @PlanID_Last, @PlanName_Last,
-                @PlanMasterPeriod_Last, @PlanSalePeriod_Last, @PlanMasterPrice_Last, @PlanSalePrice_Last,
-                ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE GETDATE() END),
-                ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE DATEADD(YEAR, 1, GETDATE()) END),
-                ISNULL(@EntryDate, GETDATE()), 
-                @IsActive_Last, @IsDelete_Last, @IsAdminVerify_Last,
-                @TransType_Last, @StartOrder, @StartSerial, @EndOrder, @EndSerial
-            );
-        END
-        ELSE
-        BEGIN
-            UPDATE M_ServiceSubscription
-            SET DateFrom = ISNULL(@DateFrom, DateFrom),
-                DateTo = ISNULL(@DateTo, DateTo),
-                start_order = ISNULL(@StartOrder, start_order),
-                start_series = ISNULL(@StartSerial, start_series),
-                end_order = ISNULL(@EndOrder, end_order),
-                end_series = ISNULL(@EndSerial, end_series)
-            WHERE Subscribe_Id = @Subscribe_Id;
-        END
+        -- 4. Insert new record in M_ServiceSubscription
+        INSERT INTO M_ServiceSubscription
+        (
+            Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName,
+            PlanMasterPeriod, PlanSalePeriod, PlanMasterPrice, PlanSalePrice,
+            DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify,
+            TransType, start_order, start_series, end_order, end_series
+        )
+        VALUES
+        (
+            @Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, @PlanID_Last, @PlanName_Last,
+            @PlanMasterPeriod_Last, @PlanSalePeriod_Last, @PlanMasterPrice_Last, @PlanSalePrice_Last,
+            ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE GETDATE() END),
+            ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE DATEADD(YEAR, 1, GETDATE()) END),
+            ISNULL(@EntryDate, GETDATE()), 
+            @IsActive_Last, @IsDelete_Last, @IsAdminVerify_Last,
+            @TransType_Last, @StartOrder, @StartSerial, @EndOrder, @EndSerial
+        );
 
-        -- 5. Insert or update record in M_ServiceSubscriptionTrans
-        DECLARE @NewSST_Id BIGINT = NULL;
-        IF EXISTS (SELECT 1 FROM M_ServiceSubscriptionTrans WITH (NOLOCK) WHERE Subscribe_Id = @Subscribe_Id)
-        BEGIN
-            SELECT TOP 1 @NewSST_Id = SST_Id 
-            FROM M_ServiceSubscriptionTrans WITH (NOLOCK) 
-            WHERE Subscribe_Id = @Subscribe_Id 
-            ORDER BY Entry_Date DESC;
+        -- 5. Insert new record in M_ServiceSubscriptionTrans
+        INSERT INTO M_ServiceSubscriptionTrans
+        (
+            Subscribe_Id,
+            DateFrom, DateTo,
+            IsCashConvert, Frequency, Points, AmtType, totalamont,
+            Minval, Maxval, IsCash,
+            IsReferral,
+            Comments, Entry_Date, IsActive, IsDelete
+        )
+        VALUES
+        (
+            @Subscribe_Id,
+            ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END),
+            ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END),
+            ISNULL(@IsCashConvert, 0), ISNULL(@Frequency, 1), @Points, ISNULL(@AmtType, 'Fixed'), @TotalLoyalty,
+            @Minval, @Maxval, 0,
+            0,
+            @Comments, ISNULL(@EntryDate, GETDATE()), 1, 0
+        );
 
-            UPDATE M_ServiceSubscriptionTrans
-            SET DateFrom = ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE DateFrom END),
-                DateTo = ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE DateTo END),
-                IsCashConvert = ISNULL(@IsCashConvert, IsCashConvert),
-                Frequency = ISNULL(@Frequency, Frequency),
-                Points = ISNULL(@Points, Points),
-                AmtType = ISNULL(@AmtType, AmtType),
-                totalamont = ISNULL(@TotalLoyalty, totalamont),
-                Minval = ISNULL(@Minval, Minval),
-                Maxval = ISNULL(@Maxval, Maxval),
-                Comments = ISNULL(@Comments, Comments),
-                IsActive = 1,
-                IsDelete = 0
-            WHERE SST_Id = @NewSST_Id;
-        END
-        ELSE
-        BEGIN
-            INSERT INTO M_ServiceSubscriptionTrans
-            (
-                Subscribe_Id,
-                DateFrom, DateTo,
-                IsCashConvert, Frequency, Points, AmtType, totalamont,
-                Minval, Maxval, IsCash,
-                IsReferral,
-                Comments, Entry_Date, IsActive, IsDelete
-            )
-            VALUES
-            (
-                @Subscribe_Id,
-                ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END),
-                ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END),
-                ISNULL(@IsCashConvert, 0), ISNULL(@Frequency, 1), @Points, ISNULL(@AmtType, 'Fixed'), @TotalLoyalty,
-                @Minval, @Maxval, 0,
-                0,
-                @Comments, ISNULL(@EntryDate, GETDATE()), 1, 0
-            );
-            SET @NewSST_Id = SCOPE_IDENTITY();
-        END
+        DECLARE @NewSST_Id BIGINT = SCOPE_IDENTITY();
 
         -- 6. Update T_Pro metadata only if Batch exists (never create a new batch here)
         IF @ExistingTPro_RowID IS NOT NULL
