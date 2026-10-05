@@ -27,7 +27,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingCashTransfer_AI]
 
     @AmtType        VARCHAR(50)   = NULL,   -- 'Fixed' | 'Random'
     @Points         DECIMAL(18,2) = NULL,   -- Cash Amount / Points
-    @IsCashConvert  INT           = 1,      -- 1 = Direct Cash / Convertible
+    @IsCashConvert  INT           = 0,      -- 0 = Direct Points / 1 = Convertible
     @IsCash         DECIMAL(18,2) = NULL,   -- Direct Cash value
 
     @TotalLoyalty   BIGINT        = NULL,
@@ -334,14 +334,7 @@ BEGIN
             -- If series not provided, check if batch exists in T_Pro
             SELECT TOP 1 @ExistingTPro_RowID = Row_ID 
             FROM T_Pro WITH (NOLOCK) 
-            WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
-
-            IF @ExistingTPro_RowID IS NULL
-            BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Batch ' + @Batch_No + ' does not exist for product ' + @Pro_ID + '. Please assign labels to product first via Assign Label to Product.' AS message;
-                RETURN;
-            END
+            WHERE Pro_ID = @Pro_ID AND (Batch_No = @Batch_No OR Row_ID = TRY_CAST(@Batch_No AS BIGINT));
         END
 
         -- 4. Insert new record in M_ServiceSubscription
@@ -378,7 +371,7 @@ BEGIN
             @Subscribe_Id,
             ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END),
             ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END),
-            ISNULL(@IsCashConvert, 1), ISNULL(@Frequency, 1), @Points, ISNULL(@AmtType, 'Fixed'), @TotalLoyalty,
+            ISNULL(@IsCashConvert, 0), ISNULL(@Frequency, 1), @Points, ISNULL(@AmtType, 'Fixed'), @TotalLoyalty,
             @Minval, @Maxval, ISNULL(@IsCash, @Points),
             0,
             @Comments, ISNULL(@EntryDate, GETDATE()), 1, 0

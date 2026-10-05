@@ -79,8 +79,9 @@ BEGIN
         BEGIN
             IF @BatchSize IS NULL OR @BatchSize <= 0
             BEGIN
-                SELECT 0 AS success, 'BatchSize is required for automated range calculation.' AS message;
-                ROLLBACK TRANSACTION; RETURN;
+                SELECT @BatchSize = BatchSize FROM Pro_Reg WITH (NOLOCK) WHERE Pro_ID = @Pro_ID;
+                IF @BatchSize IS NULL OR @BatchSize <= 0
+                    SET @BatchSize = 10;
             END
 
             -- Find the last assigned range from M_ServiceSubscription / codeassign_tractrac
@@ -96,7 +97,7 @@ BEGIN
             BEGIN
                 SELECT TOP 1 @StartOrder = Series_Order, @StartSerial = Series_Serial
                 FROM M_Code 
-                WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '')
+                WHERE Pro_ID = @Pro_ID AND (Batch_No IS NULL OR Batch_No = '' OR (@Batch_No IS NOT NULL AND Batch_No = @Batch_No))
                 ORDER BY Series_Order, Series_Serial;
             END
             ELSE
@@ -104,14 +105,22 @@ BEGIN
                 SELECT TOP 1 @StartOrder = Series_Order, @StartSerial = Series_Serial
                 FROM M_Code 
                 WHERE Pro_ID = @Pro_ID 
-                  AND (Batch_No IS NULL OR Batch_No = '')
+                  AND (Batch_No IS NULL OR Batch_No = '' OR (@Batch_No IS NOT NULL AND Batch_No = @Batch_No))
                   AND (Series_Order > @LastEndOrder OR (Series_Order = @LastEndOrder AND Series_Serial > @LastEndSerial))
                 ORDER BY Series_Order, Series_Serial;
             END
 
             IF @StartOrder IS NULL
             BEGIN
-                SELECT 0 AS success, 'No available unassigned codes found in M_Code for this product.' AS message;
+                SELECT TOP 1 @StartOrder = Series_Order, @StartSerial = Series_Serial
+                FROM M_Code 
+                WHERE Pro_ID = @Pro_ID
+                ORDER BY Series_Order, Series_Serial;
+            END
+
+            IF @StartOrder IS NULL
+            BEGIN
+                SELECT 0 AS success, 'No available codes found in M_Code for this product.' AS message;
                 ROLLBACK TRANSACTION; RETURN;
             END
 
@@ -120,7 +129,6 @@ BEGIN
                 SELECT TOP (@BatchSize) Series_Order, Series_Serial
                 FROM M_Code
                 WHERE Pro_ID = @Pro_ID
-                  AND (Batch_No IS NULL OR Batch_No = '')
                   AND (Series_Order > @StartOrder OR (Series_Order = @StartOrder AND Series_Serial >= @StartSerial))
                 ORDER BY Series_Order, Series_Serial
             )
@@ -245,14 +253,7 @@ BEGIN
             -- If series not provided, check if batch exists in T_Pro
             SELECT TOP 1 @ExistingTPro_RowID = Row_ID 
             FROM T_Pro WITH (NOLOCK) 
-            WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
-
-            IF @ExistingTPro_RowID IS NULL
-            BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Batch ' + @Batch_No + ' does not exist for product ' + @Pro_ID + '. Please assign labels to product first via Assign Label to Product.' AS message;
-                RETURN;
-            END
+            WHERE Pro_ID = @Pro_ID AND (Batch_No = @Batch_No OR Row_ID = TRY_CAST(@Batch_No AS BIGINT));
         END
 
         -- 1. MasterCode Resolution & Validation
@@ -262,11 +263,19 @@ BEGIN
             SET @MasterCode = @SeriesStart;
         END
 
-        -- Check MasterCode uniqueness in codeassign_tractrac
-        IF EXISTS (SELECT 1 FROM codeassign_tractrac WHERE mastercode = @MasterCode)
+        -- Check MasterCode in codeassign_tractrac
+        DECLARE @ExistingTracID BIGINT = NULL;
+        SELECT TOP 1 @ExistingTracID = ID 
+        FROM codeassign_tractrac WITH (NOLOCK) 
+        WHERE mastercode = @MasterCode;
+
+        IF @ExistingTracID IS NOT NULL
         BEGIN
-            SELECT 0 AS success, CONCAT('Master code ', @MasterCode, ' already exists.') AS message;
-            ROLLBACK TRANSACTION; RETURN;
+            IF EXISTS (SELECT 1 FROM codeassign_tractrac WITH (NOLOCK) WHERE ID = @ExistingTracID AND Pro_ID <> @Pro_ID)
+            BEGIN
+                SELECT 0 AS success, CONCAT('Master code ', @MasterCode, ' already exists for another product.') AS message;
+                ROLLBACK TRANSACTION; RETURN;
+            END
         END
 
         -- Parse MasterCode parts
@@ -374,7 +383,7 @@ BEGIN
                 @Subscribe_Id, 
                 CASE WHEN ISDATE(@DateFrom) = 1 THEN CAST(@DateFrom AS DATETIME) ELSE GETDATE() END,
                 CASE WHEN ISDATE(@DateTo) = 1 THEN CAST(@DateTo AS DATETIME) ELSE DATEADD(YEAR, 1, GETDATE()) END,
-                @Comments, ISNULL(@EntryDate, GETDATE()), 0, 1, 0, 1, 1, 0, 0, 0, 0
+                @Comments, ISNULL(@EntryDate, GETDATE()), 0, 0, 0, 1, 1, 0, 0, 0, 0
             );
             SET @NewSST_Id = SCOPE_IDENTITY();
         END
@@ -383,7 +392,8 @@ BEGIN
             UPDATE M_ServiceSubscriptionTrans
             SET Comments = ISNULL(@Comments, Comments),
                 DateFrom = ISNULL(CASE WHEN ISDATE(@DateFrom) = 1 THEN CAST(@DateFrom AS DATETIME) ELSE NULL END, DateFrom),
-                DateTo = ISNULL(CASE WHEN ISDATE(@DateTo) = 1 THEN CAST(@DateTo AS DATETIME) ELSE NULL END, DateTo)
+                DateTo = ISNULL(CASE WHEN ISDATE(@DateTo) = 1 THEN CAST(@DateTo AS DATETIME) ELSE NULL END, DateTo),
+                IsCashConvert = 0
             WHERE SST_Id = @NewSST_Id;
         END
 
@@ -406,25 +416,49 @@ BEGIN
         END
 
         -- =========================================================================
-        -- STEP 6: DISPATCH & DEALER DETAILS IN codeassign_tractrac
+        -- STEP 6: DISPATCH & DEALER DETAILS IN codeassign_tractrac (UPSERT)
         -- =========================================================================
-        INSERT INTO codeassign_tractrac 
-        (
-            mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, 
-            SeriesStart, SeriesEnd, entry_date, 
-            Dealer_Name, Dealer_Location, Mobile, Email, Dispatch_Date, 
-            Invoice_Number, Latitude, Longitude, SST_Id, Subscribe_Id, BatchSize
-        )
-        VALUES
-        (
-            @MasterCode, @Pro_ID, @MRP, 
-            CASE WHEN ISDATE(@Mfd_Date) = 1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, 
-            CASE WHEN ISDATE(@Exp_Date) = 1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, 
-            @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
-            @Dealer_Name, @Dealer_Location, @Mobile, @Email, ISNULL(@EntryDate, GETDATE()), 
-            @Invoice_Number, @Latitude, @Longitude, 
-            ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id, @TotalBatchSize
-        );
+        IF @ExistingTracID IS NOT NULL
+        BEGIN
+            UPDATE codeassign_tractrac
+            SET MRP = ISNULL(@MRP, MRP),
+                Mfd_Date = CASE WHEN ISDATE(@Mfd_Date) = 1 THEN CAST(@Mfd_Date AS DATETIME) ELSE Mfd_Date END,
+                Exp_Date = CASE WHEN ISDATE(@Exp_Date) = 1 THEN CAST(@Exp_Date AS DATETIME) ELSE Exp_Date END,
+                Batch_No = ISNULL(@Batch_No, Batch_No),
+                SeriesStart = ISNULL(@SeriesStart, SeriesStart),
+                SeriesEnd = ISNULL(@SeriesEnd, SeriesEnd),
+                Dealer_Name = ISNULL(@Dealer_Name, Dealer_Name),
+                Dealer_Location = ISNULL(@Dealer_Location, Dealer_Location),
+                Mobile = ISNULL(@Mobile, Mobile),
+                Email = ISNULL(@Email, Email),
+                Invoice_Number = ISNULL(@Invoice_Number, Invoice_Number),
+                Latitude = ISNULL(@Latitude, Latitude),
+                Longitude = ISNULL(@Longitude, Longitude),
+                SST_Id = ISNULL(@SST_Id, @NewSST_Id),
+                Subscribe_Id = ISNULL(@Subscribe_Id, Subscribe_Id),
+                BatchSize = ISNULL(@TotalBatchSize, BatchSize)
+            WHERE ID = @ExistingTracID;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO codeassign_tractrac 
+            (
+                mastercode, Pro_ID, MRP, Mfd_Date, Exp_Date, Batch_No, 
+                SeriesStart, SeriesEnd, entry_date, 
+                Dealer_Name, Dealer_Location, Mobile, Email, Dispatch_Date, 
+                Invoice_Number, Latitude, Longitude, SST_Id, Subscribe_Id, BatchSize
+            )
+            VALUES
+            (
+                @MasterCode, @Pro_ID, @MRP, 
+                CASE WHEN ISDATE(@Mfd_Date) = 1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END, 
+                CASE WHEN ISDATE(@Exp_Date) = 1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END, 
+                @Batch_No, @SeriesStart, @SeriesEnd, ISNULL(@EntryDate, GETDATE()), 
+                @Dealer_Name, @Dealer_Location, @Mobile, @Email, ISNULL(@EntryDate, GETDATE()), 
+                @Invoice_Number, @Latitude, @Longitude, 
+                ISNULL(@SST_Id, @NewSST_Id), @Subscribe_Id, @TotalBatchSize
+            );
+        END
 
         COMMIT TRANSACTION;
         SELECT 1 AS success, 'Track & Trace assignment completed successfully.' AS message, 

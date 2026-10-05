@@ -3,7 +3,7 @@
 -- Create date: 2026-06-25
 -- Description: Get products details for ACAssignLabelToProductS API (based on PROC_SelectProductDetailsNoofCodes_ddl)
 -- =============================================
-CREATE PROCEDURE [dbo].[PROC_ACAssignLabelToProductS]
+CREATE OR ALTER PROCEDURE [dbo].[PROC_ACAssignLabelToProductS]
     @Comp_ID nvarchar(50)
 AS
 BEGIN
@@ -26,7 +26,6 @@ BEGIN
               FROM M_Code_PFL M_Code
               WHERE (Pro_ID = Pro_Reg.Pro_ID) 
                 AND (Print_Status = 1) 
-                AND (M_Code.Batch_No IS NULL) 
                 AND (isnull(M_Code.ScrapeFlag, 0) = 0) 
                 AND (DispatchFlag = 1) 
                 AND (ReceiveFlag = 1)
@@ -50,7 +49,6 @@ BEGIN
               FROM M_Code M_Code
               WHERE (Pro_ID = Pro_Reg.Pro_ID) 
                 AND (Print_Status = 1) 
-                AND (M_Code.Batch_No IS NULL) 
                 AND (isnull(M_Code.ScrapeFlag, 0) = 0) 
                 AND (DispatchFlag = 1) 
                 AND (ReceiveFlag = 1)

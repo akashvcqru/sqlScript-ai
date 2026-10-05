@@ -16,7 +16,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingAnticounterfit_AI]
     @EntryDate    DATETIME       = NULL,
 
     @Points          NUMERIC(18,0) = 0,
-    @IsCashConvert   INT           = 1,
+    @IsCashConvert   INT           = 0,
     @IsCash          NUMERIC(18,0) = 0,
     @Frequency       INT           = 1,
     @IsActive        INT           = 0,
@@ -69,7 +69,18 @@ BEGIN
             
             IF @Subscribe_Id IS NULL
             BEGIN
-                DECLARE @GeneratedSubId VARCHAR(50) = 'SUB' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
+                DECLARE @PrPrefix VARCHAR(50), @PrStart BIGINT;
+                SELECT TOP 1 @PrPrefix = PrPrefix, @PrStart = PrStart 
+                FROM Code_Gen 
+                WHERE Prfor = 'Subscription' AND PrPrefix = 'SSI';
+
+                IF @PrPrefix IS NULL
+                    SET @Subscribe_Id = 'SSI' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
+                ELSE
+                BEGIN
+                    SET @Subscribe_Id = @PrPrefix + CAST(@PrStart AS VARCHAR(50));
+                    UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'Subscription' AND PrPrefix = @PrPrefix;
+                END
                 
                 INSERT INTO M_ServiceSubscription
                 (
@@ -80,13 +91,11 @@ BEGIN
                 )
                 VALUES
                 (
-                    @GeneratedSubId, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', 
+                    @Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', 
                     12, 12, 0, 0, 
                     ISNULL(@DateFrom, GETDATE()), ISNULL(@DateTo, DATEADD(YEAR, 1, GETDATE())), ISNULL(@EntryDate, GETDATE()), 1, 0, 1,
                     'Service'
                 );
-                
-                SET @Subscribe_Id = @GeneratedSubId;
             END
         END
 
@@ -103,7 +112,8 @@ BEGIN
             UPDATE M_ServiceSubscriptionTrans
             SET DateFrom = ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE DateFrom END),
                 DateTo = ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE DateTo END),
-                Comments = ISNULL(@Comments, Comments)
+                Comments = ISNULL(@Comments, Comments),
+                IsCashConvert = ISNULL(@IsCashConvert, IsCashConvert)
             WHERE SST_Id = @NewSST_Id;
         END
         ELSE
@@ -301,14 +311,7 @@ BEGIN
             -- If series not provided, check if batch exists in T_Pro
             SELECT TOP 1 @ExistingTPro_RowID = Row_ID 
             FROM T_Pro WITH (NOLOCK) 
-            WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
-
-            IF @ExistingTPro_RowID IS NULL
-            BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Batch ' + @Batch_No + ' does not exist for product ' + @Pro_ID + '. Please assign labels to product first via Assign Label to Product.' AS message;
-                RETURN;
-            END
+            WHERE Pro_ID = @Pro_ID AND (Batch_No = @Batch_No OR Row_ID = TRY_CAST(@Batch_No AS BIGINT));
         END
 
         -- 4. Update T_Pro metadata only if Batch exists (never create a new batch here)
