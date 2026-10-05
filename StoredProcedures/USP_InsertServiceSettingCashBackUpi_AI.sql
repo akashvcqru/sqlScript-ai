@@ -29,6 +29,7 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingCashBackUpi_AI]
     @AmtType        VARCHAR(50)   = NULL,   -- 'Fixed' | 'Random'
     @Points         DECIMAL(18,2) = NULL,   -- Cashback amount / Points
     @IsCashConvert  INT           = 0,      -- 0 (Points only) | 1 (Convertible / Cash)
+    @IsCash         DECIMAL(18,2) = NULL,   -- Direct Cash value
 
     @TotalLoyalty   BIGINT        = NULL,
     @Multiple       INT           = NULL,
@@ -43,6 +44,12 @@ BEGIN
 
     IF @Service_ID IS NULL OR LTRIM(RTRIM(@Service_ID)) = ''
         SET @Service_ID = 'SRV1029';
+
+    IF (@Points IS NULL OR @Points = 0) AND @IsCash IS NOT NULL AND @IsCash > 0
+        SET @Points = @IsCash;
+
+    IF @IsCash IS NULL AND @Points IS NOT NULL
+        SET @IsCash = @Points;
 
     BEGIN TRY
         BEGIN TRANSACTION;
@@ -352,7 +359,7 @@ BEGIN
             ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END),
             ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END),
             ISNULL(@IsCashConvert, 0), ISNULL(@Frequency, 1), @Points, ISNULL(@AmtType, 'Fixed'), @TotalLoyalty,
-            @Minval, @Maxval, 0,
+            @Minval, @Maxval, ISNULL(@IsCash, @Points),
             0,
             @Comments, ISNULL(@EntryDate, GETDATE()), 1, 0
         );
