@@ -1,6 +1,10 @@
+-- Migration: 20261001_Order_AssignCodeDealer_By_Alphabetical_DealerName.sql
+-- Description: Update USP_AssignCodeDealer_AI to return dealer records sorted alphabetically by Dealer_Name ASC (A-Z)
+-- Date: 2026-10-01
+-- Author: Antigravity
+
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_AssignCodeDealer_AI]    Script Date: 10-09-2026 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -9,6 +13,7 @@ GO
 -- =============================================
 -- Author:      Antigravity
 -- Create date: 10-09-2026
+-- Updated:     01-10-2026 (Sorted alphabetically by Dealer_Name ASC)
 -- Description: Manage Assign Code Dealers in DealerDetailMiniMax (SELECT, INSERT, UPDATE, DELETE)
 --              Dealer_Name is UNIQUE Company ID wise (Comp_ID scope).
 -- =============================================
@@ -111,7 +116,7 @@ BEGIN
         IF @Search IS NOT NULL AND @Search <> ''
             SET @SearchParam = '%' + @Search + '%';
 
-        -- 1. Query Data
+        -- 1. Query Data (Sorted alphabetically by Dealer_Name ASC)
         SELECT 
             Dealer_ID AS DealerId,
             Dealer_Name AS DealerName,
