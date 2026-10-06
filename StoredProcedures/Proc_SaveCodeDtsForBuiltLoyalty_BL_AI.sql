@@ -16,6 +16,7 @@ BEGIN
         DECLARE @AwardNameBL NVARCHAR(50),   
                 @AwardName_RowID NVARCHAR(50),   
                 @Service_ID NVARCHAR(50) = '',   
+                @ServiceName NVARCHAR(100) = '',
                 @ccompid NVARCHAR(50),   
                 @Pro_ID VARCHAR(20),   
                 @M_Consumerid BIGINT,  
@@ -130,12 +131,21 @@ BEGIN
         BEGIN  
             SET @t = @countFrequncy % @Frequency;  
   
-            IF (@Service_ID = '')  
-            BEGIN  
-                SELECT @Service_ID = Service_ID FROM M_Service WHERE Service_ID IN   
-                    (SELECT Service_ID FROM M_ServiceSubscription (NOLOCK) WHERE Subscribe_Id IN   
-                        (SELECT Subscribe_Id FROM M_ServiceSubscriptionTrans (NOLOCK) WHERE SST_Id = @SST_Id));  
-            END  
+            SELECT TOP 1 @Service_ID = ms.Service_ID, @ServiceName = ms.ServiceName 
+            FROM M_Service ms (NOLOCK)
+            INNER JOIN M_ServiceSubscription mss (NOLOCK) ON ms.Service_ID = mss.Service_ID
+            INNER JOIN M_ServiceSubscriptionTrans msst (NOLOCK) ON mss.Subscribe_Id = msst.Subscribe_Id
+            WHERE msst.SST_Id = @SST_Id;
+
+            IF ISNULL(@ServiceName, '') = '' AND ISNULL(@Service_ID, '') <> ''
+            BEGIN
+                SELECT TOP 1 @ServiceName = ServiceName FROM M_Service (NOLOCK) WHERE Service_ID = @Service_ID;
+            END
+
+            IF ISNULL(@ServiceName, '') = ''
+            BEGIN
+                SET @ServiceName = 'Build Loyalty';
+            END
   
             IF (@IsCash > 0 AND (@Points = 0 OR @Points IS NULL))
             BEGIN
@@ -154,20 +164,16 @@ BEGIN
 			 IF (@ccompid = 'Comp-1869' OR @ccompid = 'Comp-1727' OR @ccompid = 'Comp-1900')
 			 BEGIN 
 				 INSERT INTO BLoyaltyPointsEarned_Temp (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Cash,Points, ServiceName)  
-				 VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @IsCash, @Points, @Service_ID);  
+				 VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @IsCash, @Points, @ServiceName);  
 			 END
 
-            INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Points, Cash, ServiceName)  
-            VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @Points, @IsCash, @Service_ID);  
+            INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Points, Cash, ServiceName, Service_ID)  
+            VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @Points, @IsCash, @ServiceName, @Service_ID);  
   
             SET @BLoyalty_PointEarnedID = SCOPE_IDENTITY();  
   
             IF (@Service_ID IN ('SRV1001', 'SRV1029'))  
             BEGIN  				
-                UPDATE BLoyaltyPointsEarned 
-                SET ServiceName = CASE WHEN ServiceName IS NULL OR ServiceName = '' THEN 'buildloyalty' ELSE ServiceName END
-                WHERE BLoyalty_PointEarnedID = @BLoyalty_PointEarnedID;  
-  
                 IF (@ccompid = 'Comp-1232' AND @Pro_ID IN ('AG02', 'AG49', 'AG51'))  
                 BEGIN  
                     EXEC Sp_InsupdWalletbalance @M_Consumerid = @M_Consumerid, @Points = @Points, @TransactionType = 'Credit';  
@@ -177,10 +183,6 @@ BEGIN
 				BEGIN 
 					EXEC Sp_InsupdExtraPointBL @M_Consumerid = @M_Consumerid, @Points = @Points, @BLoyalty_PointEarnedID = @BLoyalty_PointEarnedID,@ccompid=@ccompid,@code1=@code1,@code2=@code2
 				END 
-            END  
-            ELSE IF (@Service_ID = 'SRV1005')  
-            BEGIN  
-                UPDATE BLoyaltyPointsEarned SET ServiceName = 'cash' WHERE BLoyalty_PointEarnedID = @BLoyalty_PointEarnedID;  
             END  
   
             UPDATE BuiltLoyaltyMCodeCheck SET IsPointsAssigned = 1 WHERE pkid = @Pkid;
