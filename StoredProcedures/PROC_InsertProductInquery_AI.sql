@@ -43,6 +43,11 @@ declare @frstcnt int
 declare @compid1 nvarchar(50)  
 
 select @compid1=pr.comp_id from  M_Code mc inner join pro_reg pr on pr.Pro_ID=mc.Pro_ID where mc.Code1=@Received_Code1 and mc.Code2=@Received_Code2  
+SELECT TOP 1 @M_Consumerid = M_Consumerid FROM [M_Consumer] (NOLOCK) WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) AND IsDelete = 0 ORDER BY Entry_Date DESC;
+
+IF @Compid IS NULL OR @Compid = ''
+    SET @Compid = @compid1;
+
 IF ISNULL(@M_Codeid, 0) = 0
 BEGIN
     SELECT TOP 1 @M_Codeid = Row_ID, @Proid = ISNULL(@Proid, Pro_ID) 
@@ -224,16 +229,9 @@ end
 
     IF ISNULL(@scp, 0) > 0 AND ISNULL(@M_Codeid, 0) > 0 AND ISNULL(@M_Consumerid, 0) > 0
     BEGIN
-        IF NOT EXISTS (SELECT 1 FROM M_Consumer_M_Code WHERE M_Consumerid = @M_Consumerid AND M_Codeid = @M_Codeid)
-        BEGIN
-            INSERT INTO M_Consumer_M_Code (M_Consumerid, M_Codeid, Pro_id, CreatedDate, Compid)
-            VALUES (@M_Consumerid, @M_Codeid, @Proid, GETDATE(), @Compid);
-            SET @MConsumerMCodeid = SCOPE_IDENTITY();
-        END
-        ELSE
-        BEGIN
-            SELECT @MConsumerMCodeid = M_Consumer_MCodeid FROM M_Consumer_M_Code WHERE M_Consumerid = @M_Consumerid AND M_Codeid = @M_Codeid;
-        END
+        INSERT INTO M_Consumer_M_Code (M_Consumerid, M_Codeid, Pro_id, CreatedDate, Compid)
+        VALUES (@M_Consumerid, @M_Codeid, @Proid, GETDATE(), @Compid);
+        SET @MConsumerMCodeid = SCOPE_IDENTITY();
     END
 end  
 else   
