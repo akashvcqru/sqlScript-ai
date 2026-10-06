@@ -83,7 +83,7 @@ BEGIN
         SELECT @Points = CASE WHEN @chkloyalty IS NULL OR @chkloyalty = 0 THEN ISNULL(Points, 0) ELSE @chkloyalty END,  
             @Frequency = ISNULL(Frequency, 1), 
             @IsCashConvert = ISNULL(IsCashConvert, 0),   
-            @IsCash = CASE WHEN @chkloyalty IS NULL OR @chkloyalty = 0 THEN ISNULL(IsCash, 0) ELSE @Points END  
+            @IsCash = ISNULL(IsCash, 0)  
         FROM M_ServiceSubscriptionTrans (NOLOCK) WHERE SST_Id = @SST_Id;  
   
         -- Get Consumer's UserType and UserTypeId
@@ -122,8 +122,16 @@ BEGIN
 
         IF @UserFreqPoints IS NOT NULL
         BEGIN
-            SET @Points = @UserFreqPoints;
-            SET @IsCash = @UserFreqPoints;
+            IF @IsCash > 0 AND (@Points = 0 OR @Points IS NULL)
+            BEGIN
+                SET @IsCash = @UserFreqPoints;
+                SET @Points = 0;
+            END
+            ELSE
+            BEGIN
+                SET @Points = @UserFreqPoints;
+                SET @IsCash = 0;
+            END
             IF @UserFreqCount IS NOT NULL AND @UserFreqCount > 0
             BEGIN
                 SET @Frequency = @UserFreqCount;
@@ -132,8 +140,16 @@ BEGIN
 
         IF @assignpoint IS NOT NULL
         BEGIN
-            SET @Points = @assignpoint;
-            SET @IsCash = @assignpoint;
+            IF @IsCash > 0 AND (@Points = 0 OR @Points IS NULL)
+            BEGIN
+                SET @IsCash = @assignpoint;
+                SET @Points = 0;
+            END
+            ELSE
+            BEGIN
+                SET @Points = @assignpoint;
+                SET @IsCash = 0;
+            END
         END
 
         SELECT @countFrequncy = COUNT(pkid) FROM BuiltLoyaltyMCodeCheck (NOLOCK)   
@@ -147,13 +163,20 @@ BEGIN
                 (SELECT Service_ID FROM M_ServiceSubscription (NOLOCK) WHERE Subscribe_Id IN   
                     (SELECT Subscribe_Id FROM M_ServiceSubscriptionTrans (NOLOCK) WHERE SST_Id = @SST_Id));  
   
-            IF (@Service_ID IN ('SRV1029', 'SRV1005') OR @IsCashConvert = 1)
+            IF (@IsCash > 0 AND (@Points = 0 OR @Points IS NULL))
             BEGIN
-                IF @IsCash = 0 OR @IsCash IS NULL
-                BEGIN
-                    SET @IsCash = @Points;
-                END
+                SET @Points = 0;
             END
+            ELSE IF (@Points > 0 AND (@IsCash = 0 OR @IsCash IS NULL))
+            BEGIN
+                SET @IsCash = 0;
+            END
+            ELSE
+            BEGIN
+                SET @Points = ISNULL(@Points, 0);
+                SET @IsCash = ISNULL(@IsCash, 0);
+            END
+
 
             IF (@ccompid IN ('Comp-1869', 'Comp-1727', 'Comp-1900'))
             BEGIN 
