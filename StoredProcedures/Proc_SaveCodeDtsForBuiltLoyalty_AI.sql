@@ -19,6 +19,7 @@ BEGIN
         DECLARE @AwardNameBL NVARCHAR(50),   
                 @AwardName_RowID NVARCHAR(50),   
                 @Service_ID NVARCHAR(50) = '',   
+                @ServiceName NVARCHAR(100) = '',
                 @ccompid NVARCHAR(50),   
                 @Pro_ID VARCHAR(20),   
                 @M_Consumerid BIGINT,  
@@ -83,7 +84,7 @@ BEGIN
         SELECT @Points = CASE WHEN @chkloyalty IS NULL OR @chkloyalty = 0 THEN ISNULL(Points, 0) ELSE @chkloyalty END,  
             @Frequency = ISNULL(Frequency, 1), 
             @IsCashConvert = ISNULL(IsCashConvert, 0),   
-            @IsCash = CASE WHEN @chkloyalty IS NULL OR @chkloyalty = 0 THEN ISNULL(IsCash, 0) ELSE @Points END  
+            @IsCash = ISNULL(IsCash, 0)  
         FROM M_ServiceSubscriptionTrans (NOLOCK) WHERE SST_Id = @SST_Id;  
   
         -- Get Consumer's UserType and UserTypeId
@@ -122,8 +123,16 @@ BEGIN
 
         IF @UserFreqPoints IS NOT NULL
         BEGIN
-            SET @Points = @UserFreqPoints;
-            SET @IsCash = @UserFreqPoints;
+            IF @IsCash > 0 AND (@Points = 0 OR @Points IS NULL)
+            BEGIN
+                SET @IsCash = @UserFreqPoints;
+                SET @Points = 0;
+            END
+            ELSE
+            BEGIN
+                SET @Points = @UserFreqPoints;
+                SET @IsCash = 0;
+            END
             IF @UserFreqCount IS NOT NULL AND @UserFreqCount > 0
             BEGIN
                 SET @Frequency = @UserFreqCount;
@@ -132,8 +141,16 @@ BEGIN
 
         IF @assignpoint IS NOT NULL
         BEGIN
-            SET @Points = @assignpoint;
-            SET @IsCash = @assignpoint;
+            IF @IsCash > 0 AND (@Points = 0 OR @Points IS NULL)
+            BEGIN
+                SET @IsCash = @assignpoint;
+                SET @Points = 0;
+            END
+            ELSE
+            BEGIN
+                SET @Points = @assignpoint;
+                SET @IsCash = 0;
+            END
         END
 
         SELECT @countFrequncy = COUNT(pkid) FROM BuiltLoyaltyMCodeCheck (NOLOCK)   
@@ -143,16 +160,34 @@ BEGIN
         BEGIN  
             SET @t = @countFrequncy % @Frequency;  
   
-            SELECT @Service_ID = Service_ID FROM M_Service WHERE Service_ID IN   
-                (SELECT Service_ID FROM M_ServiceSubscription (NOLOCK) WHERE Subscribe_Id IN   
-                    (SELECT Subscribe_Id FROM M_ServiceSubscriptionTrans (NOLOCK) WHERE SST_Id = @SST_Id));  
-  
-            IF (@Service_ID IN ('SRV1029', 'SRV1005') OR @IsCashConvert = 1)
+            SELECT TOP 1 @Service_ID = ms.Service_ID, @ServiceName = ms.ServiceName
+            FROM M_Service ms (NOLOCK)
+            INNER JOIN M_ServiceSubscription mss (NOLOCK) ON ms.Service_ID = mss.Service_ID
+            INNER JOIN M_ServiceSubscriptionTrans msst (NOLOCK) ON mss.Subscribe_Id = msst.Subscribe_Id
+            WHERE msst.SST_Id = @SST_Id;
+
+            IF ISNULL(@ServiceName, '') = '' AND ISNULL(@Service_ID, '') <> ''
             BEGIN
-                IF @IsCash = 0 OR @IsCash IS NULL
-                BEGIN
-                    SET @IsCash = @Points;
-                END
+                SELECT TOP 1 @ServiceName = ServiceName FROM M_Service (NOLOCK) WHERE Service_ID = @Service_ID;
+            END
+
+            IF ISNULL(@ServiceName, '') = ''
+            BEGIN
+                SET @ServiceName = 'Build Loyalty';
+            END
+  
+            IF (@IsCash > 0 AND (@Points = 0 OR @Points IS NULL))
+            BEGIN
+                SET @Points = 0;
+            END
+            ELSE IF (@Points > 0 AND (@IsCash = 0 OR @IsCash IS NULL))
+            BEGIN
+                SET @IsCash = 0;
+            END
+            ELSE
+            BEGIN
+                SET @Points = ISNULL(@Points, 0);
+                SET @IsCash = ISNULL(@IsCash, 0);
             END
 
             IF (@ccompid IN ('Comp-1869', 'Comp-1727', 'Comp-1900'))
@@ -160,12 +195,14 @@ BEGIN
                 IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[BLoyaltyPointsEarned_Temp]') AND type in (N'U'))
                 BEGIN
                     INSERT INTO BLoyaltyPointsEarned_Temp (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Cash, Points, ServiceName)  
-                    VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @IsCash, @Points, @Service_ID);  
+                    VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @IsCash, @Points, @ServiceName);  
                 END
             END
 
-            INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Points, Cash, ServiceName)  
-            VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @Points, @IsCash, @Service_ID);  
+            INSERT INTO BLoyaltyPointsEarned (BuildLoyaltyOrReferralMCodeCheckid, SST_id, M_Consumerid, UpdateDate, Code1, Code2, compid, Points, Cash, ServiceName, Service_ID)  
+            VALUES (@Pkid, @SST_Id, @M_Consumerid, GETDATE(), @code1, @code2, @ccompid, @Points, @IsCash, @ServiceName, @Service_ID);  
+
+            SET @BLoyalty_PointEarnedID = SCOPE_IDENTITY();  
 
             DECLARE @PE_ID INT = NULL;
             IF EXISTS (
@@ -197,21 +234,6 @@ BEGIN
                 SST_Id = @SST_Id,
                 Service_ID = @Service_ID
             WHERE PE_ID = @PE_ID;
-  
-            SET @BLoyalty_PointEarnedID = SCOPE_IDENTITY();  
-  
-            IF (@Service_ID IN ('SRV1001', 'SRV1029'))  
-            BEGIN  				
-                UPDATE BLoyaltyPointsEarned 
-                SET ServiceName = CASE WHEN ServiceName IS NULL OR ServiceName = '' THEN 'buildloyalty' ELSE ServiceName END 
-                WHERE BLoyalty_PointEarnedID = @BLoyalty_PointEarnedID;  
-            END  
-            ELSE IF (@Service_ID = 'SRV1005')  
-            BEGIN  
-                UPDATE BLoyaltyPointsEarned 
-                SET ServiceName = 'cash' 
-                WHERE BLoyalty_PointEarnedID = @BLoyalty_PointEarnedID;  
-            END  
   
             UPDATE BuiltLoyaltyMCodeCheck SET IsPointsAssigned = 1 WHERE pkid = @Pkid;
 
