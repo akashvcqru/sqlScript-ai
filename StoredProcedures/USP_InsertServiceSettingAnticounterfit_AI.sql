@@ -59,16 +59,20 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- 1. Resolve or create Subscribe_Id directly
-        IF ISNULL(@Subscribe_Id, '') = ''
+        -- 1. Sanitize and resolve or create Subscribe_Id directly (ONE TIME pattern)
+        IF LTRIM(RTRIM(ISNULL(@Subscribe_Id, ''))) = ''
+            SET @Subscribe_Id = NULL;
+
+        IF @Subscribe_Id IS NULL
         BEGIN
             SELECT TOP 1 @Subscribe_Id = Subscribe_Id
             FROM M_ServiceSubscription WITH (NOLOCK)
             WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID
             ORDER BY EntryDate DESC;
+        END
             
-            IF @Subscribe_Id IS NULL
-            BEGIN
+        IF @Subscribe_Id IS NULL
+        BEGIN
                 DECLARE @PrPrefix VARCHAR(50), @PrStart BIGINT;
                 SELECT TOP 1 @PrPrefix = PrPrefix, @PrStart = PrStart 
                 FROM Code_Gen 
@@ -97,7 +101,6 @@ BEGIN
                     'Service'
                 );
             END
-        END
 
         DECLARE @NewSST_Id BIGINT;
 

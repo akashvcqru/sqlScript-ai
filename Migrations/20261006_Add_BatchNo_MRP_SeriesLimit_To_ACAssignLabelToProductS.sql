@@ -1,9 +1,9 @@
 -- =============================================
--- Author:      AI
--- Create date: 2026-06-25
--- Updated:     2026-10-06 (Filter only Counterfeit products with Service_ID = 'SRV1018' and unassigned codes Batch_No IS NULL)
--- Description: Get products details for ACAssignLabelToProductS API (based on PROC_SelectProductDetailsNoofCodes_ddl)
+-- Migration: Add Batch_No, MRP, and Series_Limit to PROC_ACAssignLabelToProductS
+-- Date: 2026-10-06
+-- Description: Returns the latest Batch_No, MRP, and Series_Limit from T_Pro for each product.
 -- =============================================
+
 CREATE OR ALTER PROCEDURE [dbo].[PROC_ACAssignLabelToProductS]
     @Comp_ID    NVARCHAR(50),
     @Service_ID NVARCHAR(50) = 'SRV1018'
@@ -31,7 +31,11 @@ BEGIN
             (SELECT TOP 1 tp.MRP 
              FROM T_Pro tp WITH (NOLOCK) 
              WHERE tp.Pro_ID = Pro_Reg.Pro_ID 
-             ORDER BY tp.Entry_Date DESC, tp.Row_ID DESC) AS MRP
+             ORDER BY tp.Entry_Date DESC, tp.Row_ID DESC) AS MRP,
+            (SELECT TOP 1 tp.Series_Limit 
+             FROM T_Pro tp WITH (NOLOCK) 
+             WHERE tp.Pro_ID = Pro_Reg.Pro_ID 
+             ORDER BY tp.Entry_Date DESC, tp.Row_ID DESC) AS Series_Limit
         FROM Comp_Reg WITH (NOLOCK)
         INNER JOIN Pro_Reg WITH (NOLOCK) ON Comp_Reg.Comp_ID = Pro_Reg.Comp_ID 
         WHERE (Pro_Reg.Comp_ID = @Comp_ID) 
@@ -74,7 +78,11 @@ BEGIN
             (SELECT TOP 1 tp.MRP 
              FROM T_Pro tp WITH (NOLOCK) 
              WHERE tp.Pro_ID = Pro_Reg.Pro_ID 
-             ORDER BY tp.Entry_Date DESC, tp.Row_ID DESC) AS MRP
+             ORDER BY tp.Entry_Date DESC, tp.Row_ID DESC) AS MRP,
+            (SELECT TOP 1 tp.Series_Limit 
+             FROM T_Pro tp WITH (NOLOCK) 
+             WHERE tp.Pro_ID = Pro_Reg.Pro_ID 
+             ORDER BY tp.Entry_Date DESC, tp.Row_ID DESC) AS Series_Limit
         FROM Comp_Reg WITH (NOLOCK)
         INNER JOIN Pro_Reg WITH (NOLOCK) ON Comp_Reg.Comp_ID = Pro_Reg.Comp_ID 
         WHERE (Pro_Reg.Comp_ID = @Comp_ID) 
