@@ -1,3 +1,14 @@
+/****** Migration: 20261006_Sync_USP_GetHighValuePaymentRequests_Comp1669_Points.sql ******/
+-- Date: 2026-10-06
+-- Purpose:
+--   1. Align Comp-1669 TotalEarnedPoints and TotalRedeemedPoints calculation in USP_GetHighValuePaymentRequests_Admin_AI
+--      with SP_BL_GetBeneficiariesReport and SP_BL_GetCodesActivityReport_AI:
+--      - Multi-consumer ID mapping (#ConsumerMapping) across all registered/historical records for the mobile number.
+--      - Multi-service head & assistant mechanics scan points aggregation (summing without MAX() dropping service rewards).
+--      - Comp-1669 cutoff date rule: UpdateDate <= '2026-09-10 19:41:55.383' -> Points * 1.10, after cutoff -> Points as-is.
+--      - Isolated Paytm transaction redemptions for Comp-1669.
+--   2. Preserve 100% untouched points and redemption calculation for all other companies.
+
 USE [vcqru]
 GO
 
@@ -9,6 +20,7 @@ GO
 -- =============================================
 -- Author:      Antigravity
 -- Create date: 2026-07-03
+-- Update date: 2026-10-06 (Sync Comp-1669 points & redemptions with SP_BL_GetBeneficiariesReport)
 -- Description: Retrieves high value payment requests from ClaimDetails with fallback to DEFAULT limit.
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetHighValuePaymentRequests_Admin_AI]
