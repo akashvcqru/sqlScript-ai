@@ -1,9 +1,9 @@
 -- =============================================
--- Author:      AI
--- Create date: 2026-06-25
--- Updated:     2026-10-06 (Filter only Counterfeit products with Service_ID = 'SRV1018' and unassigned codes Batch_No IS NULL)
--- Description: Get products details for ACAssignLabelToProductS API (based on PROC_SelectProductDetailsNoofCodes_ddl)
+-- Migration: 20261006_Filter_Counterfeit_In_PROC_ACAssignLabelToProductS.sql
+-- Description: Updates PROC_ACAssignLabelToProductS to filter only Counterfeit products
+--              subscribed to SRV1018 and products with unassigned codes (M_Code.Batch_No IS NULL)
 -- =============================================
+
 CREATE OR ALTER PROCEDURE [dbo].[PROC_ACAssignLabelToProductS]
     @Comp_ID    NVARCHAR(50),
     @Service_ID NVARCHAR(50) = 'SRV1018'
