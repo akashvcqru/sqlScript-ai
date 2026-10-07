@@ -295,7 +295,6 @@ BEGIN
         -- ISOLATED SPECIFICALLY FOR COMP-1669
         -- UpdateDate <= '2026-09-10 19:41:55.383' → Points + 10%  (Points * 1.10)
         -- UpdateDate >  '2026-09-10 19:41:55.383' → Points as-is
-        -- ServiceName filter REMOVED (all services included)
         INSERT INTO #Benefit (M_Consumerid, PointsEarned, LastScan)
         SELECT 
             CM.Active_ConsumerId AS M_Consumerid,
@@ -316,6 +315,7 @@ BEGIN
             SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate, BL.ServiceName
             FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
             WHERE BL.compid = 'Comp-1669'
+              AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #ConsumerMapping)
               AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
               AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
 
@@ -332,7 +332,57 @@ BEGIN
             INNER JOIN Pro_Reg PR WITH (NOLOCK) 
                 ON M.Pro_ID = PR.Pro_ID
             WHERE BL.compid IS NULL
+              AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #ConsumerMapping)
               AND PR.Comp_ID = 'Comp-1669'
+              AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
+              AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
+        ) BL
+        INNER JOIN #ConsumerMapping CM ON BL.M_Consumerid = CM.M_ConsumerId
+        GROUP BY CM.Active_ConsumerId;
+    END
+    ELSE IF EXISTS (
+        SELECT 1 FROM BLoyaltyPointsEarned WITH (NOLOCK) 
+        WHERE compid IN (SELECT Comp_Id FROM @CompanyList)
+    )
+    BEGIN
+        -- UNIVERSAL LOYALTY LOGIC: Sourced directly from BLoyaltyPointsEarned
+        -- Automatically applies to all loyalty companies (Comp-1727, Comp-1869, Comp-1567, Comp-1741, etc.)
+        INSERT INTO #Benefit (M_Consumerid, PointsEarned, LastScan)
+        SELECT 
+            CM.Active_ConsumerId AS M_Consumerid,
+            SUM(CAST(
+                CASE 
+                    WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
+                    WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
+                    ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
+                END
+            AS DECIMAL(18,2))) AS PointsEarned,
+            MAX(BL.UpdateDate) AS LastScan
+        FROM (
+            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate, BL.ServiceName
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+            WHERE BL.compid IN (SELECT Comp_Id FROM @CompanyList)
+              AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #ConsumerMapping)
+              AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
+              AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
+              AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
+
+            UNION ALL
+
+            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate, BL.ServiceName
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+            INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
+                ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+            INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
+                ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+            INNER JOIN M_Code M WITH (NOLOCK) 
+                ON MC.M_Codeid = M.Row_ID
+            INNER JOIN Pro_Reg PR WITH (NOLOCK) 
+                ON M.Pro_ID = PR.Pro_ID
+            WHERE BL.compid IS NULL
+              AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #ConsumerMapping)
+              AND PR.Comp_ID IN (SELECT Comp_Id FROM @CompanyList)
+              AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
               AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
               AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
         ) BL
@@ -341,7 +391,7 @@ BEGIN
     END
     ELSE
     BEGIN
-        -- STANDARD LOGIC FOR ALL OTHER COMPANIES (100% UNTOUCHED)
+        -- FALLBACK FOR NON-LOYALTY / CONFIG-ONLY COMPANIES (WITHOUT BLoyaltyPointsEarned)
         CREATE TABLE #UniqueScans
         (
             MobileNo NVARCHAR(50),
@@ -514,9 +564,10 @@ BEGIN
         SUM(TRY_CAST(ISNULL(CD.tdsAmount, 0) AS DECIMAL(18,2))) AS TDS
     INTO #Claims
     FROM ClaimDetails CD WITH (NOLOCK)
-    INNER JOIN #Users U ON CD.Mobileno = U.MobileNo
+    INNER JOIN #UserMobiles UM ON CD.Mobileno = UM.MobileNo
+    INNER JOIN #Users U ON UM.M_ConsumerId = U.M_ConsumerId
     WHERE CD.Comp_Id IN (SELECT Comp_Id FROM @CompanyList)
-      AND CD.Isapproved = 1
+      AND (CD.PaymentStatus = 'Success' OR CD.Isapproved = 1)
       AND (@StartDate IS NULL OR CD.Claim_date >= @StartDate)
       AND (@EndDate   IS NULL OR CD.Claim_date <  @EndDate)
     GROUP BY U.M_ConsumerId;
