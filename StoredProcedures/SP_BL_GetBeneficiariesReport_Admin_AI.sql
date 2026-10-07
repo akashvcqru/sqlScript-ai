@@ -658,18 +658,11 @@ BEGIN
             WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIAmount, 0.00))
             ELSE (ISNULL(C.Transferred, 0.00) + ISNULL(UPI.UPIAmount, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
         END AS RedeemAmount,
-        CASE 
-            WHEN (((ISNULL(B.PointsEarned, 0.00) + ISNULL(O.OtherPoints, 0.00)) + ISNULL(R.ReferralPoints, 0.00)) - 
-                  CASE 
-                    WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIAmount, 0.00))
-                    ELSE (ISNULL(C.Transferred, 0.00) + ISNULL(UPI.UPIAmount, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
-                  END) < 0.00 THEN 0.00
-            ELSE (((ISNULL(B.PointsEarned, 0.00) + ISNULL(O.OtherPoints, 0.00)) + ISNULL(R.ReferralPoints, 0.00)) - 
-                  CASE 
-                    WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIAmount, 0.00))
-                    ELSE (ISNULL(C.Transferred, 0.00) + ISNULL(UPI.UPIAmount, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
-                  END)
-        END AS BalanceAmount,
+        (((ISNULL(B.PointsEarned, 0.00) + ISNULL(O.OtherPoints, 0.00)) + ISNULL(R.ReferralPoints, 0.00)) - 
+         CASE 
+            WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIAmount, 0.00))
+            ELSE (ISNULL(C.Transferred, 0.00) + ISNULL(UPI.UPIAmount, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
+         END) AS BalanceAmount,
         ISNULL(C.TDS, 0.00) AS TDSAmount,
         B.LastScan,
         ROW_NUMBER() OVER (ORDER BY (ISNULL(B.PointsEarned, 0.00) + ISNULL(O.OtherPoints, 0.00)) DESC, U.M_ConsumerId) AS RN

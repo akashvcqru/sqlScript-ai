@@ -666,18 +666,11 @@ BEGIN
             WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
             ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
         END AS RedeemAmount,
-        CASE 
-            WHEN ((ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00) + ISNULL(R.RefralAmount, 0.00)) - 
-                  CASE 
-                    WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
-                    ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
-                  END) < 0.00 THEN 0.00
-            ELSE ((ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00) + ISNULL(R.RefralAmount, 0.00)) - 
-                  CASE 
-                    WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
-                    ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
-                  END)
-        END AS BalanceAmount,
+        ((ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00) + ISNULL(R.RefralAmount, 0.00)) - 
+         CASE 
+            WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
+            ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
+         END) AS BalanceAmount,
         B.LastScan
     INTO #FinalData
     FROM #Users U
