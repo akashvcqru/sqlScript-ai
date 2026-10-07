@@ -1,10 +1,18 @@
+-- Migration Script: Align USP_GetDashboardSummary_AI TotalPoints and TotalCash with SP_BL_GetCodesActivityReport_AI wonpoints across all companies and users
+-- Date: 2026-10-07
+-- Target DB: Production (Vcqru)
+-- Description:
+--   Removes the isolated @Comp1669TotalPoints override from Result Set 1 of USP_GetDashboardSummary_AI.
+--   Ensures TotalPoints in Result Set 1 consistently uses @TotalConfigPoints + RefPoints (the exact sum of #AllEarnedItems and #ReferralStats)
+--   for all companies and users, matching Table 1 (ServiceTotalPoints) and SP_BL_GetCodesActivityReport_AI wonpoints identically.
+
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 10/07/2026 1:00:00 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
 ALTER PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
