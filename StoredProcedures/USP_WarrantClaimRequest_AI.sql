@@ -14,7 +14,8 @@ ALTER PROCEDURE [dbo].[USP_WarrantClaimRequest_AI]
     @WarrantyId INT,
     @Comment NVARCHAR(MAX),
     @PrimaryImagePath NVARCHAR(MAX),
-    @AdditionalImages NVARCHAR(MAX) = NULL -- Comma separated file paths
+    @AdditionalImages NVARCHAR(MAX) = NULL, -- Comma separated file paths
+    @IsReclaimed BIT = 0
 )
 AS
 BEGIN
@@ -55,9 +56,9 @@ BEGIN
 
         -- Update Warranty Details
         UPDATE [dbo].[WarrentyDetails]
-        SET [IsWarrantyClaimed] = 0,
+        SET [IsWarrantyClaimed] = CASE WHEN @IsReclaimed = 1 THEN 3 ELSE 0 END,
             [Comment] = @Comment,
-            [VendorClaimStatus] = 'Pending',
+            [VendorClaimStatus] = CASE WHEN @IsReclaimed = 1 THEN 'ReClaimed' ELSE 'Pending' END,
             [ImagePath] = CASE 
                             WHEN @AdditionalImages IS NOT NULL AND LEN(LTRIM(RTRIM(@AdditionalImages))) > 0 
                             THEN @PrimaryImagePath + ',' + @AdditionalImages 

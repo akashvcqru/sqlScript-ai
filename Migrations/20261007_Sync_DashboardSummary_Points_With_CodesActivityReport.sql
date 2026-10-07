@@ -1,10 +1,18 @@
+-- Migration Script: Synchronize USP_GetDashboardSummary_AI points calculation with SP_BL_GetCodesActivityReport_AI wonpoints
+-- Date: 2026-10-07
+-- Target DB: Production (Vcqru)
+-- Description:
+--   Aligns USP_GetDashboardSummary_AI points logic with SP_BL_GetCodesActivityReport_AI.
+--   Ensures TotalPoints in USP_GetDashboardSummary_AI matches the exact sum of wonpoints from SP_BL_GetCodesActivityReport_AI,
+--   including scans (ranked identically), non-scan earned entries (repair, bonus, KYC, manual/offline scans), and referral bonuses.
+
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 10/07/2026 1:00:00 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
+
 ALTER PROCEDURE [dbo].[USP_GetDashboardSummary_AI]
 (
     @M_Consumerid INT,
