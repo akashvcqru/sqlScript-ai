@@ -1,6 +1,6 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 10/7/2026 10:10:20 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 10/7/2026 11:04:46 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -631,7 +631,7 @@ BEGIN
                 CASE 
                     WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                         CASE 
-                            WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                             ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
@@ -643,14 +643,37 @@ BEGIN
                     ELSE 0.00
                 END
             AS DECIMAL(18,2))), 0.00)
-        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-        WHERE LOWER(BL.compid) = 'comp-1669'
-          AND (BL.M_Consumerid = @M_Consumerid OR BL.M_Consumerid IN (
-              SELECT M_Consumerid 
-              FROM M_Consumer WITH (NOLOCK) 
-              WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
-          ))
-          AND LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout');
+        FROM (
+            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate, BL.ServiceName
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+            WHERE LOWER(BL.compid) = 'comp-1669'
+              AND (BL.M_Consumerid = @M_Consumerid OR BL.M_Consumerid IN (
+                  SELECT M_Consumerid 
+                  FROM M_Consumer WITH (NOLOCK) 
+                  WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
+              ))
+
+            UNION ALL
+
+            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate, BL.ServiceName
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+            INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
+                ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+            INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
+                ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+            INNER JOIN M_Code M WITH (NOLOCK) 
+                ON MC.M_Codeid = M.Row_ID
+            INNER JOIN Pro_Reg PR WITH (NOLOCK) 
+                ON M.Pro_ID = PR.Pro_ID
+            WHERE BL.compid IS NULL
+              AND PR.Comp_ID = 'Comp-1669'
+              AND (BL.M_Consumerid = @M_Consumerid OR BL.M_Consumerid IN (
+                  SELECT M_Consumerid 
+                  FROM M_Consumer WITH (NOLOCK) 
+                  WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
+              ))
+        ) BL
+        WHERE LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral');
 
         SELECT 
             @Comp1669RefSum = ISNULL(SUM(ISNULL(BL.Points, 0) + ISNULL(BL.Cash, 0)), 0)
