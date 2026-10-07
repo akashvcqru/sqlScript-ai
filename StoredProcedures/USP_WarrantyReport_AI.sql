@@ -8,7 +8,7 @@ GO
 
 -- =============================================
 -- Author:      Antigravity
--- Create date: 24-Apr-2026
+-- Create date: 24-Apr-2026  
 -- Description: Get Warranty Report for Company Dashboard with Pagination and TimeWindow
 -- Reference:   GetWarrantyDetails
 -- =============================================
@@ -17,7 +17,7 @@ ALTER   PROCEDURE [dbo].[USP_WarrantyReport_AI]
     @Comp_Id VARCHAR(50),
     @datePreset NVARCHAR(20) = NULL,
     @FromDate DATETIME = NULL,
-    @ToDate DATETIME = NULL,
+    @ToDate DATETIME = NULL,    
     @Page INT = 1,
     @Limit INT = 10,
     @Search NVARCHAR(100) = NULL,

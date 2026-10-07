@@ -1,6 +1,6 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 10/07/2026 1:00:00 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetDashboardSummary_AI]    Script Date: 10/7/2026 10:10:20 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -128,7 +128,12 @@ BEGIN
                                         THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                                     ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                                 END
-                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                                    ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                                END
                             ELSE 0.00
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
@@ -146,7 +151,12 @@ BEGIN
                                         THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                                     ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                                 END
-                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                                    ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                                END
                             ELSE 0.00
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
@@ -188,7 +198,12 @@ BEGIN
                                         THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                                     ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                                 END
-                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                                    ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                                END
                             ELSE 0.00
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
@@ -206,7 +221,12 @@ BEGIN
                                         THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                                     ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                                 END
-                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                                    ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                                END
                             ELSE 0.00
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
@@ -389,7 +409,12 @@ BEGIN
                                     THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                                 ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                             END
-                        WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                        WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                            CASE 
+                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                    THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                                ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            END
                         ELSE 0.00
                     END
                 WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
@@ -595,6 +620,52 @@ BEGIN
       AND PR.Comp_ID = @CompID
       AND pe.Is_Success NOT IN ('1', '2');
 
+    DECLARE @Comp1669TotalPoints DECIMAL(18,2) = 0;
+    IF LOWER(@CompID) = 'comp-1669'
+    BEGIN
+        DECLARE @Comp1669PointsEarnedSum DECIMAL(18,2) = 0;
+        DECLARE @Comp1669RefSum DECIMAL(18,2) = 0;
+
+        SELECT 
+            @Comp1669PointsEarnedSum = ISNULL(SUM(CAST(
+                CASE 
+                    WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
+                        CASE 
+                            WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
+                            ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
+                        END
+                    WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                        CASE 
+                            WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                            ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                        END
+                    ELSE 0.00
+                END
+            AS DECIMAL(18,2))), 0.00)
+        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        WHERE LOWER(BL.compid) = 'comp-1669'
+          AND (BL.M_Consumerid = @M_Consumerid OR BL.M_Consumerid IN (
+              SELECT M_Consumerid 
+              FROM M_Consumer WITH (NOLOCK) 
+              WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
+          ))
+          AND LOWER(ISNULL(BL.ServiceName, '')) IN ('buildloyalty', 'srv1001', 'srv1028', 'instant payout');
+
+        SELECT 
+            @Comp1669RefSum = ISNULL(SUM(ISNULL(BL.Points, 0) + ISNULL(BL.Cash, 0)), 0)
+        FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        WHERE LOWER(BL.compid) = 'comp-1669'
+          AND (BL.M_Consumerid = @M_Consumerid OR BL.M_Consumerid IN (
+              SELECT M_Consumerid 
+              FROM M_Consumer WITH (NOLOCK) 
+              WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10)
+          ))
+          AND LOWER(ISNULL(BL.ServiceName, '')) IN ('refral', 'referral');
+
+        SET @Comp1669TotalPoints = CAST(@Comp1669PointsEarnedSum + @Comp1669RefSum AS DECIMAL(18,2));
+    END
+
     -- Result Set 1: Overall Stats
     SELECT 
         (@SuccessCodeCount + @UnsuccessCodeCount + @InvalidCodeCount) as TotalCode,
@@ -602,12 +673,14 @@ BEGIN
         @SuccessCodeCount as SuccessCode,
         @UnsuccessCodeCount as UnsuccessCode,
         CASE 
-            WHEN @CompID IN ('Comp-1274', 'Comp-1669', 'comp-1669') THEN @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
+            WHEN @CompID = 'Comp-1274' THEN @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(cash AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
+            WHEN LOWER(@CompID) = 'comp-1669' THEN @Comp1669TotalPoints
             ELSE @TotalConfigCash + (SELECT RefCash FROM #ReferralStats)
         END as TotalCash,
         CASE 
             WHEN @CompID IN ('comp-1152', 'Comp-1152') THEN (SELECT ISNULL(SUM(TRY_CAST(points AS DECIMAL(18,2))), 0) FROM [dbo].[ConsumerPointsCashDetails] WHERE RIGHT(MobileNo, 10) = RIGHT(@MobileNo, 10) and Enq_Date >='2022-08-04 00:00:00.000' and Is_Success=1 )
+            WHEN LOWER(@CompID) = 'comp-1669' THEN @Comp1669TotalPoints
             ELSE @TotalConfigPoints + (SELECT RefPoints FROM #ReferralStats)
         END as TotalPoints,
         @HasServiceWiseGifts as HasServiceWiseGifts,
@@ -687,4 +760,3 @@ BEGIN
     DROP TABLE IF EXISTS #ConfiguredPoints;
     DROP TABLE IF EXISTS #ReferralStats;
 END
-GO
