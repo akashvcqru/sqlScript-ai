@@ -133,8 +133,9 @@ BEGIN
             war.[Comment],    
             CASE 
                 WHEN war.[IsWarrantyClaimed] = '0' THEN 'Pending' 
-                WHEN war.[IsWarrantyClaimed] ='1' THEN 'Approved' 
-                WHEN war.[IsWarrantyClaimed] ='2' THEN 'Reject' 
+                WHEN war.[IsWarrantyClaimed] = '1' THEN 'Approved' 
+                WHEN war.[IsWarrantyClaimed] = '2' THEN 'Reject' 
+                WHEN war.[IsWarrantyClaimed] = '3' THEN 'ReClaimed' 
                 ELSE ISNULL(war.[VendorClaimStatus], '') 
             END AS VendorClaimStatus,   
             war.claimdate as [ClaimDate],  
