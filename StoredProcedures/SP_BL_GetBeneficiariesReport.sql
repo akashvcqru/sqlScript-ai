@@ -7,9 +7,9 @@ GO
 
 -- ============================================================================
 -- [dbo].[SP_BL_GetBeneficiariesReport]
--- Logic isolated for Comp-1669 without modifying any other company logic
+-- Unlinked Comp-1567 and Comp-1650; Universal Loyalty Points; Non-negative balance.
 -- Author: Antigravity
--- Date: 2026-09-04
+-- Date: 2026-10-07
 -- ============================================================================
 CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetBeneficiariesReport]
 (
@@ -38,13 +38,10 @@ BEGIN
     DECLARE @Offset INT = (@Page - 1) * @Limit;
 
     ---------------------------------------------------------
-    -- COMPANY FILTER PREPARATION
+    -- COMPANY FILTER PREPARATION (UNLINKED)
     ---------------------------------------------------------
     DECLARE @CompanyList TABLE (Comp_Id VARCHAR(50) PRIMARY KEY);
-    IF @Comp_Id IN ('Comp-1567','Comp-1650')
-        INSERT INTO @CompanyList VALUES ('Comp-1567'),('Comp-1650');
-    ELSE
-        INSERT INTO @CompanyList VALUES (@Comp_Id);
+    INSERT INTO @CompanyList VALUES (@Comp_Id);
 
     DECLARE @Multiplier DECIMAL(18,2) = 1.00;
     SELECT TOP 1 @Multiplier = 1.00 + (ISNULL(TRY_CAST(calculation_value AS DECIMAL(18,2)), 0.00) / 100.0) 
@@ -106,11 +103,13 @@ BEGIN
     END
     ELSE IF (@Win = 'QUARTER' OR @Win = 'THIS QUARTER')
     BEGIN
+        SET DATEFIRST 1;
         SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()), 0);
         SET @EndDate = DATEADD(QUARTER, 1, @StartDate);
     END
     ELSE IF (@Win = 'LASTQUARTER')
     BEGIN
+        SET DATEFIRST 1;
         SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, GETDATE()) - 1, 0);
         SET @EndDate = DATEADD(QUARTER, 1, @StartDate);
     END
@@ -272,7 +271,7 @@ BEGIN
     CREATE CLUSTERED INDEX IX_State_ConsumerId ON #State(M_ConsumerId);
 
     ---------------------------------------------------------
-    -- 5. POINT CALCULATION (ISOLATED FOR COMP-1669)
+    -- 5. POINT CALCULATION
     ---------------------------------------------------------
     CREATE TABLE #Benefit
     (
@@ -292,9 +291,8 @@ BEGIN
     IF @Comp_Id = 'Comp-1669'
     BEGIN
         -- ISOLATED SPECIFICALLY FOR COMP-1669
-        -- UpdateDate <= '2026-09-10 19:41:55.383' → Points + 10%  (Points * 1.10)
-        -- UpdateDate >  '2026-09-10 19:41:55.383' → Points as-is
-        -- ServiceName filter REMOVED (all services included)
+        -- UpdateDate <= '2026-09-10 19:41:55.383' -> Points + 10%  (Points * 1.10)
+        -- UpdateDate >  '2026-09-10 19:41:55.383' -> Points as-is
         INSERT INTO #Benefit (M_Consumerid, PointsEarned, LastScan)
         SELECT 
             CM.Active_ConsumerId AS M_Consumerid,
@@ -315,6 +313,7 @@ BEGIN
             SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate, BL.ServiceName
             FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
             WHERE BL.compid = 'Comp-1669'
+              AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #ConsumerMapping)
               AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
               AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
 
@@ -331,7 +330,69 @@ BEGIN
             INNER JOIN Pro_Reg PR WITH (NOLOCK) 
                 ON M.Pro_ID = PR.Pro_ID
             WHERE BL.compid IS NULL
+              AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #ConsumerMapping)
               AND PR.Comp_ID = 'Comp-1669'
+              AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
+              AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
+        ) BL
+        INNER JOIN #ConsumerMapping CM ON BL.M_Consumerid = CM.M_ConsumerId
+        GROUP BY CM.Active_ConsumerId;
+    END
+    ELSE IF EXISTS (
+        SELECT 1 FROM BLoyaltyPointsEarned WITH (NOLOCK) 
+        WHERE compid IN (SELECT Comp_Id FROM @CompanyList)
+    )
+    OR EXISTS (
+        SELECT 1 FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+        INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
+            ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+        INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
+            ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+        INNER JOIN M_Code M WITH (NOLOCK) 
+            ON MC.M_Codeid = M.Row_ID
+        INNER JOIN Pro_Reg PR WITH (NOLOCK) 
+            ON M.Pro_ID = PR.Pro_ID
+        WHERE BL.compid IS NULL AND PR.Comp_ID IN (SELECT Comp_Id FROM @CompanyList)
+    )
+    BEGIN
+        -- UNIVERSAL LOYALTY LOGIC: Sourced directly from BLoyaltyPointsEarned
+        -- Automatically applies to all loyalty companies (Comp-1727, Comp-1869, Comp-1567, Comp-1650, Comp-1741, etc.)
+        INSERT INTO #Benefit (M_Consumerid, PointsEarned, LastScan)
+        SELECT 
+            CM.Active_ConsumerId AS M_Consumerid,
+            SUM(CAST(
+                CASE 
+                    WHEN @Comp_Id = 'Comp-1274' THEN ISNULL(TRY_CAST(BL.Cash AS DECIMAL(18,2)), 0.00) * 1.10
+                    WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
+                    ELSE ISNULL(TRY_CAST(BL.Points AS DECIMAL(18,2)), 0.00)
+                END
+            AS DECIMAL(18,2))) AS PointsEarned,
+            MAX(BL.UpdateDate) AS LastScan
+        FROM (
+            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate, BL.ServiceName
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+            WHERE BL.compid IN (SELECT Comp_Id FROM @CompanyList)
+              AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #ConsumerMapping)
+              AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
+              AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
+              AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
+
+            UNION ALL
+
+            SELECT BL.M_Consumerid, BL.Points, BL.Cash, BL.UpdateDate, BL.ServiceName
+            FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
+            INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
+                ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
+            INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
+                ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
+            INNER JOIN M_Code M WITH (NOLOCK) 
+                ON MC.M_Codeid = M.Row_ID
+            INNER JOIN Pro_Reg PR WITH (NOLOCK) 
+                ON M.Pro_ID = PR.Pro_ID
+            WHERE BL.compid IS NULL
+              AND BL.M_Consumerid IN (SELECT M_ConsumerId FROM #ConsumerMapping)
+              AND PR.Comp_ID IN (SELECT Comp_Id FROM @CompanyList)
+              AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
               AND (@StartDate IS NULL OR BL.UpdateDate >= @StartDate)
               AND (@EndDate   IS NULL OR BL.UpdateDate <  @EndDate)
         ) BL
@@ -340,7 +401,7 @@ BEGIN
     END
     ELSE
     BEGIN
-        -- STANDARD LOGIC FOR ALL OTHER COMPANIES (100% UNTOUCHED)
+        -- FALLBACK FOR NON-LOYALTY / CONFIG-ONLY COMPANIES (WITHOUT BLoyaltyPointsEarned)
         CREATE TABLE #UniqueScans
         (
             MobileNo NVARCHAR(50),
@@ -389,7 +450,7 @@ BEGIN
                     END 
                 AS DECIMAL(18,2)) AS Points
             FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-            INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
+            INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
                 ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
             INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
                 ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
@@ -408,7 +469,7 @@ BEGIN
                     END 
                 AS DECIMAL(18,2)) AS Points
             FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
-            INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK)
+            INNER JOIN BuiltLoyaltyMCodeCheck BMC WITH (NOLOCK) 
                 ON BL.BuildLoyaltyOrReferralMCodeCheckid = BMC.Pkid
             INNER JOIN M_Consumer_M_Code MC WITH (NOLOCK) 
                 ON BMC.M_Consumer_MCOdeid = MC.M_Consumer_MCodeid
@@ -605,11 +666,18 @@ BEGIN
             WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
             ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
         END AS RedeemAmount,
-        ((ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00) + ISNULL(R.RefralAmount, 0.00)) - 
-         CASE 
-            WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
-            ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
-         END) AS BalanceAmount,
+        CASE 
+            WHEN ((ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00) + ISNULL(R.RefralAmount, 0.00)) - 
+                  CASE 
+                    WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
+                    ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
+                  END) < 0.00 THEN 0.00
+            ELSE ((ISNULL(B.PointsEarned, 0.00) + ISNULL(OEP.OtherPoints, 0.00) + ISNULL(R.RefralAmount, 0.00)) - 
+                  CASE 
+                    WHEN @Comp_Id = 'Comp-1669' THEN (ISNULL(PT.PaytmAmount, 0.00) + ISNULL(UPI.UPIRedeem, 0.00))
+                    ELSE (ISNULL(CD.ClaimRedeem, 0.00) + ISNULL(UPI.UPIRedeem, 0.00) + ISNULL(BP.BPointsDebited, 0.00) + ISNULL(T.TransactionsAmount, 0.00))
+                  END)
+        END AS BalanceAmount,
         B.LastScan
     INTO #FinalData
     FROM #Users U

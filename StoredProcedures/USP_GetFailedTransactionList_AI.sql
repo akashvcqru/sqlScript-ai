@@ -348,6 +348,11 @@ BEGIN
             UT.OrderId LIKE 'TXN[2][0][2-9][0-9]%'
             AND LEN(UT.OrderId) = 17
         )
+        OR (
+            UT.Status = 'Pending'
+            AND UT.FinalStatus = 'Pending'
+            AND UT.FinalRemarks = 'Initial Record'
+        )
     )
       AND (
           (LEN(UT.Code1) = 5 AND LEN(UT.Code2) = 8)

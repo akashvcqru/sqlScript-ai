@@ -1,13 +1,10 @@
 -- =============================================
--- Procedure: USP_GetProductList_AI
--- Description: Returns product list for a company (Register Products report)
--- Called from: ProductController.cs -> GET /api/vendor/products/productList
+-- Migration: 20261006_Add_HasUnassignedCodes_To_USP_GetProductList_AI.sql
+-- Description: Adds @HasUnassignedCodes parameter to USP_GetProductList_AI
+--              to allow filtering products that have unassigned codes in M_Code (Batch_No IS NULL)
 -- =============================================
-IF OBJECT_ID('USP_GetProductList_AI', 'P') IS NOT NULL
-    DROP PROCEDURE USP_GetProductList_AI
-GO
 
-CREATE PROCEDURE USP_GetProductList_AI
+CREATE OR ALTER PROCEDURE USP_GetProductList_AI
     @Comp_ID            NVARCHAR(50) = '',
     @PageNumber         INT = 1,
     @PageSize           INT = 10,
@@ -129,9 +126,9 @@ BEGIN
         SELECT TOP 1 
             ss.Subscribe_Id, 
             ss.Service_ID, 
-            ss.IsActive,
-            ss.DateFrom,
-            ss.DateTo,
+            ss.IsActive, 
+            ss.DateFrom, 
+            ss.DateTo, 
             ss.PlanMasterPeriod AS PlanPeriod
         FROM M_ServiceSubscription ss
         WHERE ss.Pro_ID = pr.Pro_ID

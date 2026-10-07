@@ -1,43 +1,38 @@
+-- =========================================================================================
+-- Migration: 20261007_Fix_SP_BL_GetNewUsersAndKYCReport_All_DatePreset_And_Search.sql
+-- Description: 
+--   1. Fix @datePreset = 'ALL' / NULL in SP_BL_GetNewUsersAndKYCReportAutoFilterData.
+--      Previously, @StartDate was restricted to Comp_Reg.Reg_Date (@CompanyStartDate).
+--      For companies like Comp-1567 where Reg_Date in Comp_Reg (2023-08-20) is later than
+--      the actual user registration dates (e.g. 2023-03-01 or May 2022), all historical
+--      users prior to Reg_Date were excluded when datePreset=all or searching.
+--   2. When @Search is provided without explicit custom dates (@FromDate/@ToDate), do not
+--      restrict search by preset date boundary so searched users across history can be found.
+--   3. Unified Comp-1567 and Comp-1650 (VR Kable) in company filter consistent with
+--      Beneficiaries Report, Codes Activity Report, and KYC status update SPs.
+-- =========================================================================================
+
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData_MAndM_AI]    Script Date: 5/19/2026 2:46:37 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- =============================================
--- Author:		Antigravity
--- Create date: 08-05-2026
--- Description:	Get New Users and KYC Report for Mahindra & Mahindra (M&M) Dashboard
--- =============================================
-ALTER PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData_MAndM_AI]
+CREATE OR ALTER PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]
     @Comp_Id VARCHAR(15),
-    @datePreset NVARCHAR(20) = NULL ,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
+    @datePreset NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER, YEAR, ALL
     @FromDate DATE = NULL,              
     @ToDate DATE = NULL,                
     @KYCStatusFilter NVARCHAR(20) = NULL,
     @StateFilter NVARCHAR(100) = NULL,   
     @Page INT = NULL,                    
     @Limit INT = NULL,
-    @IsExport BIT =NULL,
-    @Search nvarchar(30) = null
-  
+    @IsExport BIT = NULL,
+    @Search NVARCHAR(30) = NULL
 AS
 BEGIN
-   SET NOCOUNT ON;
-
-    ------------------------------------------------------
-    -- SBU Company Check Logic
-    ------------------------------------------------------
-    DECLARE @ActualCompId VARCHAR(15) = @Comp_Id;
-    DECLARE @IsSBUTeam INT = 0;
-
-    IF EXISTS (SELECT 1 FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM')
-    BEGIN
-        SELECT @ActualCompId = MainCompID FROM tbl_sbuCompany WHERE SubComp_ID = @Comp_Id AND SubCompTypeType = 'SBUTEAM';
-        SET @IsSBUTeam = 1;
-    END
+    SET NOCOUNT ON;
 
     ------------------------------------------------------
     -- Pagination Defaults
@@ -49,11 +44,8 @@ BEGIN
     DECLARE @Offset INT = (@Page - 1) * @Limit;
 
     ------------------------------------------------------
-    -- Date Range
+    -- Date Range Calculation
     ------------------------------------------------------
-    DECLARE @CompanyStartDate DATETIME;
-    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @ActualCompId AND Status = 1;
-
     DECLARE @StartDate DATE = NULL;
     DECLARE @EndDate   DATE = NULL;
 
@@ -93,13 +85,13 @@ BEGIN
         IF (@datePreset = 'TODAY')
             SET @StartDate = @EndDate;
 
-        ELSE IF (@datePreset = 'LASTDAY')
+        ELSE IF (@datePreset = 'LASTDAY' OR @datePreset = 'YESTERDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, @EndDate);
             SET @EndDate   = DATEADD(DAY, -1, @EndDate);
         END
 
-        ELSE IF (@datePreset = 'WEEK')
+        ELSE IF (@datePreset = 'WEEK' OR @datePreset = 'THIS WEEK')
             SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @EndDate), @EndDate);
 
         ELSE IF (@datePreset = 'LASTWEEK')
@@ -109,7 +101,7 @@ BEGIN
                                 DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
         END
 
-        ELSE IF (@datePreset = 'MONTH')
+        ELSE IF (@datePreset = 'MONTH' OR @datePreset = 'THIS MONTH')
             SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), MONTH(@EndDate), 1);
 
         ELSE IF (@datePreset = 'LASTMONTH')
@@ -119,14 +111,14 @@ BEGIN
                                 DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0));
         END
 
-        ELSE IF (@datePreset = 'QUARTER')
+        ELSE IF (@datePreset = 'QUARTER' OR @datePreset = 'THIS QUARTER')
         BEGIN
             SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
                                 DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @EndDate), 0));
         END
 
-        ELSE IF (@datePreset = 'YEAR')
+        ELSE IF (@datePreset = 'YEAR' OR @datePreset = 'THIS YEAR')
         BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), 1, 1);
         END
@@ -139,46 +131,23 @@ BEGIN
 
         ELSE -- ALL / NULL
         BEGIN
+            -- For ALL datePreset or unspecified, do not restrict date range
             SET @StartDate = NULL;
             SET @EndDate   = NULL;
         END
     END
 
-	IF OBJECT_ID('tempdb..#TempDealerMaster') IS NOT NULL
-    DROP TABLE #TempDealerMaster;
-	SELECT 
-    DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType
-INTO #TempDealerMaster
-FROM
-(
-    SELECT  DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType 
-    FROM m_dealermaster 
-    WHERE Comp_id = @ActualCompId 
-      AND (
-            (@IsSBUTeam = 0 AND DealerCode != 'SBUTEAM') OR
-            (@IsSBUTeam = 1 AND DealerCode = 'SBUTEAM')
-          )
-    UNION
-    SELECT  DealerCode, DealerTechnicianId, D_Name,D_state,DealerLocation, DealerType FROM m_dealermaster_mahindra_emp where Comp_id = @ActualCompId
-) AS A;
-
-
     ------------------------------------------------------
     -- Base WHERE clause
     ------------------------------------------------------
     DECLARE @BaseWhere NVARCHAR(MAX) = N'
-        WHERE VKS.Comp_ID = @Comp_Id
-          AND VKS.rn = 1
-          AND MC.IsDelete = 0
-		  AND MC.distributorID is not null
-          AND (
-                (' + CAST(@IsSBUTeam AS VARCHAR(1)) + ' = 0 AND (MC.distributorID != ''SBUTEAM'' OR MC.distributorID IS NULL)) OR
-                (' + CAST(@IsSBUTeam AS VARCHAR(1)) + ' = 1 AND MC.distributorID = ''SBUTEAM'')
-              )';
+        WHERE ((@Comp_Id IN (''Comp-1567'', ''Comp-1650'') AND VKS.Comp_ID IN (''Comp-1567'', ''Comp-1650''))
+               OR (@Comp_Id NOT IN (''Comp-1567'', ''Comp-1650'') AND VKS.Comp_ID = @Comp_Id))
+          AND MC.IsDelete = 0';
 
     -- Apply date range filter:
     -- If custom dates were supplied, always respect them.
-    -- If searching and no custom dates provided, don't restrict by preset date window.
+    -- If searching (e.g. by mobile number) and no custom dates provided, don't restrict by preset date window.
     IF (@Search IS NULL OR LTRIM(RTRIM(@Search)) = '') OR (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
     BEGIN
         IF @StartDate IS NOT NULL AND @EndDate IS NOT NULL
@@ -190,54 +159,58 @@ FROM
     END
 
     IF @KYCStatusFilter IS NOT NULL
+    BEGIN
+        SET @KYCStatusFilter = UPPER(LTRIM(RTRIM(@KYCStatusFilter)));
+        
         SET @BaseWhere += N'
         AND (
-            (@KYCStatusFilter = ''APPROVED'' AND VKS.VRKbl_KYC_status = 1) OR
             (@KYCStatusFilter = ''REJECTED'' AND VKS.VRKbl_KYC_status = 2) OR
-            (@KYCStatusFilter = ''PENDING'' AND (VKS.VRKbl_KYC_status NOT IN (1, 2) OR VKS.VRKbl_KYC_status IS NULL))
+            (@KYCStatusFilter = ''PENDING'' AND (VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL)) OR
+            (@KYCStatusFilter = ''APPROVED'' AND VKS.VRKbl_KYC_status = 1)
         )';
+    END
 
     IF @StateFilter IS NOT NULL AND LTRIM(RTRIM(@StateFilter)) <> ''
         SET @BaseWhere += N' AND MC.[State] = @StateFilter';
 
     ------------------------------------------------------
-    -- Mobile Number, User Type & Dealer Type Search
+    -- Mobile Number & User Type Search
     ------------------------------------------------------
     IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
-        SET @BaseWhere += N' AND (MC.MobileNo LIKE ''%'' + @Search + ''%'' OR UT.User_Type LIKE ''%'' + @Search + ''%'' OR TD.DealerType LIKE ''%'' + @Search + ''%'')';
+        SET @BaseWhere += N' AND (MC.MobileNo LIKE ''%'' + @Search + ''%'' OR UT.User_Type LIKE ''%'' + @Search + ''%'' OR MC.ConsumerName LIKE ''%'' + @Search + ''%'')';
 
     ------------------------------------------------------
     -- Data Query
     ------------------------------------------------------
- 
     DECLARE @SQLData NVARCHAR(MAX) = N'
     SELECT
         MC.ConsumerName,
         MC.MobileNo,
+        MC.Email,
         MC.City,
         MC.PinCode,
-        TD.D_state AS state,
-		TD.DealerLocation, TD.DealerType,
-        -- KYC Status
+        MC.[State] AS state,
+
+        -- Determine KYC Status
         CASE 
-            WHEN VKS.VRKbl_KYC_status = 1 THEN ''KYC Approved''
-            WHEN VKS.VRKbl_KYC_status = 2 THEN ''KYC Rejected''
-            WHEN VKS.VRKbl_KYC_status = 3 THEN ''Send Request again''
-            ELSE ''KYC Pending''
+            WHEN VKS.VRKbl_KYC_status = 2 THEN ''Rejected''
+            WHEN VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL THEN ''Pending''
+            ELSE ''Approved''
+        END AS VRKbl_KYC_status,
+
+        CASE 
+            WHEN VKS.VRKbl_KYC_status = 2 THEN ''Rejected''
+            WHEN VKS.VRKbl_KYC_status = 0 OR VKS.VRKbl_KYC_status IS NULL THEN ''Pending''
+            ELSE ''Approved''
         END AS KYCStatus,
 
         -- KYC channel-wise statuses
         CASE WHEN MC.panekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.panekycStatus, '''') END AS panekycStatus,
+        CASE WHEN MC.aadharkycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.aadharkycStatus, '''') END AS aadharkycStatus,
         CASE WHEN MC.bankekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
         MC.pancard_number,
         VKS.kycremark,
-
-        -- Mahindra Specific Fields
-        MC.employeeID AS techmasterID,
-        MC.MstarID,
-        MC.distributorID AS Dealercode,
-        MC.designation AS Designation,
 
         -- Bank Information (Latest Bank Record)
         MB.[Bank_Name] AS bankName,
@@ -247,22 +220,22 @@ FROM
         MB.IFSC_Code,
 
         -- Additional Details
+        MC.UPIId,
+        MC.Selfie_image,
         VKS.Entry_Date,
         MC.M_Consumerid,
         VKS.systemgeneratedremark,
         VKS.Updated_date AS Updated_date,
+        VKS.rejectedkyc,
+        UT.User_Type AS UserType,
 
         -- IspanOperative Status
         CASE 
             WHEN MC.IspanOperative = 1 THEN ''InOperative''
             ELSE ''Operative''
         END AS IspanOperative
-    FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
-        FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
-    ) VKS
+    FROM tbl_Vendorvisekycstatus VKS
     INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
-	LEFT JOIN #TempDealerMaster TD ON MC.employeeID=TD.DealerTechnicianId AND MC.distributorID=TD.DealerCode
     LEFT JOIN User_Type UT ON UT.Row_ID = VKS.Vrkabel_User_Type
     OUTER APPLY (
         SELECT TOP 1 *
@@ -289,12 +262,8 @@ FROM
             @Page AS CurrentPage,
             @Limit AS [Limit],
             CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-        FROM (
-            SELECT *, ROW_NUMBER() OVER (PARTITION BY M_Consumerid, Comp_Id ORDER BY Entry_date DESC) AS rn
-            FROM tbl_Vendorvisekycstatus WITH (NOLOCK)
-        ) VKS
+        FROM tbl_Vendorvisekycstatus VKS
         INNER JOIN M_Consumer MC ON MC.M_Consumerid = VKS.M_Consumerid
-        LEFT JOIN #TempDealerMaster TD ON MC.employeeID=TD.DealerTechnicianId AND MC.distributorID=TD.DealerCode
         LEFT JOIN User_Type UT ON UT.Row_ID = VKS.Vrkabel_User_Type
         ' + @BaseWhere;
     END
@@ -317,7 +286,7 @@ FROM
                 @Limit INT,
                 @Page INT
             ',
-            @ActualCompId,
+            @Comp_Id,
             @StartDate,
             @EndDate,
             @KYCStatusFilter,
@@ -345,7 +314,7 @@ FROM
                 @Limit INT,
                 @Page INT
             ',
-            @ActualCompId,
+            @Comp_Id,
             @StartDate,
             @EndDate,
             @KYCStatusFilter,
@@ -356,3 +325,4 @@ FROM
             @Page;
     END
 END
+GO

@@ -1,4 +1,9 @@
-CREATE PROCEDURE [dbo].[USP_InsertUpdateServiceSetting_AI]
+-- ============================================================
+-- Stored Procedure: USP_InsertUpdateServiceSetting_AI
+-- Purpose        : Insert or update generic service setting.
+--                  Prevents duplicate settings and overlapping series ranges.
+-- ============================================================
+CREATE OR ALTER PROCEDURE [dbo].[USP_InsertUpdateServiceSetting_AI]
     @Comp_ID VARCHAR(50),
     @Pro_ID VARCHAR(50),
     @Service_ID VARCHAR(50),
@@ -68,6 +73,50 @@ BEGIN
 
         IF @DML = 'I'
         BEGIN
+            -- Check for duplicate/overlapping service settings on this product for the SAME Service_ID
+            DECLARE @ConflictingSubId VARCHAR(50) = NULL;
+            DECLARE @ConflictStart VARCHAR(50) = NULL, @ConflictEnd VARCHAR(50) = NULL;
+
+            IF @StartOrder IS NOT NULL AND @StartSeries IS NOT NULL AND @EndOrder IS NOT NULL AND @EndSeries IS NOT NULL
+            BEGIN
+                SELECT TOP 1 
+                    @ConflictingSubId = Subscribe_Id,
+                    @ConflictStart = CONCAT(FORMAT(ISNULL(start_order, 0), '0000'), '-', FORMAT(ISNULL(start_series, 0), '0000')),
+                    @ConflictEnd = CONCAT(FORMAT(ISNULL(end_order, 0), '0000'), '-', FORMAT(ISNULL(end_series, 0), '0000'))
+                FROM M_ServiceSubscription WITH (NOLOCK)
+                WHERE Pro_ID = @Pro_ID
+                  AND Service_ID = @Service_ID
+                  AND (Comp_ID = @Comp_ID OR @Comp_ID IS NULL)
+                  AND Subscribe_Id <> ISNULL(@Subscribe_Id, '')
+                  AND (
+                      (
+                          start_order IS NOT NULL AND start_series IS NOT NULL 
+                          AND end_order IS NOT NULL AND end_series IS NOT NULL
+                          AND (@StartOrder < end_order OR (@StartOrder = end_order AND @StartSeries <= end_series))
+                          AND (start_order < @EndOrder OR (start_order = @EndOrder AND start_series <= @EndSeries))
+                      )
+                      OR
+                      (
+                          start_order IS NULL
+                          AND EXISTS (
+                              SELECT 1 FROM M_ServiceSubscriptionTrans sst WITH (NOLOCK) 
+                              WHERE sst.Subscribe_Id = M_ServiceSubscription.Subscribe_Id
+                          )
+                      )
+                  );
+
+                IF @ConflictingSubId IS NOT NULL
+                BEGIN
+                    ROLLBACK TRANSACTION;
+                    SELECT 0 AS success, 
+                           CONCAT('Service setting already done for service ', @Service_ID, ' on product ', @Pro_ID, 
+                                  CASE WHEN @ConflictStart IS NOT NULL AND @ConflictStart <> '0000-0000' 
+                                       THEN CONCAT(' (overlaps with series ', @ConflictStart, ' to ', @ConflictEnd, ')') 
+                                       ELSE '' END, '.') AS message;
+                    RETURN;
+                END
+            END
+
             -- Logic to INSERT into M_ServiceSubscriptionTrans
             INSERT INTO M_ServiceSubscriptionTrans (
                 Subscribe_Id,
@@ -88,10 +137,8 @@ BEGIN
 
             SET @NewSST_Id = SCOPE_IDENTITY();
             
-            -- Parsing JSON for Gifts if provided
             IF @GiftListJson IS NOT NULL
             BEGIN
-                -- Insert into Gift related table (e.g. M_ServiceSettingGifts)
                 INSERT INTO M_ServiceSettingGifts (SST_Id, Gift_ID, GiftName, GiftCount)
                 SELECT @NewSST_Id, Gift_ID, GiftName, GiftCount
                 FROM OPENJSON(@GiftListJson)
@@ -102,10 +149,8 @@ BEGIN
                 );
             END
 
-            -- Parsing JSON for TrackTraceSettings if provided
             IF @TrackTraceJson IS NOT NULL
             BEGIN
-                -- Insert into Track Trace related tables
                 INSERT INTO M_ServiceSettingTrackTrace (SST_Id, Typeid, TypeName, Typevalue, Orderno, [Index])
                 SELECT @NewSST_Id, Typeid, TypeName, Typevalue, Orderno, [Index]
                 FROM OPENJSON(@TrackTraceJson)
@@ -122,7 +167,6 @@ BEGIN
         END
         ELSE IF @DML = 'U'
         BEGIN
-            -- Update Logic
             UPDATE M_ServiceSubscriptionTrans
             SET WarrantyPeriod = ISNULL(@WarrantyPeriod, WarrantyPeriod),
                 DateFrom = ISNULL(@DateFrom, DateFrom),
@@ -148,7 +192,7 @@ BEGIN
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
 
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        SELECT 0 AS success, @ErrorMessage AS message;
+        SELECT 0 AS success, ERROR_MESSAGE() AS message;
     END CATCH
 END
+GO

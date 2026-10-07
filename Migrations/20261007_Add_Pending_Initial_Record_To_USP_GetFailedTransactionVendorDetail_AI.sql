@@ -1,16 +1,16 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetFailedTransactionVendorDetail_AI]    Script Date: 9/7/2026 4:45:00 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetFailedTransactionVendorDetail_AI]    Script Date: 10/7/2026 4:20:00 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
 -- ====================================================================
--- Stored Procedure: USP_GetFailedTransactionVendorDetail_AI
--- Purpose: Retrieves failed transaction raw items grouped at company level 
---          for Admin Vendor Failed Transaction Summary Report.
--- Used By: ReprocessTransactionService (FailedTransactionvendorDetail API)
+-- Migration: 20261007_Add_Pending_Initial_Record_To_USP_GetFailedTransactionVendorDetail_AI.sql
+-- Purpose: Adds (Status = 'Pending' AND FinalStatus = 'Pending' AND FinalRemarks = 'Initial Record') 
+--          condition to USP_GetFailedTransactionVendorDetail_AI so pending initial records are included
+--          in /api/api/AdminVendorReport/FailedTransactionvendorDetail
 -- ====================================================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetFailedTransactionVendorDetail_AI]
     @Comp_ID    VARCHAR(50)  = NULL,
@@ -148,8 +148,8 @@ BEGIN
       AND (@ParsedFromDate IS NULL OR UT.ReqDate >= @ParsedFromDate)
       AND (@ParsedToDate IS NULL OR UT.ReqDate < DATEADD(DAY, 1, @ParsedToDate))
       AND (@Search IS NULL OR UT.Comp_Id LIKE '%' + @Search + '%' OR UT.MobileNo LIKE '%' + @Search + '%' OR UT.ConsumerName LIKE '%' + @Search + '%')
-      AND ISNULL(UT.Code1, '0') <> '0' 
-      AND ISNULL(UT.Code2, '0') <> '0' 
+      AND ISNULL(Code1, '0') <> '0' 
+      AND ISNULL(Code2, '0') <> '0' 
       AND LEN(UT.Code1) = 5 
       AND LEN(UT.Code2) = 8
       AND EXISTS (

@@ -1,9 +1,9 @@
 -- =============================================
--- Author:      AI
--- Create date: 2026-06-25
--- Updated:     2026-10-06 (Filter only Counterfeit products with Service_ID = 'SRV1018' and unassigned codes Batch_No IS NULL)
--- Description: Get products details for ACAssignLabelToProductS API (based on PROC_SelectProductDetailsNoofCodes_ddl)
+-- Migration: 20261006_Filter_Counterfeit_In_PROC_ACAssignLabelToProductS.sql
+-- Description: Updates PROC_ACAssignLabelToProductS to filter only Counterfeit products
+--              subscribed to SRV1018 and products with unassigned codes (M_Code.Batch_No IS NULL)
 -- =============================================
+
 CREATE OR ALTER PROCEDURE [dbo].[PROC_ACAssignLabelToProductS]
     @Comp_ID    NVARCHAR(50),
     @Service_ID NVARCHAR(50) = 'SRV1018'
@@ -23,15 +23,7 @@ BEGIN
              WHERE Pro_ID = Pro_Reg.Pro_ID 
                AND (Service_ID = @Service_ID OR @Service_ID IS NULL)
                AND (IsDelete = 0 OR IsDelete IS NULL)
-             ORDER BY EntryDate DESC) AS PlanMasterPeriod,
-            (SELECT TOP 1 tp.Batch_No 
-             FROM T_Pro tp WITH (NOLOCK) 
-             WHERE tp.Pro_ID = Pro_Reg.Pro_ID 
-             ORDER BY tp.Entry_Date DESC, tp.Row_ID DESC) AS Batch_No,
-            (SELECT TOP 1 tp.MRP 
-             FROM T_Pro tp WITH (NOLOCK) 
-             WHERE tp.Pro_ID = Pro_Reg.Pro_ID 
-             ORDER BY tp.Entry_Date DESC, tp.Row_ID DESC) AS MRP
+             ORDER BY EntryDate DESC) AS PlanMasterPeriod
         FROM Comp_Reg WITH (NOLOCK)
         INNER JOIN Pro_Reg WITH (NOLOCK) ON Comp_Reg.Comp_ID = Pro_Reg.Comp_ID 
         WHERE (Pro_Reg.Comp_ID = @Comp_ID) 
@@ -66,15 +58,7 @@ BEGIN
              WHERE Pro_ID = Pro_Reg.Pro_ID 
                AND (Service_ID = @Service_ID OR @Service_ID IS NULL)
                AND (IsDelete = 0 OR IsDelete IS NULL)
-             ORDER BY EntryDate DESC) AS PlanMasterPeriod,
-            (SELECT TOP 1 tp.Batch_No 
-             FROM T_Pro tp WITH (NOLOCK) 
-             WHERE tp.Pro_ID = Pro_Reg.Pro_ID 
-             ORDER BY tp.Entry_Date DESC, tp.Row_ID DESC) AS Batch_No,
-            (SELECT TOP 1 tp.MRP 
-             FROM T_Pro tp WITH (NOLOCK) 
-             WHERE tp.Pro_ID = Pro_Reg.Pro_ID 
-             ORDER BY tp.Entry_Date DESC, tp.Row_ID DESC) AS MRP
+             ORDER BY EntryDate DESC) AS PlanMasterPeriod
         FROM Comp_Reg WITH (NOLOCK)
         INNER JOIN Pro_Reg WITH (NOLOCK) ON Comp_Reg.Comp_ID = Pro_Reg.Comp_ID 
         WHERE (Pro_Reg.Comp_ID = @Comp_ID) 

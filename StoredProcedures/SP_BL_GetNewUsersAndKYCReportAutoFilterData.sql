@@ -1,6 +1,6 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]    Script Date: 5/18/2026 2:19:50 PM ******/
+/****** Object:  StoredProcedure [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]    Script Date: 10/7/2026 2:05:00 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -8,19 +8,18 @@ GO
 
 ALTER PROCEDURE [dbo].[SP_BL_GetNewUsersAndKYCReportAutoFilterData]
     @Comp_Id VARCHAR(15),
-    @datePreset NVARCHAR(20) = NULL ,  -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER
+    @datePreset NVARCHAR(20) = NULL,   -- TODAY, YESTERDAY, WEEK, LASTWEEK, MONTH, QUARTER, YEAR, ALL
     @FromDate DATE = NULL,              
     @ToDate DATE = NULL,                
     @KYCStatusFilter NVARCHAR(20) = NULL,
     @StateFilter NVARCHAR(100) = NULL,   
     @Page INT = NULL,                    
     @Limit INT = NULL,
-    @IsExport BIT =NULL,
-    @Search nvarchar(30) = null
-  
+    @IsExport BIT = NULL,
+    @Search NVARCHAR(30) = NULL
 AS
 BEGIN
-   SET NOCOUNT ON;
+    SET NOCOUNT ON;
 
     ------------------------------------------------------
     -- Pagination Defaults
@@ -31,15 +30,9 @@ BEGIN
 
     DECLARE @Offset INT = (@Page - 1) * @Limit;
 
-
-
-
     ------------------------------------------------------
-    -- Date Range
+    -- Date Range Calculation
     ------------------------------------------------------
-    DECLARE @CompanyStartDate DATETIME;
-    SELECT @CompanyStartDate = ISNULL(Reg_Date, '2015-01-01') FROM Comp_Reg WHERE Comp_ID = @Comp_Id AND Status = 1;
-
     DECLARE @StartDate DATE = NULL;
     DECLARE @EndDate   DATE = NULL;
 
@@ -79,13 +72,13 @@ BEGIN
         IF (@datePreset = 'TODAY')
             SET @StartDate = @EndDate;
 
-        ELSE IF (@datePreset = 'LASTDAY')
+        ELSE IF (@datePreset = 'LASTDAY' OR @datePreset = 'YESTERDAY')
         BEGIN
             SET @StartDate = DATEADD(DAY, -1, @EndDate);
             SET @EndDate   = DATEADD(DAY, -1, @EndDate);
         END
 
-        ELSE IF (@datePreset = 'WEEK')
+        ELSE IF (@datePreset = 'WEEK' OR @datePreset = 'THIS WEEK')
             SET @StartDate = DATEADD(DAY, 1 - DATEPART(WEEKDAY, @EndDate), @EndDate);
 
         ELSE IF (@datePreset = 'LASTWEEK')
@@ -95,7 +88,7 @@ BEGIN
                                 DATEADD(WEEK, DATEDIFF(WEEK, 0, @EndDate), 0));
         END
 
-        ELSE IF (@datePreset = 'MONTH')
+        ELSE IF (@datePreset = 'MONTH' OR @datePreset = 'THIS MONTH')
             SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), MONTH(@EndDate), 1);
 
         ELSE IF (@datePreset = 'LASTMONTH')
@@ -105,14 +98,14 @@ BEGIN
                                 DATEADD(MONTH, DATEDIFF(MONTH, 0, @EndDate), 0));
         END
 
-        ELSE IF (@datePreset = 'QUARTER')
+        ELSE IF (@datePreset = 'QUARTER' OR @datePreset = 'THIS QUARTER')
         BEGIN
             SET @StartDate = DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @EndDate) - 1, 0);
             SET @EndDate   = DATEADD(DAY, -1,
                                 DATEADD(QUARTER, DATEDIFF(QUARTER, 0, @EndDate), 0));
         END
 
-        ELSE IF (@datePreset = 'YEAR')
+        ELSE IF (@datePreset = 'YEAR' OR @datePreset = 'THIS YEAR')
         BEGIN
             SET @StartDate = DATEFROMPARTS(YEAR(@EndDate), 1, 1);
         END
@@ -125,11 +118,11 @@ BEGIN
 
         ELSE -- ALL / NULL
         BEGIN
-            SET @StartDate = CAST(@CompanyStartDate AS DATE);
-            SET @EndDate   = DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
+            -- For ALL datePreset or unspecified, do not restrict date range
+            SET @StartDate = NULL;
+            SET @EndDate   = NULL;
         END
     END
-
 
     ------------------------------------------------------
     -- Base WHERE clause
@@ -138,8 +131,18 @@ BEGIN
         WHERE VKS.Comp_ID = @Comp_Id
           AND MC.IsDelete = 0';
 
-    IF @StartDate IS NOT NULL
-        SET @BaseWhere += N' AND CAST(VKS.Entry_Date AS DATE) BETWEEN @StartDate AND @EndDate';
+    -- Apply date range filter:
+    -- If custom dates were supplied, always respect them.
+    -- If searching (e.g. by mobile number) and no custom dates provided, don't restrict by preset date window.
+    IF (@Search IS NULL OR LTRIM(RTRIM(@Search)) = '') OR (@FromDate IS NOT NULL AND @ToDate IS NOT NULL)
+    BEGIN
+        IF @StartDate IS NOT NULL AND @EndDate IS NOT NULL
+            SET @BaseWhere += N' AND CAST(VKS.Entry_Date AS DATE) BETWEEN @StartDate AND @EndDate';
+        ELSE IF @StartDate IS NOT NULL
+            SET @BaseWhere += N' AND CAST(VKS.Entry_Date AS DATE) >= @StartDate';
+        ELSE IF @EndDate IS NOT NULL
+            SET @BaseWhere += N' AND CAST(VKS.Entry_Date AS DATE) <= @EndDate';
+    END
 
     IF @KYCStatusFilter IS NOT NULL
     BEGIN
@@ -160,7 +163,7 @@ BEGIN
     -- Mobile Number & User Type Search
     ------------------------------------------------------
     IF @Search IS NOT NULL AND LTRIM(RTRIM(@Search)) <> ''
-        SET @BaseWhere += N' AND (MC.MobileNo LIKE ''%'' + @Search + ''%'' OR UT.User_Type LIKE ''%'' + @Search + ''%'')';
+        SET @BaseWhere += N' AND (MC.MobileNo LIKE ''%'' + @Search + ''%'' OR UT.User_Type LIKE ''%'' + @Search + ''%'' OR MC.ConsumerName LIKE ''%'' + @Search + ''%'')';
 
     ------------------------------------------------------
     -- Data Query
@@ -193,7 +196,7 @@ BEGIN
         CASE WHEN MC.bankekycStatus IN (''1'', ''Online'') THEN ''Online'' ELSE ISNULL(MC.bankekycStatus, '''') END AS bankekycStatus,
 
         MC.pancard_number,
-        VKS.kycremark, -- Keep original name too
+        VKS.kycremark,
 
         -- Bank Information (Latest Bank Record)
         MB.[Bank_Name] AS bankName,
@@ -308,3 +311,4 @@ BEGIN
             @Page;
     END
 END
+GO
