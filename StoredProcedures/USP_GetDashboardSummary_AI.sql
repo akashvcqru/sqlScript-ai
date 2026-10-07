@@ -128,7 +128,12 @@ BEGIN
                                         THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                                     ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                                 END
-                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                                    ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                                END
                             ELSE 0.00
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
@@ -146,7 +151,12 @@ BEGIN
                                         THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                                     ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                                 END
-                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                                    ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                                END
                             ELSE 0.00
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
@@ -188,7 +198,12 @@ BEGIN
                                         THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                                     ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                                 END
-                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                                    ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                                END
                             ELSE 0.00
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
@@ -206,7 +221,12 @@ BEGIN
                                         THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                                     ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                                 END
-                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                                CASE 
+                                    WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                        THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                                    ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                                END
                             ELSE 0.00
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * @Multiplier
@@ -389,7 +409,12 @@ BEGIN
                                     THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10
                                 ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                             END
-                        WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                        WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                            CASE 
+                                WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                    THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                                ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            END
                         ELSE 0.00
                     END
                 WHEN BL.Cash IS NOT NULL AND BL.Cash > 0 THEN BL.Cash * @Multiplier
@@ -609,7 +634,12 @@ BEGIN
                             WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383' THEN [dbo].[fnPointSp](TRY_CAST(BL.Points AS INT))
                             ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                         END
-                    WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                    WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
+                        CASE 
+                            WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
+                                THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10
+                            ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                        END
                     ELSE 0.00
                 END
             AS DECIMAL(18,2))), 0.00)
