@@ -1,17 +1,16 @@
 -- ============================================================
 -- Stored Procedure: USP_InsertServiceSettingAnticounterfit_AI
--- Purpose        : Ultra-fast insert for Anticounterfit service setting
---                  (Optimized to execute in milliseconds without timeouts)
+-- Purpose        : Insert Anti-counterfeiting service setting.
+--                  Prevents duplicate settings and overlapping series ranges.
 -- ============================================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingAnticounterfit_AI]
-    @Comp_ID      NVARCHAR(50),
-    @Pro_ID       NVARCHAR(50),
-    @Service_ID   NVARCHAR(50)   = 'SRV1018',
-    @Subscribe_Id NVARCHAR(50)   = NULL,
+    @Comp_ID      VARCHAR(50),
+    @Pro_ID       VARCHAR(50),
+    @Service_ID   VARCHAR(50)    = 'SRV1018',
+    @Subscribe_Id VARCHAR(50)    = NULL,
 
     @DateFrom     DATETIME       = NULL,
     @DateTo       DATETIME       = NULL,
-
     @Comments     NVARCHAR(1000) = NULL,
     @EntryDate    DATETIME       = NULL,
 
@@ -26,7 +25,6 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingAnticounterfit_AI]
     @Maxval          NUMERIC(18,0) = 0,
     @totalamont      NUMERIC(18,0) = 0,
 
-    -- Batch-related fields
     @MRP            NUMERIC(18, 2) = 0,
     @Mfd_Date       VARCHAR(50)    = NULL,
     @Exp_Date       VARCHAR(50)    = NULL,
@@ -59,107 +57,12 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- 1. Sanitize and resolve or create Subscribe_Id directly (ONE TIME pattern)
-        IF LTRIM(RTRIM(ISNULL(@Subscribe_Id, ''))) = ''
-            SET @Subscribe_Id = NULL;
-
-        IF @Subscribe_Id IS NULL
-        BEGIN
-            SELECT TOP 1 @Subscribe_Id = Subscribe_Id
-            FROM M_ServiceSubscription WITH (NOLOCK)
-            WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID
-            ORDER BY EntryDate DESC;
-        END
-            
-        IF @Subscribe_Id IS NULL
-        BEGIN
-                DECLARE @PrPrefix VARCHAR(50), @PrStart BIGINT;
-                SELECT TOP 1 @PrPrefix = PrPrefix, @PrStart = PrStart 
-                FROM Code_Gen 
-                WHERE Prfor = 'Subscription' AND PrPrefix = 'SSI';
-
-                IF @PrPrefix IS NULL
-                    SET @Subscribe_Id = 'SSI' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
-                ELSE
-                BEGIN
-                    SET @Subscribe_Id = @PrPrefix + CAST(@PrStart AS VARCHAR(50));
-                    UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'Subscription' AND PrPrefix = @PrPrefix;
-                END
-                
-                INSERT INTO M_ServiceSubscription
-                (
-                    Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, 
-                    PlanMasterPeriod, PlanSalePeriod, PlanMasterPrice, PlanSalePrice, 
-                    DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify,
-                    TransType
-                )
-                VALUES
-                (
-                    @Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', 
-                    12, 12, 0, 0, 
-                    ISNULL(@DateFrom, GETDATE()), ISNULL(@DateTo, DATEADD(YEAR, 1, GETDATE())), ISNULL(@EntryDate, GETDATE()), 1, 0, 1,
-                    'Service'
-                );
-            END
-
-        DECLARE @NewSST_Id BIGINT;
-
-        -- 2. Insert or update M_ServiceSubscriptionTrans (keep single record if already exists)
-        IF @Service_ID = 'SRV1018' AND EXISTS (SELECT 1 FROM M_ServiceSubscriptionTrans WITH (NOLOCK) WHERE Subscribe_Id = @Subscribe_Id)
-        BEGIN
-            SELECT TOP 1 @NewSST_Id = SST_Id 
-            FROM M_ServiceSubscriptionTrans WITH (NOLOCK)
-            WHERE Subscribe_Id = @Subscribe_Id 
-            ORDER BY Entry_Date DESC;
-
-            UPDATE M_ServiceSubscriptionTrans
-            SET DateFrom = ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE DateFrom END),
-                DateTo = ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE DateTo END),
-                Comments = ISNULL(@Comments, Comments),
-                IsCashConvert = ISNULL(@IsCashConvert, IsCashConvert)
-            WHERE SST_Id = @NewSST_Id;
-        END
-        ELSE
-        BEGIN
-            INSERT INTO M_ServiceSubscriptionTrans
-            (
-                Subscribe_Id,
-                Points, IsCashConvert, IsCash,
-                DateFrom, DateTo,
-                Comments, Entry_Date,
-                Frequency, IsActive, IsDelete,
-                AmtType, Minval, Maxval, totalamont
-            )
-            VALUES
-            (
-                @Subscribe_Id,
-                @Points, @IsCashConvert, @IsCash,
-                ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END),
-                ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END),
-                @Comments, ISNULL(@EntryDate, GETDATE()),
-                @Frequency, @IsActive, @IsDelete,
-                @AmtType, @Minval, @Maxval, @totalamont
-            );
-
-            SET @NewSST_Id = SCOPE_IDENTITY();
-        END
-
-        -- 2.1 Check if this Batch already exists in T_Pro (e.g. created via AddAssignLabelToProduct)
-        DECLARE @ExistingTPro_RowID BIGINT = NULL;
-        IF @Batch_No IS NOT NULL AND @Batch_No <> ''
-        BEGIN
-            SELECT TOP 1 @ExistingTPro_RowID = Row_ID 
-            FROM T_Pro WITH (NOLOCK) 
-            WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
-        END
-
-        -- 3. Parse and Validate Series Range if provided
+        -- 1. Parse and Validate Series Range if provided
         DECLARE @StartOrder INT = NULL, @StartSerial INT = NULL;
         DECLARE @EndOrder INT = NULL, @EndSerial INT = NULL;
 
         IF ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> ''
         BEGIN
-            -- Parse SeriesStart (handles "0000-0400" or "BP17-0000-0400")
             IF @SeriesStart LIKE '%-%-%'
             BEGIN
                 DECLARE @StartPrefix VARCHAR(50) = LEFT(@SeriesStart, CHARINDEX('-', @SeriesStart) - 1);
@@ -179,7 +82,6 @@ BEGIN
                 SET @StartSerial = TRY_CAST(SUBSTRING(@SeriesStart, CHARINDEX('-', @SeriesStart) + 1, LEN(@SeriesStart)) AS INT);
             END
 
-            -- Parse SeriesEnd (handles "0000-0450" or "BP17-0000-0450")
             IF @SeriesEnd LIKE '%-%-%'
             BEGIN
                 DECLARE @EndPrefix VARCHAR(50) = LEFT(@SeriesEnd, CHARINDEX('-', @SeriesEnd) - 1);
@@ -212,127 +114,122 @@ BEGIN
                 SELECT 0 AS success, 'SeriesStart (' + @SeriesStart + ') cannot be greater than SeriesEnd (' + @SeriesEnd + ').' AS message;
                 RETURN;
             END
+        END
 
-            -- Validate that both Start code and End code exist in M_Code
-            DECLARE @StartCodeExists BIT = 0, @EndCodeExists BIT = 0;
+        -- 1.1 Check for duplicate/overlapping service settings on this product for the SAME Service_ID
+        DECLARE @ConflictingSubId VARCHAR(50) = NULL;
+        DECLARE @ConflictStart VARCHAR(50) = NULL, @ConflictEnd VARCHAR(50) = NULL;
 
-            IF @Comp_ID = 'Comp-1693'
+        IF @StartOrder IS NOT NULL AND @StartSerial IS NOT NULL AND @EndOrder IS NOT NULL AND @EndSerial IS NOT NULL
+        BEGIN
+            SELECT TOP 1 
+                @ConflictingSubId = Subscribe_Id,
+                @ConflictStart = CONCAT(FORMAT(ISNULL(start_order, 0), '0000'), '-', FORMAT(ISNULL(start_series, 0), '0000')),
+                @ConflictEnd = CONCAT(FORMAT(ISNULL(end_order, 0), '0000'), '-', FORMAT(ISNULL(end_series, 0), '0000'))
+            FROM M_ServiceSubscription WITH (NOLOCK)
+            WHERE Pro_ID = @Pro_ID
+              AND Service_ID = @Service_ID
+              AND (Comp_ID = @Comp_ID OR @Comp_ID IS NULL)
+              AND Subscribe_Id <> ISNULL(@Subscribe_Id, '')
+              AND (
+                  (
+                      start_order IS NOT NULL AND start_series IS NOT NULL 
+                      AND end_order IS NOT NULL AND end_series IS NOT NULL
+                      AND (@StartOrder < end_order OR (@StartOrder = end_order AND @StartSerial <= end_series))
+                      AND (start_order < @EndOrder OR (start_order = @EndOrder AND start_series <= @EndSerial))
+                  )
+                  OR
+                  (
+                      start_order IS NULL
+                      AND EXISTS (
+                          SELECT 1 FROM M_ServiceSubscriptionTrans sst WITH (NOLOCK) 
+                          WHERE sst.Subscribe_Id = M_ServiceSubscription.Subscribe_Id
+                      )
+                  )
+              );
+
+            IF @ConflictingSubId IS NOT NULL
             BEGIN
-                IF EXISTS (SELECT 1 FROM M_Code_PFL WITH (NOLOCK) WHERE Pro_ID = @Pro_ID AND Series_Order = @StartOrder AND Series_Serial = @StartSerial)
-                    SET @StartCodeExists = 1;
-                IF EXISTS (SELECT 1 FROM M_Code_PFL WITH (NOLOCK) WHERE Pro_ID = @Pro_ID AND Series_Order = @EndOrder AND Series_Serial = @EndSerial)
-                    SET @EndCodeExists = 1;
+                ROLLBACK TRANSACTION;
+                SELECT 0 AS success, 
+                       CONCAT('Service setting already done for service ', @Service_ID, ' on product ', @Pro_ID, 
+                              CASE WHEN @ConflictStart IS NOT NULL AND @ConflictStart <> '0000-0000' 
+                                   THEN CONCAT(' (overlaps with series ', @ConflictStart, ' to ', @ConflictEnd, ')') 
+                                   ELSE '' END, '.') AS message;
+                RETURN;
             END
+        END
+
+        -- 2. Resolve or create Subscribe_Id
+        IF LTRIM(RTRIM(ISNULL(@Subscribe_Id, ''))) = ''
+            SET @Subscribe_Id = NULL;
+
+        IF @Subscribe_Id IS NULL
+        BEGIN
+            SELECT TOP 1 @Subscribe_Id = Subscribe_Id
+            FROM M_ServiceSubscription WITH (NOLOCK)
+            WHERE Comp_ID = @Comp_ID AND Pro_ID = @Pro_ID AND Service_ID = @Service_ID
+            ORDER BY EntryDate DESC;
+        END
+
+        IF @Subscribe_Id IS NULL
+        BEGIN
+            DECLARE @PrPrefix VARCHAR(50), @PrStart BIGINT;
+            SELECT TOP 1 @PrPrefix = PrPrefix, @PrStart = PrStart 
+            FROM Code_Gen 
+            WHERE Prfor = 'Subscription' AND PrPrefix = 'SSI';
+
+            IF @PrPrefix IS NULL
+                SET @Subscribe_Id = 'SSI' + CAST(CAST(RAND() * 1000000 AS INT) AS VARCHAR(10));
             ELSE
             BEGIN
-                IF EXISTS (SELECT 1 FROM M_Code WITH (NOLOCK) WHERE Pro_ID = @Pro_ID AND Series_Order = @StartOrder AND Series_Serial = @StartSerial)
-                    SET @StartCodeExists = 1;
-                IF EXISTS (SELECT 1 FROM M_Code WITH (NOLOCK) WHERE Pro_ID = @Pro_ID AND Series_Order = @EndOrder AND Series_Serial = @EndSerial)
-                    SET @EndCodeExists = 1;
+                SET @Subscribe_Id = @PrPrefix + CAST(@PrStart AS VARCHAR(50));
+                UPDATE Code_Gen SET PrStart = PrStart + 1 WHERE Prfor = 'Subscription' AND PrPrefix = @PrPrefix;
             END
-
-            IF @StartCodeExists = 0 OR @EndCodeExists = 0
-            BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
-                RETURN;
-            END
-
-            -- Check code existence and batch status in M_Code (or M_Code_PFL)
-            DECLARE @TotalSeriesCount INT = 0;
-            DECLARE @UnassignedBatchCount INT = 0;
-            DECLARE @DistinctBatchCount INT = 0;
-            DECLARE @AssignedBatchNo NVARCHAR(50) = NULL;
-
-            IF @Comp_ID = 'Comp-1693'
-            BEGIN
-                SELECT 
-                    @TotalSeriesCount = COUNT(1),
-                    @UnassignedBatchCount = SUM(CASE WHEN Batch_No IS NULL OR LTRIM(RTRIM(Batch_No)) = '' THEN 1 ELSE 0 END),
-                    @DistinctBatchCount = COUNT(DISTINCT CASE WHEN Batch_No IS NOT NULL AND LTRIM(RTRIM(Batch_No)) <> '' THEN Batch_No END),
-                    @AssignedBatchNo = MAX(Batch_No)
-                FROM M_Code_PFL WITH (NOLOCK)
-                WHERE Pro_ID = @Pro_ID
-                  AND ((Series_Order = @StartOrder AND Series_Order = @EndOrder AND Series_Serial BETWEEN @StartSerial AND @EndSerial)
-                       OR (@StartOrder < @EndOrder AND ((Series_Order = @StartOrder AND Series_Serial >= @StartSerial) OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial) OR (Series_Order > @StartOrder AND Series_Order < @EndOrder))));
-            END
-            ELSE
-            BEGIN
-                SELECT 
-                    @TotalSeriesCount = COUNT(1),
-                    @UnassignedBatchCount = SUM(CASE WHEN Batch_No IS NULL OR LTRIM(RTRIM(Batch_No)) = '' THEN 1 ELSE 0 END),
-                    @DistinctBatchCount = COUNT(DISTINCT CASE WHEN Batch_No IS NOT NULL AND LTRIM(RTRIM(Batch_No)) <> '' THEN Batch_No END),
-                    @AssignedBatchNo = MAX(Batch_No)
-                FROM M_Code WITH (NOLOCK)
-                WHERE Pro_ID = @Pro_ID
-                  AND ((Series_Order = @StartOrder AND Series_Order = @EndOrder AND Series_Serial BETWEEN @StartSerial AND @EndSerial)
-                       OR (@StartOrder < @EndOrder AND ((Series_Order = @StartOrder AND Series_Serial >= @StartSerial) OR (Series_Order = @EndOrder AND Series_Serial <= @EndSerial) OR (Series_Order > @StartOrder AND Series_Order < @EndOrder))));
-            END
-
-            IF @StartOrder = @EndOrder
-            BEGIN
-                DECLARE @ExpectedCount INT = (@EndSerial - @StartSerial) + 1;
-                IF @TotalSeriesCount < @ExpectedCount
-                BEGIN
-                    ROLLBACK TRANSACTION;
-                    SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
-                    RETURN;
-                END
-            END
-
-            IF ISNULL(@TotalSeriesCount, 0) = 0
-            BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'Invalid code series. Please verify the start and end series range.' AS message;
-                RETURN;
-            END
-
-            -- Check if any codes in the series range are pending label assignment
-            IF ISNULL(@UnassignedBatchCount, 0) > 0
-            BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'As per given series, label assignment is pending. Please assign labels to product first via Assign Label to Product.' AS message;
-                RETURN;
-            END
-
-            -- Check if codes span multiple batches
-            IF @DistinctBatchCount > 1
-            BEGIN
-                ROLLBACK TRANSACTION;
-                SELECT 0 AS success, 'The specified series range spans multiple batches. Please configure services for one batch range at a time.' AS message;
-                RETURN;
-            END
-
-            -- Auto-resolve existing T_Pro Row_ID from M_Code.Batch_No (which stores T_Pro.Row_ID)
-            IF @ExistingTPro_RowID IS NULL AND @AssignedBatchNo IS NOT NULL
-            BEGIN
-                SET @ExistingTPro_RowID = TRY_CAST(@AssignedBatchNo AS BIGINT);
-            END
-        END
-        ELSE IF @ExistingTPro_RowID IS NULL AND @Batch_No IS NOT NULL AND @Batch_No <> ''
-        BEGIN
-            -- If series not provided, check if batch exists in T_Pro
-            SELECT TOP 1 @ExistingTPro_RowID = Row_ID 
-            FROM T_Pro WITH (NOLOCK) 
-            WHERE Pro_ID = @Pro_ID AND (Batch_No = @Batch_No OR Row_ID = TRY_CAST(@Batch_No AS BIGINT));
+            
+            INSERT INTO M_ServiceSubscription
+            (
+                Subscribe_Id, Service_ID, Comp_ID, Pro_ID, Plan_ID, PlanName, 
+                PlanMasterPeriod, PlanSalePeriod, PlanMasterPrice, PlanSalePrice, 
+                DateFrom, DateTo, EntryDate, IsActive, IsDelete, IsAdminVerify,
+                TransType, start_order, start_series, end_order, end_series
+            )
+            VALUES
+            (
+                @Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, 'PLAN_DEFAULT', 'Manual Subscription', 
+                12, 12, 0, 0, 
+                ISNULL(@DateFrom, GETDATE()), ISNULL(@DateTo, DATEADD(YEAR, 1, GETDATE())), ISNULL(@EntryDate, GETDATE()), 1, 0, 1,
+                'Service', @StartOrder, @StartSerial, @EndOrder, @EndSerial
+            );
         END
 
-        -- 4. Update T_Pro metadata only if Batch exists (never create a new batch here)
-        IF @ExistingTPro_RowID IS NOT NULL
-        BEGIN
-            UPDATE T_Pro
-            SET MRP = ISNULL(@MRP, MRP),
-                Mfd_Date = CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE Mfd_Date END,
-                Exp_Date = CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE Exp_Date END,
-                Comments = ISNULL(@Comments, Comments),
-                Series_Limit = CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
-                                    THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
-                                    ELSE ISNULL(Series_Limit, '') END
-            WHERE Row_ID = @ExistingTPro_RowID;
-        END
+        DECLARE @NewSST_Id BIGINT;
+
+        -- 3. Insert into M_ServiceSubscriptionTrans
+        INSERT INTO M_ServiceSubscriptionTrans
+        (
+            Subscribe_Id,
+            Points, IsCashConvert, IsCash,
+            DateFrom, DateTo,
+            Comments, Entry_Date,
+            Frequency, IsActive, IsDelete,
+            AmtType, Minval, Maxval, totalamont
+        )
+        VALUES
+        (
+            @Subscribe_Id,
+            @Points, @IsCashConvert, @IsCash,
+            ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END),
+            ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END),
+            @Comments, ISNULL(@EntryDate, GETDATE()),
+            @Frequency, 1, 0,
+            @AmtType, @Minval, @Maxval, @totalamont
+        );
+
+        SET @NewSST_Id = SCOPE_IDENTITY();
 
         COMMIT TRANSACTION;
-        SELECT 1 AS success, 'Anticounterfit service setting added successfully.' AS message, @NewSST_Id AS NewSST_Id;
+        SELECT 1 AS success, 'Anti-counterfeiting service setting added successfully.' AS message, @NewSST_Id AS NewSST_Id, @Subscribe_Id AS Subscribe_Id;
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
