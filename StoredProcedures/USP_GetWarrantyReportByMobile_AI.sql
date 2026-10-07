@@ -117,14 +117,21 @@ BEGIN
         billno NVARCHAR(MAX),
         id INT,
         vehicleno NVARCHAR(MAX),
-        device NVARCHAR(MAX)
+        device NVARCHAR(MAX),
+        imagepath NVARCHAR(MAX),
+        serialno VARCHAR(100),
+        oldserialno VARCHAR(100),
+        email NVARCHAR(MAX),
+        claimdate DATETIME,
+        comp_id VARCHAR(50)
     );
 
-    INSERT INTO #wrr (iswarrantyclaimed, WarrantyPeriod, PurchaseDate, vendorclaimstatus, ExpirationDate, code1, code2, Comment, vendorcomments, imagepathbill, billno, id, vehicleno, device)
+    INSERT INTO #wrr (iswarrantyclaimed, WarrantyPeriod, PurchaseDate, vendorclaimstatus, ExpirationDate, code1, code2, Comment, vendorcomments, imagepathbill, billno, id, vehicleno, device, imagepath, serialno, oldserialno, email, claimdate, comp_id)
     SELECT iswarrantyclaimed, WarrantyPeriod, [PurchaseDate], vendorclaimstatus, ExpirationDate, 
-           TRY_CAST(SUBSTRING(code, 1, 5) AS INT), TRY_CAST(SUBSTRING(code, 7, 8) AS INT), 
+           TRY_CAST(SUBSTRING(code, 1, CHARINDEX('-', code + '-') - 1) AS INT),
+           TRY_CAST(SUBSTRING(code, CHARINDEX('-', code + '-') + 1, LEN(code)) AS INT), 
            Comment, vendorcomments, imagepathbill, billno, id, 
-           billno, State 
+           vehicleNumber, State, ImagePath, Serialno, OldSerialno, Email, claimdate, Comp_id 
     FROM [WarrentyDetails] WITH (NOLOCK)
     WHERE Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91);
 
@@ -176,9 +183,10 @@ BEGIN
             enq.[enq_date], 
             CASE 
                 WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) < 0 THEN 'Warranty has been expired'
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND wr.vendorclaimstatus='Approved' AND serv.[service_id] = 'SRV1023' THEN 'Warranty claimed has been approved'
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND wr.vendorclaimstatus='Reject' AND serv.[service_id] = 'SRV1023' THEN 'Warranty claimed has been rejected'
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND wr.vendorclaimstatus='Pending' AND serv.[service_id] = 'SRV1023' THEN 'Warranty Claimed is Pending for approval'
+                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='Approved' OR wr.iswarrantyclaimed='1') AND serv.[service_id] = 'SRV1023' THEN 'Warranty claimed has been approved'
+                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='Reject' OR wr.iswarrantyclaimed='2') AND serv.[service_id] = 'SRV1023' THEN 'Warranty claimed has been rejected'
+                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='ReClaimed' OR wr.iswarrantyclaimed='3') AND serv.[service_id] = 'SRV1023' THEN 'Warranty Claimed has been reclaimed'
+                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='Pending' OR wr.iswarrantyclaimed='0') AND serv.[service_id] = 'SRV1023' THEN 'Warranty Claimed is Pending for approval'
                 WHEN enq.[is_success] = '0' THEN @MsgInvalid
                 WHEN enq.[is_success] = '1' AND (enq.enq_date NOT BETWEEN sub.DateFrom AND sub.DateTo) THEN
                     CONCAT(serv.ServiceName, ' ', @MsgExpired)
@@ -187,8 +195,12 @@ BEGIN
             cr.Comp_name,
             enq.received_code1 AS code1,
             enq.received_code2 AS code2,
+            CONCAT(enq.received_code1, enq.received_code2) AS [Code],
             enq.MobileNo AS MobileNo, 
+            enq.MobileNo AS [Mobile],
             product.[pro_name], 
+            product.[pro_name] AS [Product_Name],
+            (SELECT TOP 1 Logo_Path FROM Comp_Reg WITH (NOLOCK) WHERE Comp_ID = cr.Comp_ID) AS [LogoPath],
             CASE 
                 WHEN enq.[is_success] = '0' THEN 'invalid' 
                 ELSE product.[pro_id] 
@@ -197,14 +209,32 @@ BEGIN
             CASE WHEN serv.[service_id]<>'SRV1023' OR wr.[PurchaseDate] IS NULL THEN '' ELSE CONVERT(VARCHAR(20), wr.[PurchaseDate], 120) END AS [PurchaseDate],
             CASE WHEN serv.[service_id]<>'SRV1023' OR wr.WarrantyPeriod IS NULL THEN '' ELSE wr.WarrantyPeriod END AS WarrantyPeriod,
             CASE WHEN serv.[service_id]<>'SRV1023' OR wr.ExpirationDate IS NULL THEN '' ELSE CONVERT(VARCHAR(20), wr.ExpirationDate, 120) END AS ExpirationDate,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.ExpirationDate IS NULL THEN '' ELSE CAST(DATEDIFF(day, GETDATE(), wr.ExpirationDate) AS VARCHAR(10)) END AS NumberofDays,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.iswarrantyclaimed IS NULL THEN '' ELSE wr.iswarrantyclaimed END AS iswarrantyclaimed,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.vendorcomments IS NULL THEN '' ELSE wr.vendorcomments END AS vendorcomments,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.vendorclaimstatus IS NULL THEN '' ELSE wr.vendorclaimstatus END AS vendorclaimstatus,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE wr.billno END AS billno,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE wr.imagepathbill END AS imagepathbill,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE wr.vehicleno END AS vehicleno,  
+            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.ExpirationDate IS NULL THEN 0 ELSE DATEDIFF(day, GETDATE(), wr.ExpirationDate) END AS NumberOfDays,
+            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.iswarrantyclaimed IS NULL THEN '' ELSE wr.iswarrantyclaimed END AS IsWarrantyClaimed,
+            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.imagepath IS NULL THEN '' ELSE wr.imagepath END AS ImagePath,
+            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.Comment IS NULL THEN '' ELSE wr.Comment END AS Comment,
+            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.vendorcomments IS NULL THEN '' ELSE wr.vendorcomments END AS VendorComments,
+            CASE 
+                WHEN wr.iswarrantyclaimed = '0' THEN 'Pending' 
+                WHEN wr.iswarrantyclaimed = '1' THEN 'Approved' 
+                WHEN wr.iswarrantyclaimed = '2' THEN 'Reject' 
+                WHEN wr.iswarrantyclaimed = '3' THEN 'ReClaimed' 
+                ELSE ISNULL(wr.vendorclaimstatus, '') 
+            END AS VendorClaimStatus,
+            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.billno, '') END AS BillNo,
+            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.serialno, '') END AS Serialno,
+            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.oldserialno, '') END AS OldSerialno,
+            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.email, '') END AS EmailID,
+            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.claimdate IS NULL THEN NULL ELSE wr.claimdate END AS ClaimDate,
+            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.imagepathbill, '') END AS ImagePathBill,
+            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.vehicleno, '') END AS vehicleno,  
+            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.vehicleno, '') END AS VehicleNumber,
             CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE CAST(wr.id AS VARCHAR(50)) END AS warranty_id,
+            CASE WHEN serv.[service_id]<>'SRV1023' THEN NULL ELSE wr.id END AS id,
+            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.device, '') END AS [State],
+            CASE WHEN serv.[service_id]<>'SRV1023' THEN cr.comp_id ELSE ISNULL(wr.comp_id, cr.comp_id) END AS Comp_id,
+            ISNULL(c.ConsumerName, '') AS [UserName],
+            CASE WHEN (wr.vendorclaimstatus = 'Approved' OR wr.iswarrantyclaimed = '1') AND (wr.oldserialno IS NULL OR wr.oldserialno = '') THEN 1 ELSE 0 END AS IsReplace,
             '' AS Remarks 
         FROM #EnqResults enq
         LEFT JOIN m_code code WITH (NOLOCK) ON code.code1 = enq.received_code1 AND code.code2 = enq.received_code2
@@ -214,6 +244,7 @@ BEGIN
         LEFT JOIN m_service serv WITH (NOLOCK) ON serv.service_id = sub.service_id
         LEFT JOIN #wrr wr ON enq.received_code1 = wr.code1 AND enq.received_code2 = wr.code2
         LEFT JOIN VW_getservicesubscribe serv_tran WITH (NOLOCK) ON serv_tran.Subscribe_Id = sub.Subscribe_Id 
+        LEFT JOIN [dbo].[M_Consumer] c WITH (NOLOCK) ON RIGHT(c.MobileNo, 10) = RIGHT(enq.MobileNo, 10) AND c.IsDelete = 0
         WHERE serv.[Service_ID] = 'SRV1023'
           AND (@Comp_Id IS NULL OR @Comp_Id = '' OR cr.comp_id = @Comp_Id)
     )
