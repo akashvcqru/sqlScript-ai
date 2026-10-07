@@ -1,15 +1,16 @@
 USE [Vcqru]
 GO
-/****** Object:  StoredProcedure [dbo].[USP_GetFailedTransactionList_AI]    Script Date: 9/1/2026 4:15:00 PM ******/
+/****** Object:  StoredProcedure [dbo].[USP_GetFailedTransactionList_AI]    Script Date: 10/7/2026 3:55:00 PM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
 -- ====================================================================
--- Stored Procedure: USP_GetFailedTransactionList_AI
--- Purpose: Retrieves detailed list of failed transactions for reporting.
--- Used By: ReprocessTransactionService (Failed Transaction List API)
+-- Migration: 20261007_Add_Pending_Initial_Record_To_USP_GetFailedTransactionList_AI.sql
+-- Purpose: Adds (Status = 'Pending' AND FinalStatus = 'Pending' AND FinalRemarks = 'Initial Record') 
+--          condition to USP_GetFailedTransactionList_AI so pending initial records are included
+--          in /api/api/vendor/failedTransactions/FailedtransactionList
 -- ====================================================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetFailedTransactionList_AI]
     @Comp_ID    VARCHAR(50)  = NULL,
