@@ -392,7 +392,7 @@ BEGIN
             ELSE 0
         END AS IsVerified
     FROM #RankedScans E
-    LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid AND (P.MobileNo = E.MobileNo OR '91' + P.MobileNo = E.MobileNo OR P.MobileNo = '91' + E.MobileNo OR (LEN(P.MobileNo) >= 10 AND LEN(E.MobileNo) >= 10 AND RIGHT(P.MobileNo, 10) = RIGHT(E.MobileNo, 10)) OR P.MobileNo IS NULL)
+    LEFT JOIN #Points P ON P.M_Codeid = E.M_Codeid AND (P.MobileNo = E.MobileNo OR '91' + P.MobileNo = E.MobileNo OR P.MobileNo = '91' + E.MobileNo OR (LEN(P.MobileNo) >= 10 AND LEN(E.MobileNo) >= 10 AND RIGHT(P.MobileNo, 10) = RIGHT(E.MobileNo, 10)))
     LEFT JOIN #CodeConfigPoints CP ON CP.M_Codeid = E.M_Codeid;
 
     -- 4b. Extra/Non-Scan Earned Items (Bonus, KYC, Repair, Invoice, etc. matching Section 3 of CodesActivityReport)
