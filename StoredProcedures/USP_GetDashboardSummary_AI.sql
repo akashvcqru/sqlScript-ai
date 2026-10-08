@@ -442,10 +442,14 @@ BEGIN
       AND LOWER(ISNULL(BL.ServiceName, '')) NOT IN ('refral', 'referral')
       AND (
           BL.BuildLoyaltyOrReferralMCodeCheckid IS NULL
-          OR NOT EXISTS (
-              SELECT 1 FROM #Enq E 
-              WHERE E.M_Codeid = MCMC.M_Codeid 
-                AND (E.MobileNo = MC.MobileNo OR '91' + E.MobileNo = MC.MobileNo OR E.MobileNo = '91' + MC.MobileNo)
+          OR (
+              ISNULL(BMC.M_Consumer_MCOdeid, 0) > 0 
+              AND MCMC.M_Codeid IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM #Enq E 
+                  WHERE (E.M_Codeid = MCMC.M_Codeid OR (BL.Code1 IS NOT NULL AND E.Received_Code1 = BL.Code1 AND E.Received_Code2 = BL.Code2))
+                    AND (E.MobileNo = MC.MobileNo OR '91' + E.MobileNo = MC.MobileNo OR E.MobileNo = '91' + MC.MobileNo)
+              )
           )
       );
 
