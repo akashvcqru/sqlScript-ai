@@ -270,14 +270,14 @@ BEGIN
                     WHEN BL.Points IS NOT NULL AND TRY_CAST(BL.Points AS DECIMAL(18,2)) > 0 THEN
                         CASE 
                             WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
-                                THEN TRY_CAST(BL.Points AS DECIMAL(18,2)) * 1.10   -- old records: Points + 10%
-                            ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))              -- new records: Points as-is
+                                THEN TRY_CAST(BL.Points AS DECIMAL(18,2))
+                            ELSE TRY_CAST(BL.Points AS DECIMAL(18,2))
                         END
                     WHEN BL.Cash IS NOT NULL AND TRY_CAST(BL.Cash AS DECIMAL(18,2)) > 0 THEN
                         CASE 
                             WHEN BL.UpdateDate <= '2026-09-10 19:41:55.383'
-                                THEN TRY_CAST(BL.Cash AS DECIMAL(18,2)) * 1.10   -- old records: Cash + 10%
-                            ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))              -- new records: Cash as-is
+                                THEN TRY_CAST(BL.Cash AS DECIMAL(18,2))
+                            ELSE TRY_CAST(BL.Cash AS DECIMAL(18,2))
                         END
                     ELSE 0.00
                 END
