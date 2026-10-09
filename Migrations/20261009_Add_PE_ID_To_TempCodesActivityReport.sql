@@ -16,8 +16,24 @@ BEGIN
 
     PRINT 'Column PE_ID added to [dbo].[TempCodesActivityReport] successfully.';
 END
+GO
+
+IF NOT EXISTS (
+    SELECT 1 
+    FROM sys.indexes 
+    WHERE name = 'IX_TempCodesActivityReport_PE_ID' 
+      AND object_id = OBJECT_ID(N'[dbo].[TempCodesActivityReport]')
+)
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_TempCodesActivityReport_PE_ID]
+    ON [dbo].[TempCodesActivityReport] ([PE_ID])
+    INCLUDE ([WornPoint], [Enq_Date], [Comp_ID])
+    WHERE [PE_ID] IS NOT NULL;
+
+    PRINT 'Index IX_TempCodesActivityReport_PE_ID created successfully.';
+END
 ELSE
 BEGIN
-    PRINT 'Column PE_ID already exists in [dbo].[TempCodesActivityReport].';
+    PRINT 'Index IX_TempCodesActivityReport_PE_ID already exists.';
 END
 GO

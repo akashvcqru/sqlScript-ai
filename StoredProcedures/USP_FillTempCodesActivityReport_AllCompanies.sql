@@ -34,10 +34,40 @@ BEGIN
         @CompanyName NVARCHAR(200),
         @Comp_ID VARCHAR(20),
         @FromDate DATETIME,
-        @ToDate DATETIME;
+        @ToDate DATETIME,
+        @VerifyFromDate DATETIME,
+        @VerifyToDate DATETIME,
+        @UpdatedCount INT;
 
     SET @MaxID = (SELECT MAX(ID) FROM @Companies);
     SET @ToDate = DATEADD(HOUR,10,CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+
+    IF OBJECT_ID('tempdb..#TempRecentReport') IS NOT NULL
+        DROP TABLE #TempRecentReport;
+
+    CREATE TABLE #TempRecentReport
+    (
+        Comp_ID VARCHAR(50),
+        Comp_Name NVARCHAR(150),
+        UniqueCode VARCHAR(100),
+        Enq_Date DATETIME,
+        Dial_Mode VARCHAR(50),
+        ConsumerName NVARCHAR(150),
+        MobileNo VARCHAR(50),
+        State NVARCHAR(100),
+        City NVARCHAR(100),
+        Pro_Name NVARCHAR(200),
+        Points DECIMAL(18,2),
+        Result VARCHAR(50),
+        Latitude VARCHAR(50),
+        Longitude VARCHAR(50),
+        AssignPoint DECIMAL(18,2),
+        WornPoint DECIMAL(18,2),
+        ReferralPoints DECIMAL(18,2),
+        PE_ID BIGINT
+    );
+
+    CREATE NONCLUSTERED INDEX IX_TempRecentReport_PE_ID ON #TempRecentReport(PE_ID) WHERE PE_ID IS NOT NULL;
 
     WHILE @i <= @MaxID
     BEGIN
@@ -166,6 +196,62 @@ BEGIN
 
                 SET @InsertedCount = @InsertedCount + @@ROWCOUNT;
 
+                -------------------------------------------------------------------------
+                -- Verify and synchronize WornPoint for the last 3 days where PE_ID IS NOT NULL
+                -------------------------------------------------------------------------
+                SET @VerifyFromDate = DATEADD(DAY, -3, CAST(GETDATE() AS DATE));
+                SET @VerifyToDate = @ToDate;
+
+                TRUNCATE TABLE #TempRecentReport;
+
+                INSERT INTO #TempRecentReport
+                (
+                    Comp_ID,
+                    Comp_Name,
+                    UniqueCode,
+                    Enq_Date,
+                    Dial_Mode,
+                    ConsumerName,
+                    MobileNo,
+                    State,
+                    City,
+                    Pro_Name,
+                    Points,
+                    Result,
+                    Latitude,
+                    Longitude,
+                    AssignPoint,
+                    WornPoint,
+                    ReferralPoints,
+                    PE_ID
+                )
+                EXEC dbo.SP_BL_GetCodesActivityReport_AI_FillData
+                    @Comp_Id    = @Comp_ID,
+                    @datePreset = NULL,
+                    @FromDate   = @VerifyFromDate,
+                    @ToDate     = @VerifyToDate,
+                    @IsExport   = 1;
+
+                UPDATE t
+                SET t.WornPoint = r.WornPoint
+                FROM dbo.TempCodesActivityReport t
+                INNER JOIN #TempRecentReport r
+                    ON t.PE_ID = r.PE_ID
+                   AND t.Comp_ID = @Comp_ID
+                WHERE t.Comp_ID = @Comp_ID
+                  AND t.PE_ID IS NOT NULL
+                  AND r.PE_ID IS NOT NULL
+                  AND t.Enq_Date >= @VerifyFromDate
+                  AND t.Enq_Date <= @VerifyToDate
+                  AND (
+                      t.WornPoint <> r.WornPoint
+                      OR (t.WornPoint IS NULL AND r.WornPoint IS NOT NULL)
+                      OR (t.WornPoint IS NOT NULL AND r.WornPoint IS NULL)
+                  );
+
+                SET @UpdatedCount = @@ROWCOUNT;
+                PRINT 'Updated WornPoint count for ' + @CompanyName + ': ' + CAST(@UpdatedCount AS VARCHAR(10));
+
                 IF EXISTS (
                     SELECT 1 
                     FROM dbo.TempDataSyncLog 
@@ -260,4 +346,7 @@ BEGIN
 
         SET @i = @i + 1;
     END
+
+    IF OBJECT_ID('tempdb..#TempRecentReport') IS NOT NULL
+        DROP TABLE #TempRecentReport;
 END
