@@ -95,7 +95,8 @@ BEGIN
                     Longitude,
                     AssignPoint,
                     WornPoint,
-                    ReferralPoints
+                    ReferralPoints,
+                    PE_ID
                 )
                 EXEC dbo.SP_BL_GetCodesActivityReport_AI_FillData
                     @Comp_Id    = @Comp_ID,
@@ -124,7 +125,8 @@ BEGIN
                     Longitude,
                     AssignPoint,
                     WornPoint,
-                    ReferralPoints
+                    ReferralPoints,
+                    PE_ID
                 )
                 SELECT
                     b.compid,
@@ -143,7 +145,8 @@ BEGIN
                     NULL,
                     ISNULL(b.Points,0),
                     ISNULL(b.Points,0),
-                    0
+                    0,
+                    NULL
                 FROM dbo.BLoyaltyPointsEarned b
                 INNER JOIN dbo.M_Consumer mc
                     ON mc.M_Consumerid = b.M_Consumerid
