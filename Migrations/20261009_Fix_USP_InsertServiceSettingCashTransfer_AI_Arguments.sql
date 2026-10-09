@@ -1,8 +1,12 @@
 -- ============================================================
--- Stored Procedure: USP_InsertServiceSettingCashTransfer_AI
--- Purpose        : Insert Cash Transfer service setting.
---                  Prevents duplicate settings and overlapping series ranges.
+-- Migration: 20261009_Fix_USP_InsertServiceSettingCashTransfer_AI_Arguments.sql
+-- Date     : 2026-10-09
+-- Purpose  : Fix USP_InsertServiceSettingCashTransfer_AI parameter mismatch.
+--            Adds missing parameters (@Mfd_Date, @Exp_Date, @Batch_No, @MRP,
+--            @BatchSize, @AmtType, @TotalLoyalty, @Multiple, @Minval, @Maxval)
+--            matching backend-ai API controller and handles T_Pro metadata.
 -- ============================================================
+
 CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingCashTransfer_AI]
     @Comp_ID        VARCHAR(50),
     @Pro_ID         VARCHAR(50),

@@ -964,14 +964,26 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_InsertServiceSettingCashTransfer_AI]
     @DateTo         DATETIME      = NULL,
     @SeriesStart    VARCHAR(100)  = NULL,
     @SeriesEnd      VARCHAR(100)  = NULL,
-    @Frequency      INT           = 1,
+    @Frequency      INT           = NULL,
 
-    @Points         DECIMAL(18,2) = 0,
+    @Mfd_Date       VARCHAR(50)   = NULL,
+    @Exp_Date       VARCHAR(50)   = NULL,
+    @Batch_No       VARCHAR(100)  = NULL,
+    @MRP            NUMERIC(18,2) = 0,
+    @BatchSize      INT           = NULL,
+
+    @AmtType        VARCHAR(50)   = NULL,
+    @Points         DECIMAL(18,2) = NULL,
+    @IsCash         DECIMAL(18,2) = NULL,
     @IsCashConvert  INT           = 0,
-    @IsCash         DECIMAL(18,2) = 0,
+
+    @TotalLoyalty   BIGINT        = NULL,
+    @Multiple       INT           = NULL,
+    @Minval         INT           = NULL,
+    @Maxval         INT           = NULL,
     @Comments       NVARCHAR(1000)= NULL,
     @EntryDate      DATETIME      = NULL,
-    @DML            CHAR(1)       = 'I'
+    @DML            VARCHAR(10)   = 'I'
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -979,6 +991,26 @@ BEGIN
 
     IF @Service_ID IS NULL OR LTRIM(RTRIM(@Service_ID)) = ''
         SET @Service_ID = 'SRV1005';
+
+    IF @MRP IS NULL
+        SET @MRP = 0;
+
+    IF @Points IS NULL AND @IsCash IS NOT NULL
+        SET @Points = @IsCash;
+
+    IF @IsCash IS NULL AND @Points IS NOT NULL
+        SET @IsCash = @Points;
+
+    IF @Mfd_Date IS NULL OR LTRIM(RTRIM(@Mfd_Date)) = ''
+        SET @Mfd_Date = CONVERT(VARCHAR(50), GETDATE(), 120);
+
+    IF @Exp_Date IS NULL OR LTRIM(RTRIM(@Exp_Date)) = ''
+    BEGIN
+        IF @DateTo IS NOT NULL
+            SET @Exp_Date = CONVERT(VARCHAR(50), @DateTo, 120);
+        ELSE
+            SET @Exp_Date = CONVERT(VARCHAR(50), DATEADD(YEAR, 1, GETDATE()), 120);
+    END
 
     BEGIN TRY
         BEGIN TRANSACTION;
@@ -1054,7 +1086,7 @@ BEGIN
 
         -- Set defaults if no previous record exists
         SET @PlanID_Last = ISNULL(@PlanID_Last, 'PLAN_DEFAULT');
-        SET @PlanName_Last = ISNULL(@PlanName_Last, 'Manual Subscription');
+        SET @PlanName_Last = ISNULL(@PlanName_Last, 'Cash Transfer Subscription');
         SET @PlanMasterPeriod_Last = ISNULL(@PlanMasterPeriod_Last, 12);
         SET @PlanSalePeriod_Last = ISNULL(@PlanSalePeriod_Last, 12);
         SET @PlanMasterPrice_Last = ISNULL(@PlanMasterPrice_Last, 0);
@@ -1064,7 +1096,16 @@ BEGIN
         SET @IsAdminVerify_Last = ISNULL(@IsAdminVerify_Last, 1);
         SET @TransType_Last = ISNULL(@TransType_Last, 'Service');
 
-        -- 2. Parse series range if provided
+        -- 2. Check if this Batch already exists in T_Pro (e.g. created via AddAssignLabelToProduct)
+        DECLARE @ExistingTPro_RowID BIGINT = NULL;
+        IF @Batch_No IS NOT NULL AND @Batch_No <> ''
+        BEGIN
+            SELECT TOP 1 @ExistingTPro_RowID = Row_ID 
+            FROM T_Pro WITH (NOLOCK) 
+            WHERE Pro_ID = @Pro_ID AND Batch_No = @Batch_No;
+        END
+
+        -- 3. Parse series range if provided
         DECLARE @StartOrder INT = NULL, @StartSerial INT = NULL;
         DECLARE @EndOrder INT = NULL, @EndSerial INT = NULL;
 
@@ -1213,6 +1254,19 @@ BEGIN
                 SELECT 0 AS success, 'The specified series range spans multiple batches. Please configure services for one batch range at a time.' AS message;
                 RETURN;
             END
+
+            -- Auto-resolve existing T_Pro Row_ID from M_Code.Batch_No (which stores T_Pro.Row_ID)
+            IF @ExistingTPro_RowID IS NULL AND @AssignedBatchNo IS NOT NULL
+            BEGIN
+                SET @ExistingTPro_RowID = TRY_CAST(@AssignedBatchNo AS BIGINT);
+            END
+        END
+        ELSE IF @ExistingTPro_RowID IS NULL AND @Batch_No IS NOT NULL AND @Batch_No <> ''
+        BEGIN
+            -- If series not provided, check if batch exists in T_Pro
+            SELECT TOP 1 @ExistingTPro_RowID = Row_ID 
+            FROM T_Pro WITH (NOLOCK) 
+            WHERE Pro_ID = @Pro_ID AND (Batch_No = @Batch_No OR Row_ID = TRY_CAST(@Batch_No AS BIGINT));
         END
 
         -- 3.1 Check for duplicate/overlapping service settings on this product for the SAME Service_ID
@@ -1323,8 +1377,8 @@ BEGIN
         (
             @Subscribe_Id, @Service_ID, @Comp_ID, @Pro_ID, @PlanID_Last, @PlanName_Last,
             @PlanMasterPeriod_Last, @PlanSalePeriod_Last, @PlanMasterPrice_Last, @PlanSalePrice_Last,
-            ISNULL(@DateFrom, GETDATE()),
-            ISNULL(@DateTo, DATEADD(YEAR, 1, GETDATE())),
+            ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE GETDATE() END),
+            ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE DATEADD(YEAR, 1, GETDATE()) END),
             ISNULL(@EntryDate, GETDATE()), 
             @IsActive_Last, @IsDelete_Last, @IsAdminVerify_Last,
             @TransType_Last, @StartOrder, @StartSerial, @EndOrder, @EndSerial
@@ -1343,15 +1397,29 @@ BEGIN
         VALUES
         (
             @Subscribe_Id,
-            ISNULL(@DateFrom, GETDATE()),
-            ISNULL(@DateTo, DATEADD(YEAR, 1, GETDATE())),
-            ISNULL(@IsCashConvert, 0), ISNULL(@Frequency, 1), ISNULL(@Points, 0), 'Fixed', 0,
-            0, 0, ISNULL(@IsCash, @Points),
+            ISNULL(@DateFrom, CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE NULL END),
+            ISNULL(@DateTo, CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE NULL END),
+            ISNULL(@IsCashConvert, 0), ISNULL(@Frequency, 1), @Points, ISNULL(@AmtType, 'Fixed'), @TotalLoyalty,
+            @Minval, @Maxval, ISNULL(@IsCash, @Points),
             0,
             @Comments, ISNULL(@EntryDate, GETDATE()), 1, 0
         );
 
         DECLARE @NewSST_Id BIGINT = SCOPE_IDENTITY();
+
+        -- 6. Update T_Pro metadata only if Batch exists (never create a new batch here)
+        IF @ExistingTPro_RowID IS NOT NULL
+        BEGIN
+            UPDATE T_Pro
+            SET MRP = ISNULL(@MRP, MRP),
+                Mfd_Date = CASE WHEN ISDATE(@Mfd_Date)=1 THEN CAST(@Mfd_Date AS DATETIME) ELSE Mfd_Date END,
+                Exp_Date = CASE WHEN ISDATE(@Exp_Date)=1 THEN CAST(@Exp_Date AS DATETIME) ELSE Exp_Date END,
+                Comments = ISNULL(@Comments, Comments),
+                Series_Limit = CASE WHEN ISNULL(@SeriesStart, '') <> '' AND ISNULL(@SeriesEnd, '') <> '' 
+                                    THEN CONCAT('From ', @SeriesStart, ' To ', @SeriesEnd) 
+                                    ELSE ISNULL(Series_Limit, '') END
+            WHERE Row_ID = @ExistingTPro_RowID;
+        END
 
         COMMIT TRANSACTION;
         SELECT 1 AS success, 'Cash Transfer service setting added successfully.' AS message, @NewSST_Id AS NewSST_Id, @Subscribe_Id AS Subscribe_Id;
