@@ -114,7 +114,7 @@ BEGIN
         (
             PARTITION BY
                 c.Comp_ID,
-                c.MobileNo,
+                RIGHT(c.MobileNo, 10),
                 c.Claim_Date,
                 c.Amount,
                 ISNULL(c.IsApproved, 0)
@@ -135,7 +135,7 @@ BEGIN
 ),
 PointsSummary AS
 (
-    SELECT MobileNo,
+    SELECT RIGHT(MobileNo, 10) AS MobileNo,
         SUM
         (
             CAST(ISNULL(Points, 0) AS DECIMAL(18, 2))
@@ -147,11 +147,11 @@ PointsSummary AS
         MAX(Enq_Date) AS LastCodeCheckDate
     FROM dbo.TempCodesActivityReport 
     WHERE --MobileNo = @MobileNo
-      Comp_ID = @Comp_ID group by MobileNo
+      Comp_ID = @Comp_ID group by RIGHT(MobileNo, 10)
 ),
 ClaimSummary AS
 (
-    SELECT mobileno,
+    SELECT RIGHT(mobileno, 10) AS mobileno,
         SUM
         (
             CAST(ISNULL(Amount, 0) AS DECIMAL(18, 2))
@@ -169,11 +169,11 @@ ClaimSummary AS
         MAX(Claim_Date) AS LastClaimDate
 
     FROM UniqueClaims
-    WHERE Comp_ID = @comp_id and DuplicateRank = 1 group by mobileno
+    WHERE Comp_ID = @comp_id and DuplicateRank = 1 group by RIGHT(mobileno, 10)
 ),
 PayoutSummary AS
 (
-    SELECT MobileNo,
+    SELECT RIGHT(MobileNo, 10) AS MobileNo,
         SUM
         (
             CAST(ISNULL(Amount, 0) AS DECIMAL(18, 2))
@@ -190,12 +190,12 @@ PayoutSummary AS
     FROM dbo.TempUPIPayoutReport
     WHERE --MobileNo = @MobileNo
       Comp_ID = @Comp_ID and  
-	  code1 > 0 and BankStatus = 'Success' group by MobileNo
+	  code1 > 0 and BankStatus = 'Success' group by RIGHT(MobileNo, 10)
 ),
 AllTransactions AS
 (
     SELECT 
-        MobileNo,
+        RIGHT(MobileNo, 10) AS MobileNo,
         Enq_Date AS TransactionDate,
         ISNULL(Points, 0) AS WonPoints,
         'Points Earned' AS TransactionType
@@ -205,7 +205,7 @@ AllTransactions AS
     UNION ALL
 
     SELECT 
-        MobileNo,
+        RIGHT(MobileNo, 10) AS MobileNo,
         Claim_Date AS TransactionDate,
         -ISNULL(Amount, 0) AS WonPoints,
         CASE 
@@ -219,7 +219,7 @@ AllTransactions AS
     UNION ALL
 
     SELECT 
-        MobileNo,
+        RIGHT(MobileNo, 10) AS MobileNo,
         ReqDate AS TransactionDate,
         -ISNULL(Amount, 0) AS WonPoints,
         'Amount Paid' AS TransactionType
@@ -229,11 +229,11 @@ AllTransactions AS
 RunningBalances AS
 (
     SELECT 
-        MobileNo,
+        RIGHT(MobileNo, 10) AS MobileNo,
         TransactionDate,
         TransactionType,
         SUM(WonPoints) OVER (
-            PARTITION BY MobileNo 
+            PARTITION BY RIGHT(MobileNo, 10) 
             ORDER BY TransactionDate, WonPoints DESC
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS RunningBalance
@@ -242,16 +242,16 @@ RunningBalances AS
 FraudClaims AS
 (
     SELECT 
-        MobileNo,
+        RIGHT(MobileNo, 10) AS MobileNo,
         MAX(TransactionDate) AS LastFraudClaimDate
     FROM RunningBalances
     WHERE RunningBalance < 0
       AND TransactionType IN ('Claim Raised', 'Amount Claimed', 'Amount Paid')
-    GROUP BY MobileNo
+    GROUP BY RIGHT(MobileNo, 10)
 )
 
     SELECT
-        p.MobileNo,
+        RIGHT(p.MobileNo, 10) AS MobileNo,
         d.ConsumerName,
         ISNULL(P.TotalPoints, 0) AS TotalPoints,
         ISNULL(P.AssingedPoints, 0) AS AssingedPoints,
@@ -278,7 +278,7 @@ FraudClaims AS
         AND (
             @Search IS NULL
             OR @Search = ''
-            OR p.MobileNo LIKE '%' + @Search + '%'
+            OR RIGHT(p.MobileNo, 10) LIKE '%' + @Search + '%'
             OR d.ConsumerName LIKE '%' + @Search + '%'
         )
         AND P.LastCodeCheckDate >= @StartDate

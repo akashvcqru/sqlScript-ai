@@ -108,7 +108,7 @@ drop table if exists #temp
         (
             PARTITION BY
                 c.Comp_ID,
-                c.MobileNo,
+                RIGHT(c.MobileNo, 10),
                 c.Claim_Date,
                 c.Amount,
                 ISNULL(c.IsApproved, 0)
@@ -117,7 +117,7 @@ drop table if exists #temp
         ) AS DuplicateRank
  
     FROM dbo.ClaimDetails c
-    WHERE c.MobileNo = @MobileNo
+    WHERE RIGHT(c.MobileNo, 10) = RIGHT(@MobileNo, 10)
       AND c.Comp_ID = @Comp_ID
       AND ISNULL(c.IsApproved, 0) <> 2
       AND ISNULL(c.Amount, 0) <> 0
@@ -134,7 +134,7 @@ TransactionData AS
         a.Comp_Name,
         a.Comp_ID,
         a.Pro_Name,
-        a.MobileNo,
+        RIGHT(a.MobileNo, 10) AS MobileNo,
         a.UniqueCode,
         a.Dial_Mode,
         a.Enq_Date AS TransactionDate,
@@ -157,7 +157,7 @@ TransactionData AS
         (
             PARTITION BY
                 a.Comp_ID,
-                a.MobileNo,
+                RIGHT(a.MobileNo, 10),
                 a.UniqueCode,
                 a.Enq_Date,
                 a.Points
@@ -166,7 +166,7 @@ TransactionData AS
         ) AS DuplicateRank
  
     FROM dbo.TempCodesActivityReport a
-    WHERE a.MobileNo = @MobileNo
+    WHERE RIGHT(a.MobileNo, 10) = RIGHT(@MobileNo, 10)
       AND a.Comp_ID = @Comp_ID
       --AND ISNULL(a.Points, 0) <> 0
  
@@ -179,7 +179,7 @@ TransactionData AS
         NULL AS Comp_Name,
         c.Comp_ID,
         NULL AS Pro_Name,
-        c.MobileNo,
+        RIGHT(c.MobileNo, 10) AS MobileNo,
         NULL AS UniqueCode,
         NULL AS Dial_Mode,
         c.Claim_Date AS TransactionDate,
@@ -227,7 +227,7 @@ TransactionData AS
         p.Comp_Name,
         p.Comp_ID,
         NULL AS Pro_Name,
-        p.MobileNo,
+        RIGHT(p.MobileNo, 10) AS MobileNo,
         NULL AS UniqueCode,
         NULL AS Dial_Mode,
         p.ReqDate AS TransactionDate,
@@ -250,7 +250,7 @@ TransactionData AS
         (
             PARTITION BY
                 p.Comp_ID,
-                p.MobileNo,
+                RIGHT(p.MobileNo, 10),
                 p.ReqDate,
                 p.Amount
             ORDER BY
@@ -258,7 +258,7 @@ TransactionData AS
         ) AS DuplicateRank
  
     FROM dbo.TempUPIPayoutReport p
-    WHERE p.MobileNo = @MobileNo
+    WHERE RIGHT(p.MobileNo, 10) = RIGHT(@MobileNo, 10)
       AND p.Comp_ID = @Comp_ID and   code1 >0 and BankStatus = 'Success'
       AND ISNULL(p.Amount, 0) <> 0
 )
