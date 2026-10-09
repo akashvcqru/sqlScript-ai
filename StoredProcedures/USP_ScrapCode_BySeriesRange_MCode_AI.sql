@@ -69,11 +69,10 @@ BEGIN
           AND ScrapeFlag = 1
           AND ISNULL(Use_Count, 0) = 0;
 
-        -- 4. UPDATE M_Code (Setting ScrapeFlag = 1, Block_Code_Date = GETDATE(), and Comp_ID)
+        -- 4. UPDATE M_Code (Setting ScrapeFlag = 1 and Block_Code_Date = GETDATE())
         UPDATE M_Code
         SET ScrapeFlag      = 1,
-            Block_Code_Date = @CurrentDate,
-            Comp_ID         = @Comp_ID
+            Block_Code_Date = @CurrentDate
         WHERE Pro_ID = @Pro_ID
           AND Series_Order = @Series_Order
           AND Series_Serial BETWEEN @FromSerial AND @ToSerial
