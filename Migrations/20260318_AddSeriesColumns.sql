@@ -21,3 +21,4 @@ BEGIN
     ALTER TABLE [dbo].[M_ServiceSubscriptionTrans] ADD [EndSeries] INT NULL;
 END
 GO
+-- 
