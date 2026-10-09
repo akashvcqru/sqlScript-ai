@@ -165,6 +165,7 @@ BEGIN
         FROM Pro_Enq pe WITH (NOLOCK)
         WHERE pe.MobileNo IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91)
           AND pe.Received_Code1 <> 'None' AND pe.Received_Code2 <> 'None'
+          AND (pe.is_success NOT IN ('2', 2) OR pe.is_success IS NULL)
           AND (@StartDate IS NULL OR pe.enq_date >= @StartDate)
           AND (@EndDate IS NULL OR pe.enq_date <= @EndDate)
     )
