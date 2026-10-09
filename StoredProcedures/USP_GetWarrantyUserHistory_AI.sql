@@ -118,10 +118,10 @@ BEGIN
                 ELSE war.[BillNo]
             END AS [BillNo],
             war.OldSerialno,
-            pr.[Pro_Name] AS [Product_Name],    
-            (SELECT TOP 1 Logo_Path FROM Comp_Reg WITH (NOLOCK) WHERE Comp_ID = pr.Comp_ID) AS [LogoPath],
-            CONCAT(Mc.[Code1], Mc.[Code2]) AS [Code],    
-            war.[Mobile],    
+            ISNULL(pr.[Pro_Name], ISNULL(war.Brand, '')) AS [Product_Name],    
+            (SELECT TOP 1 Logo_Path FROM Comp_Reg WITH (NOLOCK) WHERE Comp_ID = COALESCE(pr.Comp_ID, war.Comp_id, @Comp_Id)) AS [LogoPath],
+            COALESCE(CONCAT(Mc.[Code1], Mc.[Code2]), REPLACE(war.[Code], '-', ''), war.[Code]) AS [Code],    
+            RIGHT(war.[Mobile], 10) AS [Mobile],    
             war.[Email] AS [EmailID],
             war.[WarrantyPeriod],    
             war.[PurchaseDate],    
@@ -150,21 +150,20 @@ BEGIN
             war.Comp_id,
             ISNULL(c.ConsumerName, '') AS [UserName]
         FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
-        INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
-        INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
+        LEFT JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
+        LEFT JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
         OUTER APPLY (
             SELECT TOP 1 ConsumerName 
             FROM [dbo].[M_Consumer] WITH (NOLOCK) 
             WHERE RIGHT(MobileNo, 10) = RIGHT(war.Mobile, 10) AND IsDelete = 0
             ORDER BY M_Consumerid DESC
         ) c
-        WHERE pr.[Comp_ID] = @Comp_Id
-          AND war.Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91)
+        WHERE (war.Comp_id = @Comp_Id OR pr.[Comp_ID] = @Comp_Id)
+          AND (RIGHT(war.Mobile, 10) = @Mobile10 OR war.Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91))
           AND war.IsWarrantyClaimed IS NOT NULL
-          AND war.IsWarrantyClaimed <> ''
           AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
           AND (@EndDate IS NULL OR war.claimdate <= @EndDate)
-          AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam)
+          AND (@SearchParam IS NULL OR RIGHT(war.Mobile, 10) LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam)
     )
     SELECT * FROM MainResult
     ORDER BY [ClaimDate] DESC
@@ -179,14 +178,13 @@ BEGIN
         @Limit AS [Limit],
         CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
     FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
-    INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
-    INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
-    WHERE pr.[Comp_ID] = @Comp_Id
-      AND war.Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91)
+    LEFT JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
+    LEFT JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
+    WHERE (war.Comp_id = @Comp_Id OR pr.[Comp_ID] = @Comp_Id)
+      AND (RIGHT(war.Mobile, 10) = @Mobile10 OR war.Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91))
       AND war.IsWarrantyClaimed IS NOT NULL
-      AND war.IsWarrantyClaimed <> ''
       AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
       AND (@EndDate IS NULL OR war.claimdate <= @EndDate)
-      AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam);
+      AND (@SearchParam IS NULL OR RIGHT(war.Mobile, 10) LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam);
 END
 GO

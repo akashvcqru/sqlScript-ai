@@ -53,7 +53,13 @@ BEGIN
     END
 
     -- 2. Validate Code Existence
-    IF EXISTS (SELECT 1 FROM M_Code WHERE Code1 = CAST(@Code1 AS NUMERIC(5,0)) AND Code2 = CAST(@Code2 AS NUMERIC(8,0)) AND (ScrapeFlag = 0 OR ScrapeFlag IS NULL))
+    IF EXISTS (
+        SELECT 1 FROM M_Code 
+        WHERE Code1 = CAST(@Code1 AS NUMERIC(5,0)) 
+          AND Code2 = CAST(@Code2 AS NUMERIC(8,0)) 
+          AND (ScrapeFlag <> 1 OR ScrapeFlag IS NULL)
+          AND (blockCodeStatus <> 1 OR blockCodeStatus IS NULL)
+    )
     BEGIN
         SET @TableName = 'M_Code';
         SELECT TOP 1 
@@ -64,9 +70,17 @@ BEGIN
             @Batch_No = mc.Batch_No
         FROM M_Code mc
         INNER JOIN Pro_Reg pr ON mc.Pro_ID = pr.Pro_ID
-        WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0));
+        WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) 
+          AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0))
+          AND (mc.ScrapeFlag <> 1 OR mc.ScrapeFlag IS NULL)
+          AND (mc.blockCodeStatus <> 1 OR mc.blockCodeStatus IS NULL);
     END
-    ELSE IF EXISTS (SELECT 1 FROM M_Code_PFL WHERE Code1 = CAST(@Code1 AS NUMERIC(5,0)) AND Code2 = CAST(@Code2 AS NUMERIC(8,0)) AND (ScrapeFlag = 0 OR ScrapeFlag IS NULL))
+    ELSE IF EXISTS (
+        SELECT 1 FROM M_Code_PFL 
+        WHERE Code1 = CAST(@Code1 AS NUMERIC(5,0)) 
+          AND Code2 = CAST(@Code2 AS NUMERIC(8,0)) 
+          AND (ScrapeFlag <> 1 OR ScrapeFlag IS NULL)
+    )
     BEGIN
         SET @TableName = 'M_Code_PFL';
         SELECT TOP 1 
@@ -77,7 +91,9 @@ BEGIN
             @Batch_No = mc.Batch_No
         FROM M_Code_PFL mc
         INNER JOIN Pro_Reg pr ON mc.Pro_ID = pr.Pro_ID
-        WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0));
+        WHERE mc.Code1 = CAST(@Code1 AS NUMERIC(5,0)) 
+          AND mc.Code2 = CAST(@Code2 AS NUMERIC(8,0))
+          AND (mc.ScrapeFlag <> 1 OR mc.ScrapeFlag IS NULL);
     END
 
     IF @RowID IS NULL
