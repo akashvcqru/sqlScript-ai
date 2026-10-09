@@ -10,7 +10,6 @@ on:
 jobs:
   deploy-prod:
     runs-on: [self-hosted, prod-server]
-    environment: Prod Server
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
