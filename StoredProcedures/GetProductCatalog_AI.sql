@@ -20,3 +20,4 @@ WHERE d.Comp_id = @comp_id AND d.Isactive = 1 AND d.Isdelete = 0 AND p.Isdelete 
 ORDER BY d.CreatedDate DESC
 end
 GO
+-- end
