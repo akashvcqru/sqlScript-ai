@@ -6,10 +6,10 @@ GO
 -- =============================================
 -- Author:      Antigravity
 -- Create date: 24-Apr-2026
--- Update date: 24-Apr-2026 (Added pagination and timewindow)
+-- Update date: 09-Oct-2026 (Fixed duplicates from multiple Pro_Enq checks, multi-subscriptions, and multiple consumer records)
 -- Description: Get Warranty Report by Mobile Number with Pagination and TimeWindow
 -- =============================================
-ALTER PROCEDURE [dbo].[USP_GetWarrantyReportByMobile_AI] 
+CREATE OR ALTER PROCEDURE [dbo].[USP_GetWarrantyReportByMobile_AI] 
 (
   @MobileNo varchar(50),
   @datePreset NVARCHAR(20) = NULL,
@@ -102,7 +102,7 @@ BEGIN
     DECLARE @MobileNo91 VARCHAR(50) = '91' + @Mobile10;
     DECLARE @MobileNoPlus91 VARCHAR(50) = '+91' + @Mobile10;
 
-    -- Create temp table for warranty details
+    -- Create temp table for warranty details (De-duplicated per code1, code2)
     CREATE TABLE #wrr (
         iswarrantyclaimed NVARCHAR(100),
         WarrantyPeriod NVARCHAR(100),
@@ -126,52 +126,52 @@ BEGIN
         comp_id VARCHAR(50)
     );
 
-    INSERT INTO #wrr (iswarrantyclaimed, WarrantyPeriod, PurchaseDate, vendorclaimstatus, ExpirationDate, code1, code2, Comment, vendorcomments, imagepathbill, billno, id, vehicleno, device, imagepath, serialno, oldserialno, email, claimdate, comp_id)
-    SELECT iswarrantyclaimed, WarrantyPeriod, [PurchaseDate], vendorclaimstatus, ExpirationDate, 
-           TRY_CAST(SUBSTRING(code, 1, CHARINDEX('-', code + '-') - 1) AS INT),
-           TRY_CAST(SUBSTRING(code, CHARINDEX('-', code + '-') + 1, LEN(code)) AS INT), 
-           Comment, vendorcomments, imagepathbill, billno, id, 
-           vehicleNumber, State, ImagePath, Serialno, OldSerialno, Email, claimdate, Comp_id 
-    FROM [WarrentyDetails] WITH (NOLOCK)
-    WHERE Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91);
+    ;WITH CTE_Wrr AS (
+        SELECT iswarrantyclaimed, WarrantyPeriod, [PurchaseDate], vendorclaimstatus, ExpirationDate, 
+               TRY_CAST(SUBSTRING(code, 1, CHARINDEX('-', code + '-') - 1) AS INT) AS code1,
+               TRY_CAST(SUBSTRING(code, CHARINDEX('-', code + '-') + 1, LEN(code)) AS INT) AS code2, 
+               Comment, vendorcomments, imagepathbill, billno, id, 
+               vehicleNumber, State, ImagePath, Serialno, OldSerialno, Email, claimdate, Comp_id,
+               ROW_NUMBER() OVER (
+                   PARTITION BY TRY_CAST(SUBSTRING(code, 1, CHARINDEX('-', code + '-') - 1) AS INT),
+                                TRY_CAST(SUBSTRING(code, CHARINDEX('-', code + '-') + 1, LEN(code)) AS INT)
+                   ORDER BY id DESC
+               ) AS rn
+        FROM [WarrentyDetails] WITH (NOLOCK)
+        WHERE Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91)
+    )
+    INSERT INTO #wrr (iswarrantyclaimed, WarrantyPeriod, PurchaseDate, vendorclaimstatus, ExpirationDate, code1, code2, Comment, vendorcomments, imagepathbill, billno, id, vehicleNumber, State, ImagePath, Serialno, OldSerialno, Email, claimdate, Comp_id)
+    SELECT iswarrantyclaimed, WarrantyPeriod, PurchaseDate, vendorclaimstatus, ExpirationDate, code1, code2, Comment, vendorcomments, imagepathbill, billno, id, vehicleNumber, State, ImagePath, Serialno, OldSerialno, Email, claimdate, Comp_id 
+    FROM CTE_Wrr
+    WHERE rn = 1;
 
     CREATE INDEX IX_wrr_codes ON #wrr(code1, code2);
 
-    -- Create temp table for service series checks
-    CREATE TABLE #fillseries (
-        Subscribe_Id nvarchar(100),
-        Service_ID nvarchar(100),
-        Comp_ID nvarchar(100), 
-        Pro_ID nvarchar(100),
-        IsActive int,
-        start_order int,
-        start_series int,
-        end_order int,
-        end_series int 
-    );
-
-    INSERT INTO #fillseries 
-    SELECT Subscribe_Id, Service_ID, Comp_ID, Pro_ID, IsActive, start_order, start_series, end_order, end_series  
-    FROM M_ServiceSubscription WITH (NOLOCK)
-    WHERE IsActive = 1 AND start_order IS NOT NULL;
-
-    CREATE INDEX IX_fillseries_Pro ON #fillseries(Pro_ID);
-
     ------------------------------------------------------
-    -- Primary Filtered Data from Pro_Enq
+    -- Primary Filtered Data from Pro_Enq (De-duplicated per code)
     ------------------------------------------------------
-    -- Filtering Pro_Enq once with index-friendly matches
-    SELECT TRY_CAST(pe.received_code1 AS INT) AS received_code1, 
-           TRY_CAST(pe.received_code2 AS INT) AS received_code2, 
-           pe.enq_date, 
-           pe.is_success, 
-           pe.MobileNo
+    ;WITH CTE_Enq AS (
+        SELECT TRY_CAST(pe.received_code1 AS INT) AS received_code1, 
+               TRY_CAST(pe.received_code2 AS INT) AS received_code2, 
+               pe.enq_date, 
+               pe.is_success, 
+               pe.MobileNo,
+               ROW_NUMBER() OVER (
+                   PARTITION BY TRY_CAST(pe.received_code1 AS INT), TRY_CAST(pe.received_code2 AS INT)
+                   ORDER BY 
+                       CASE WHEN pe.Mode_Detail = 'Warranty Registration' THEN 0 ELSE 1 END,
+                       pe.enq_date DESC
+               ) AS rn
+        FROM Pro_Enq pe WITH (NOLOCK)
+        WHERE pe.MobileNo IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91)
+          AND pe.Received_Code1 <> 'None' AND pe.Received_Code2 <> 'None'
+          AND (@StartDate IS NULL OR pe.enq_date >= @StartDate)
+          AND (@EndDate IS NULL OR pe.enq_date <= @EndDate)
+    )
+    SELECT received_code1, received_code2, enq_date, is_success, MobileNo
     INTO #EnqResults
-    FROM Pro_Enq pe WITH (NOLOCK)
-    WHERE pe.MobileNo IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91)
-      AND pe.Received_Code1 <> 'None' AND pe.Received_Code2 <> 'None'
-      AND (@StartDate IS NULL OR pe.enq_date >= @StartDate)
-      AND (@EndDate IS NULL OR pe.enq_date <= @EndDate);
+    FROM CTE_Enq
+    WHERE rn = 1;
 
     CREATE INDEX IX_EnqResults_Codes ON #EnqResults(received_code1, received_code2);
 
@@ -183,13 +183,13 @@ BEGIN
             enq.[enq_date], 
             CASE 
                 WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) < 0 THEN 'Warranty has been expired'
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='Approved' OR wr.iswarrantyclaimed='1') AND serv.[service_id] = 'SRV1023' THEN 'Warranty claimed has been approved'
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='Reject' OR wr.iswarrantyclaimed='2') AND serv.[service_id] = 'SRV1023' THEN 'Warranty claimed has been rejected'
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='ReClaimed' OR wr.iswarrantyclaimed='3') AND serv.[service_id] = 'SRV1023' THEN 'Warranty Claimed has been reclaimed'
-                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='Pending' OR wr.iswarrantyclaimed='0') AND serv.[service_id] = 'SRV1023' THEN 'Warranty Claimed is Pending for approval'
+                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='Approved' OR wr.iswarrantyclaimed='1') AND sub.[service_id] = 'SRV1023' THEN 'Warranty claimed has been approved'
+                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='Reject' OR wr.iswarrantyclaimed='2') AND sub.[service_id] = 'SRV1023' THEN 'Warranty claimed has been rejected'
+                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='ReClaimed' OR wr.iswarrantyclaimed='3') AND sub.[service_id] = 'SRV1023' THEN 'Warranty Claimed has been reclaimed'
+                WHEN DATEDIFF(day, GETDATE(), wr.ExpirationDate) >= 0 AND (wr.vendorclaimstatus='Pending' OR wr.iswarrantyclaimed='0') AND sub.[service_id] = 'SRV1023' THEN 'Warranty Claimed is Pending for approval'
                 WHEN enq.[is_success] = '0' THEN @MsgInvalid
                 WHEN enq.[is_success] = '1' AND (enq.enq_date NOT BETWEEN sub.DateFrom AND sub.DateTo) THEN
-                    CONCAT(serv.ServiceName, ' ', @MsgExpired)
+                    CONCAT(sub.ServiceName, ' ', @MsgExpired)
                 ELSE (SELECT TOP 1 [message] FROM [transaction_message] WITH (NOLOCK) WHERE [service_id] = sub.[service_id] AND scenario = enq.[is_success]) 
             END AS msg1,  
             cr.Comp_name,
@@ -205,15 +205,15 @@ BEGIN
                 WHEN enq.[is_success] = '0' THEN 'invalid' 
                 ELSE product.[pro_id] 
             END AS [Pro_id], 
-            serv.[servicename],
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.[PurchaseDate] IS NULL THEN '' ELSE CONVERT(VARCHAR(20), wr.[PurchaseDate], 120) END AS [PurchaseDate],
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.WarrantyPeriod IS NULL THEN '' ELSE wr.WarrantyPeriod END AS WarrantyPeriod,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.ExpirationDate IS NULL THEN '' ELSE CONVERT(VARCHAR(20), wr.ExpirationDate, 120) END AS ExpirationDate,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.ExpirationDate IS NULL THEN 0 ELSE DATEDIFF(day, GETDATE(), wr.ExpirationDate) END AS NumberOfDays,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.iswarrantyclaimed IS NULL THEN '' ELSE wr.iswarrantyclaimed END AS IsWarrantyClaimed,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.imagepath IS NULL THEN '' ELSE wr.imagepath END AS ImagePath,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.Comment IS NULL THEN '' ELSE wr.Comment END AS Comment,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.vendorcomments IS NULL THEN '' ELSE wr.vendorcomments END AS VendorComments,
+            sub.[servicename],
+            CASE WHEN sub.[service_id]<>'SRV1023' OR wr.[PurchaseDate] IS NULL THEN '' ELSE CONVERT(VARCHAR(20), wr.[PurchaseDate], 120) END AS [PurchaseDate],
+            CASE WHEN sub.[service_id]<>'SRV1023' OR wr.WarrantyPeriod IS NULL THEN '' ELSE wr.WarrantyPeriod END AS WarrantyPeriod,
+            CASE WHEN sub.[service_id]<>'SRV1023' OR wr.ExpirationDate IS NULL THEN '' ELSE CONVERT(VARCHAR(20), wr.ExpirationDate, 120) END AS ExpirationDate,
+            CASE WHEN sub.[service_id]<>'SRV1023' OR wr.ExpirationDate IS NULL THEN 0 ELSE DATEDIFF(day, GETDATE(), wr.ExpirationDate) END AS NumberOfDays,
+            CASE WHEN sub.[service_id]<>'SRV1023' OR wr.iswarrantyclaimed IS NULL THEN '' ELSE wr.iswarrantyclaimed END AS IsWarrantyClaimed,
+            CASE WHEN sub.[service_id]<>'SRV1023' OR wr.imagepath IS NULL THEN '' ELSE wr.imagepath END AS ImagePath,
+            CASE WHEN sub.[service_id]<>'SRV1023' OR wr.Comment IS NULL THEN '' ELSE wr.Comment END AS Comment,
+            CASE WHEN sub.[service_id]<>'SRV1023' OR wr.vendorcomments IS NULL THEN '' ELSE wr.vendorcomments END AS VendorComments,
             CASE 
                 WHEN wr.iswarrantyclaimed = '0' THEN 'Pending' 
                 WHEN wr.iswarrantyclaimed = '1' THEN 'Approved' 
@@ -221,18 +221,18 @@ BEGIN
                 WHEN wr.iswarrantyclaimed = '3' THEN 'ReClaimed' 
                 ELSE ISNULL(wr.vendorclaimstatus, '') 
             END AS VendorClaimStatus,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.billno, '') END AS BillNo,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.serialno, '') END AS Serialno,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.oldserialno, '') END AS OldSerialno,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.email, '') END AS EmailID,
-            CASE WHEN serv.[service_id]<>'SRV1023' OR wr.claimdate IS NULL THEN NULL ELSE wr.claimdate END AS ClaimDate,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.imagepathbill, '') END AS ImagePathBill,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.vehicleno, '') END AS vehicleno,  
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.vehicleno, '') END AS VehicleNumber,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE CAST(wr.id AS VARCHAR(50)) END AS warranty_id,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN NULL ELSE wr.id END AS id,
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.device, '') END AS [State],
-            CASE WHEN serv.[service_id]<>'SRV1023' THEN cr.comp_id ELSE ISNULL(wr.comp_id, cr.comp_id) END AS Comp_id,
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.billno, '') END AS BillNo,
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.serialno, '') END AS Serialno,
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.oldserialno, '') END AS OldSerialno,
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.email, '') END AS EmailID,
+            CASE WHEN sub.[service_id]<>'SRV1023' OR wr.claimdate IS NULL THEN NULL ELSE wr.claimdate END AS ClaimDate,
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.imagepathbill, '') END AS ImagePathBill,
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.vehicleno, '') END AS vehicleno,  
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.vehicleno, '') END AS VehicleNumber,
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE CAST(wr.id AS VARCHAR(50)) END AS warranty_id,
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN NULL ELSE wr.id END AS id,
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.device, '') END AS [State],
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN cr.comp_id ELSE ISNULL(wr.comp_id, cr.comp_id) END AS Comp_id,
             ISNULL(c.ConsumerName, '') AS [UserName],
             CASE WHEN (wr.vendorclaimstatus = 'Approved' OR wr.iswarrantyclaimed = '1') AND (wr.oldserialno IS NULL OR wr.oldserialno = '') THEN 1 ELSE 0 END AS IsReplace,
             '' AS Remarks 
@@ -240,13 +240,23 @@ BEGIN
         LEFT JOIN m_code code WITH (NOLOCK) ON code.code1 = enq.received_code1 AND code.code2 = enq.received_code2
         LEFT JOIN Pro_reg product WITH (NOLOCK) ON product.Pro_id = code.Pro_id
         LEFT JOIN comp_reg cr WITH (NOLOCK) ON cr.comp_id = product.Comp_id
-        LEFT JOIN M_ServiceSubscription sub WITH (NOLOCK) ON sub.Pro_id = code.Pro_id AND sub.comp_id = cr.comp_id
-        LEFT JOIN m_service serv WITH (NOLOCK) ON serv.service_id = sub.service_id
+        CROSS APPLY (
+            SELECT TOP 1 s.Subscribe_Id, s.DateFrom, s.DateTo, srv.ServiceName, srv.service_id
+            FROM M_ServiceSubscription s WITH (NOLOCK)
+            JOIN m_service srv WITH (NOLOCK) ON srv.service_id = s.service_id
+            WHERE s.Pro_id = code.Pro_id 
+              AND s.comp_id = cr.comp_id 
+              AND srv.service_id = 'SRV1023'
+            ORDER BY s.IsActive DESC, s.Subscribe_Id DESC
+        ) sub
         LEFT JOIN #wrr wr ON enq.received_code1 = wr.code1 AND enq.received_code2 = wr.code2
-        LEFT JOIN VW_getservicesubscribe serv_tran WITH (NOLOCK) ON serv_tran.Subscribe_Id = sub.Subscribe_Id 
-        LEFT JOIN [dbo].[M_Consumer] c WITH (NOLOCK) ON RIGHT(c.MobileNo, 10) = RIGHT(enq.MobileNo, 10) AND c.IsDelete = 0
-        WHERE serv.[Service_ID] = 'SRV1023'
-          AND (@Comp_Id IS NULL OR @Comp_Id = '' OR cr.comp_id = @Comp_Id)
+        OUTER APPLY (
+            SELECT TOP 1 ConsumerName 
+            FROM [dbo].[M_Consumer] WITH (NOLOCK) 
+            WHERE RIGHT(MobileNo, 10) = RIGHT(enq.MobileNo, 10) AND IsDelete = 0
+            ORDER BY M_Consumerid DESC
+        ) c
+        WHERE (@Comp_Id IS NULL OR @Comp_Id = '' OR cr.comp_id = @Comp_Id)
     )
     SELECT * FROM MainResult
     ORDER BY [enq_date] DESC
@@ -258,18 +268,20 @@ BEGIN
         @Page AS CurrentPage,
         @Limit AS [Limit],
         CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
-    FROM (
-        SELECT enq.received_code1
-        FROM #EnqResults enq
-        LEFT JOIN m_code code WITH (NOLOCK) ON code.code1 = enq.received_code1 AND code.code2 = enq.received_code2
-        LEFT JOIN M_ServiceSubscription sub WITH (NOLOCK) ON sub.Pro_id = code.Pro_id
-        LEFT JOIN m_service serv WITH (NOLOCK) ON serv.service_id = sub.service_id
-        WHERE serv.[Service_ID] = 'SRV1023'
-          AND (@Comp_Id IS NULL OR @Comp_Id = '' OR sub.comp_id = @Comp_Id)
-    ) count_query;
+    FROM #EnqResults enq
+    LEFT JOIN m_code code WITH (NOLOCK) ON code.code1 = enq.received_code1 AND code.code2 = enq.received_code2
+    LEFT JOIN Pro_reg product WITH (NOLOCK) ON product.Pro_id = code.Pro_id
+    LEFT JOIN comp_reg cr WITH (NOLOCK) ON cr.comp_id = product.Comp_id
+    CROSS APPLY (
+        SELECT TOP 1 s.Subscribe_Id
+        FROM M_ServiceSubscription s WITH (NOLOCK)
+        WHERE s.Pro_id = code.Pro_id 
+          AND s.comp_id = cr.comp_id 
+          AND s.service_id = 'SRV1023'
+    ) sub
+    WHERE (@Comp_Id IS NULL OR @Comp_Id = '' OR cr.comp_id = @Comp_Id);
 
     DROP TABLE #wrr;
-    DROP TABLE #fillseries;
     DROP TABLE #EnqResults;
 END
 GO
