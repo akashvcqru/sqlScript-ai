@@ -116,8 +116,8 @@ BEGIN
         imagepathbill NVARCHAR(MAX),
         billno NVARCHAR(MAX),
         id INT,
-        vehicleno NVARCHAR(MAX),
-        device NVARCHAR(MAX),
+        vehicleNumber NVARCHAR(MAX),
+        [State] NVARCHAR(MAX),
         imagepath NVARCHAR(MAX),
         serialno VARCHAR(100),
         oldserialno VARCHAR(100),
@@ -140,7 +140,7 @@ BEGIN
         FROM [WarrentyDetails] WITH (NOLOCK)
         WHERE Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91)
     )
-    INSERT INTO #wrr (iswarrantyclaimed, WarrantyPeriod, PurchaseDate, vendorclaimstatus, ExpirationDate, code1, code2, Comment, vendorcomments, imagepathbill, billno, id, vehicleNumber, State, ImagePath, Serialno, OldSerialno, Email, claimdate, Comp_id)
+    INSERT INTO #wrr (iswarrantyclaimed, WarrantyPeriod, PurchaseDate, vendorclaimstatus, ExpirationDate, code1, code2, Comment, vendorcomments, imagepathbill, billno, id, vehicleNumber, [State], ImagePath, Serialno, OldSerialno, Email, claimdate, Comp_id)
     SELECT iswarrantyclaimed, WarrantyPeriod, PurchaseDate, vendorclaimstatus, ExpirationDate, code1, code2, Comment, vendorcomments, imagepathbill, billno, id, vehicleNumber, State, ImagePath, Serialno, OldSerialno, Email, claimdate, Comp_id 
     FROM CTE_Wrr
     WHERE rn = 1;
@@ -227,11 +227,11 @@ BEGIN
             CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.email, '') END AS EmailID,
             CASE WHEN sub.[service_id]<>'SRV1023' OR wr.claimdate IS NULL THEN NULL ELSE wr.claimdate END AS ClaimDate,
             CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.imagepathbill, '') END AS ImagePathBill,
-            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.vehicleno, '') END AS vehicleno,  
-            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.vehicleno, '') END AS VehicleNumber,
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.vehicleNumber, '') END AS vehicleno,  
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.vehicleNumber, '') END AS VehicleNumber,
             CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE CAST(wr.id AS VARCHAR(50)) END AS warranty_id,
             CASE WHEN sub.[service_id]<>'SRV1023' THEN NULL ELSE wr.id END AS id,
-            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.device, '') END AS [State],
+            CASE WHEN sub.[service_id]<>'SRV1023' THEN '' ELSE ISNULL(wr.[State], '') END AS [State],
             CASE WHEN sub.[service_id]<>'SRV1023' THEN cr.comp_id ELSE ISNULL(wr.comp_id, cr.comp_id) END AS Comp_id,
             ISNULL(c.ConsumerName, '') AS [UserName],
             CASE WHEN (wr.vendorclaimstatus = 'Approved' OR wr.iswarrantyclaimed = '1') AND (wr.oldserialno IS NULL OR wr.oldserialno = '') THEN 1 ELSE 0 END AS IsReplace,
@@ -267,7 +267,7 @@ BEGIN
         COUNT(1) AS TotalRecords,
         @Page AS CurrentPage,
         @Limit AS [Limit],
-        CEILING(COUNT(1) * 1.0 / @Limit) AS TotalPages
+        CAST(CEILING(COUNT(1) * 1.0 / @Limit) AS INT) AS TotalPages
     FROM #EnqResults enq
     LEFT JOIN m_code code WITH (NOLOCK) ON code.code1 = enq.received_code1 AND code.code2 = enq.received_code2
     LEFT JOIN Pro_reg product WITH (NOLOCK) ON product.Pro_id = code.Pro_id
