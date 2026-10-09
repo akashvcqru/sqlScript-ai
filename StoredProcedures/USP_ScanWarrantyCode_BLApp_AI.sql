@@ -61,29 +61,56 @@ BEGIN
     DECLARE @TableName NVARCHAR(50) = 'M_Code';
 
     -- 2. Identify code source table and get Pro_ID and Comp_ID
-    IF EXISTS (SELECT 1 FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2 AND (ScrapeFlag = 0 OR ScrapeFlag IS NULL))
+    IF EXISTS (
+        SELECT 1 FROM M_Code 
+        WHERE Code1 = @Code1 AND Code2 = @Code2 
+          AND (ScrapeFlag <> 1 OR ScrapeFlag IS NULL)
+          AND (blockCodeStatus <> 1 OR blockCodeStatus IS NULL)
+    )
     BEGIN
         SET @TableName = 'M_Code';
         SELECT TOP 1 @Pro_ID = M.Pro_ID, @ResolvedCompID = P.Comp_ID
         FROM M_Code M
         INNER JOIN Pro_Reg P ON M.Pro_ID = P.Pro_ID
-        WHERE M.Code1 = @Code1 AND M.Code2 = @Code2;
+        WHERE M.Code1 = @Code1 AND M.Code2 = @Code2
+          AND (M.ScrapeFlag <> 1 OR M.ScrapeFlag IS NULL)
+          AND (M.blockCodeStatus <> 1 OR M.blockCodeStatus IS NULL);
     END
-    ELSE IF EXISTS (SELECT 1 FROM M_Code_PFL WHERE Code1 = @Code1 AND Code2 = @Code2 AND (ScrapeFlag = 0 OR ScrapeFlag IS NULL))
+    ELSE IF EXISTS (
+        SELECT 1 FROM M_Code_PFL 
+        WHERE Code1 = @Code1 AND Code2 = @Code2 
+          AND (ScrapeFlag <> 1 OR ScrapeFlag IS NULL)
+    )
     BEGIN
         SET @TableName = 'M_Code_PFL';
         SELECT TOP 1 @Pro_ID = M.Pro_ID, @ResolvedCompID = P.Comp_ID
         FROM M_Code_PFL M
         INNER JOIN Pro_Reg P ON M.Pro_ID = P.Pro_ID
-        WHERE M.Code1 = @Code1 AND M.Code2 = @Code2;
+        WHERE M.Code1 = @Code1 AND M.Code2 = @Code2
+          AND (M.ScrapeFlag <> 1 OR M.ScrapeFlag IS NULL);
     END
 
     IF @Pro_ID IS NULL
     BEGIN
-        INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, callerdate, callertime)
-        VALUES (@Code1, @Code2, @FormattedMobile, ISNULL(@Mode, 'BLApp'), 'Warranty Registration: Invalid Coupon', '0', GETDATE(), @Comp_id, @Latitude, @Longitude, CAST(GETDATE() AS DATE), CONVERT(VARCHAR(30), GETDATE(), 108));
+        DECLARE @InvalidReason VARCHAR(100) = 'Warranty Registration: Invalid Coupon';
+        DECLARE @InvalidMessage VARCHAR(200) = 'Invalid coupon code or code not registered.';
 
-        SELECT 0 AS Success, 'Invalid coupon code or code not registered.' AS Message;
+        IF EXISTS (SELECT 1 FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2 AND blockCodeStatus = 1)
+        BEGIN
+            SET @InvalidReason = 'Warranty Registration: Blocked Coupon';
+            SET @InvalidMessage = 'This coupon code is blocked.';
+        END
+        ELSE IF EXISTS (SELECT 1 FROM M_Code WHERE Code1 = @Code1 AND Code2 = @Code2 AND ScrapeFlag = 1)
+             OR EXISTS (SELECT 1 FROM M_Code_PFL WHERE Code1 = @Code1 AND Code2 = @Code2 AND ScrapeFlag = 1)
+        BEGIN
+            SET @InvalidReason = 'Warranty Registration: Scrapped Coupon';
+            SET @InvalidMessage = 'This coupon code has been scrapped.';
+        END
+
+        INSERT INTO Pro_Enq (Received_Code1, Received_Code2, MobileNo, Dial_Mode, Mode_Detail, Is_Success, Enq_Date, Comp_ID, Latitude, Longitude, callerdate, callertime)
+        VALUES (@Code1, @Code2, @FormattedMobile, ISNULL(@Mode, 'BLApp'), @InvalidReason, '0', GETDATE(), @Comp_id, @Latitude, @Longitude, CAST(GETDATE() AS DATE), CONVERT(VARCHAR(30), GETDATE(), 108));
+
+        SELECT 0 AS Success, @InvalidMessage AS Message;
         RETURN;
     END
 
