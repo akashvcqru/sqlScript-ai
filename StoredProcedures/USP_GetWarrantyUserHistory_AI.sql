@@ -9,6 +9,7 @@ GO
 -- =============================================
 -- Author:      Antigravity
 -- Create date: 17-Jul-2026
+-- Update date: 09-Oct-2026 (Filter IsWarrantyClaimed IS NOT NULL and prevent consumer fan-out)
 -- Description: Get Warranty User History by Company ID and Consumer ID with Pagination and Date Filter
 -- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_GetWarrantyUserHistory_AI]
@@ -151,9 +152,16 @@ BEGIN
         FROM [dbo].[WarrentyDetails] war WITH (NOLOCK)
         INNER JOIN [M_code] Mc WITH (NOLOCK) ON CAST(Mc.[Code1] AS VARCHAR(20)) + '-' + CAST(Mc.[Code2] AS VARCHAR(20)) = war.[Code]    
         INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
-        LEFT JOIN [dbo].[M_Consumer] c WITH (NOLOCK) ON RIGHT(c.MobileNo, 10) = RIGHT(war.Mobile, 10) AND c.IsDelete = 0
+        OUTER APPLY (
+            SELECT TOP 1 ConsumerName 
+            FROM [dbo].[M_Consumer] WITH (NOLOCK) 
+            WHERE RIGHT(MobileNo, 10) = RIGHT(war.Mobile, 10) AND IsDelete = 0
+            ORDER BY M_Consumerid DESC
+        ) c
         WHERE pr.[Comp_ID] = @Comp_Id
           AND war.Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91)
+          AND war.IsWarrantyClaimed IS NOT NULL
+          AND war.IsWarrantyClaimed <> ''
           AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
           AND (@EndDate IS NULL OR war.claimdate <= @EndDate)
           AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam)
@@ -175,6 +183,8 @@ BEGIN
     INNER JOIN [Pro_Reg] pr WITH (NOLOCK) ON pr.[Pro_ID] = Mc.[Pro_ID]    
     WHERE pr.[Comp_ID] = @Comp_Id
       AND war.Mobile IN (@MobileNo, @Mobile10, @MobileNo91, @MobileNoPlus91)
+      AND war.IsWarrantyClaimed IS NOT NULL
+      AND war.IsWarrantyClaimed <> ''
       AND (@StartDate IS NULL OR war.claimdate >= @StartDate)
       AND (@EndDate IS NULL OR war.claimdate <= @EndDate)
       AND (@SearchParam IS NULL OR war.Mobile LIKE @SearchParam OR war.BillNo LIKE @SearchParam OR war.SerialNo LIKE @SearchParam);
