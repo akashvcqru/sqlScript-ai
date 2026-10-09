@@ -1,13 +1,23 @@
+-- =============================================
+-- Migration: Add Batch_No Inactive Check To USP_BLchkwarranty_AI
+-- Date: 2026-10-09
+-- Description:
+--   When a code exists in M_Code / M_Code_PFL but its Batch_No is NULL or empty,
+--   the code has not been assigned to a batch / production run.
+--   Like USP_BLCodeCheckInstantCash_AI and USP_ACCodeCheck_Unified_AI,
+--   this migration adds validation to reject inactive/unassigned codes with:
+--   "This code is currently inactive. Please contact the service provider for assistance."
+--   and logs the attempt into Pro_Enq with Is_Success = '0'.
+-- =============================================
+
+USE [Vcqru]
+GO
+
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- =============================================
--- Author:        AI Assistant (Antigravity)
--- Create date:   2026-06-29
--- Description:   Validate and register E-Warranty (SRV1023) code checking dynamic landing page field configs.
--- =============================================
 CREATE OR ALTER PROCEDURE [dbo].[USP_BLchkwarranty_AI]
     @Code1 VARCHAR(10),
     @Code2 VARCHAR(15),
