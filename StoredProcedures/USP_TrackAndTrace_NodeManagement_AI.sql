@@ -17,12 +17,20 @@ BEGIN
         [IsActive]     BIT NOT NULL DEFAULT (1),
         [IsDelete]     BIT NOT NULL DEFAULT (0),
         [CreatedDate]  DATETIME NOT NULL DEFAULT (GETDATE()),
-        [CreatedBy]    NVARCHAR(100) NULL
+        [CreatedBy]    NVARCHAR(100) NULL,
+        [UpdateDate]   DATETIME NULL
     );
 
     CREATE NONCLUSTERED INDEX [IX_tbl_node_master_Comp_ID_IsDelete]
         ON [dbo].[tbl_node_master] ([Comp_ID], [IsDelete])
         INCLUDE ([NodeName], [IsActive], [CreatedDate]);
+END
+ELSE
+BEGIN
+    IF COL_LENGTH('dbo.tbl_node_master', 'UpdateDate') IS NULL
+    BEGIN
+        ALTER TABLE [dbo].[tbl_node_master] ADD [UpdateDate] DATETIME NULL;
+    END
 END
 GO
 
@@ -175,7 +183,8 @@ BEGIN
             [NodeDetail] = ISNULL(@NodeDetail, [NodeDetail]),
             [Latitude]   = ISNULL(@Latitude, [Latitude]),
             [Longitude]  = ISNULL(@Longitude, [Longitude]),
-            [IsActive]   = ISNULL(@IsActive, [IsActive])
+            [IsActive]   = ISNULL(@IsActive, [IsActive]),
+            [UpdateDate] = GETDATE()
         WHERE [NodeID] = @NodeID AND [Comp_ID] = @Comp_ID AND [IsDelete] = 0;
 
         SELECT 1 AS Success, 'Node updated successfully.' AS Message, @NodeID AS NodeID;
@@ -297,6 +306,7 @@ BEGIN
                 n.[IsActive],
                 n.[CreatedDate],
                 n.[CreatedBy],
+                n.[UpdateDate],
                 ISNULL((SELECT COUNT(1) FROM [dbo].[tbl_node_user] u WHERE u.[NodeID] = n.[NodeID] AND u.[IsDelete] = 0), 0) AS [UserCount],
                 1 AS [TotalRecords]
             FROM [dbo].[tbl_node_master] n
@@ -317,6 +327,7 @@ BEGIN
             n.[IsActive],
             n.[CreatedDate],
             n.[CreatedBy],
+            n.[UpdateDate],
             ISNULL((SELECT COUNT(1) FROM [dbo].[tbl_node_user] u WHERE u.[NodeID] = n.[NodeID] AND u.[IsDelete] = 0), 0) AS [UserCount],
             COUNT(1) OVER() AS [TotalRecords]
         FROM [dbo].[tbl_node_master] n
