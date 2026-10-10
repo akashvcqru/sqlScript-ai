@@ -154,7 +154,8 @@ BEGIN
         Longitude VARCHAR(50),
         M_Codeid BIGINT,
         Series_Order BIGINT,
-        Series_Serial BIGINT
+        Series_Serial BIGINT,
+        PE_ID BIGINT
     );
 
     IF @Search IS NOT NULL
@@ -183,7 +184,7 @@ BEGIN
         CREATE INDEX IX_SearchedCodes ON #SearchedCodes(Received_Code1, Received_Code2);
 
         -- Load ALL scan attempts across ALL users for those matched codes to ensure accurate duplicate/first-scan ranking
-        INSERT INTO #Enq (Received_Code1, Received_Code2, Enq_Date, Dial_Mode, Is_Success, MobileNo, Latitude, Longitude, M_Codeid, Series_Order, Series_Serial)
+        INSERT INTO #Enq (Received_Code1, Received_Code2, Enq_Date, Dial_Mode, Is_Success, MobileNo, Latitude, Longitude, M_Codeid, Series_Order, Series_Serial, PE_ID)
         SELECT 
             PE.Received_Code1,
             PE.Received_Code2,
@@ -195,7 +196,8 @@ BEGIN
             PE.Longitude,
             M.Row_ID AS M_Codeid,
             M.Series_Order,
-            M.Series_Serial
+            M.Series_Serial,
+            PE.Row_ID AS PE_ID
         FROM Pro_Enq PE WITH (NOLOCK)
         INNER JOIN #SearchedCodes SC
             ON PE.Received_Code1 = SC.Received_Code1
@@ -212,7 +214,7 @@ BEGIN
     END
     ELSE
     BEGIN
-        INSERT INTO #Enq (Received_Code1, Received_Code2, Enq_Date, Dial_Mode, Is_Success, MobileNo, Latitude, Longitude, M_Codeid, Series_Order, Series_Serial)
+        INSERT INTO #Enq (Received_Code1, Received_Code2, Enq_Date, Dial_Mode, Is_Success, MobileNo, Latitude, Longitude, M_Codeid, Series_Order, Series_Serial, PE_ID)
         SELECT 
             PE.Received_Code1,
             PE.Received_Code2,
@@ -224,7 +226,8 @@ BEGIN
             PE.Longitude,
             M.Row_ID AS M_Codeid,
             M.Series_Order,
-            M.Series_Serial
+            M.Series_Serial,
+            PE.Row_ID AS PE_ID
         FROM Pro_Enq PE WITH (NOLOCK)
         INNER JOIN M_code M WITH (NOLOCK) 
             ON PE.Received_Code1 = CAST(M.code1 AS VARCHAR(50))
@@ -657,13 +660,14 @@ BEGIN
         AssignPoint DECIMAL(18,2),
         WornPoint DECIMAL(18,2),
         ReferralPoints DECIMAL(18,2),
-        LabelRequestId VARCHAR(50)
+        LabelRequestId VARCHAR(50),
+        PE_ID BIGINT
     );
 
     -- 1. Insert scan enquiries
     INSERT INTO #FinalReport (
         Comp_ID, Comp_Name, UniqueCode, Series, Enq_Date, Dial_Mode, ConsumerName, MobileNo, State, Vrkabel_User_Type, City, Pro_Name, ServiceName,
-        Points, Result, Latitude, Longitude, AssignPoint, WornPoint, ReferralPoints, LabelRequestId
+        Points, Result, Latitude, Longitude, AssignPoint, WornPoint, ReferralPoints, LabelRequestId, PE_ID
     )
     SELECT 
         @Comp_Id AS Comp_ID,
@@ -737,7 +741,8 @@ BEGIN
             ELSE 0 
         END AS WornPoint,
         ISNULL(R.ReferralPoints, 0) AS ReferralPoints,
-        MCd.LabelRequestId
+        MCd.LabelRequestId,
+        E.PE_ID
     FROM
     (
         SELECT E_sub.*,
@@ -780,7 +785,7 @@ BEGIN
     -- 2. Insert registration referrals (virtual rows)
     INSERT INTO #FinalReport (
         Comp_ID, Comp_Name, UniqueCode, Series, Enq_Date, Dial_Mode, ConsumerName, MobileNo, State, Vrkabel_User_Type, City, Pro_Name, ServiceName,
-        Points, Result, Latitude, Longitude, AssignPoint, WornPoint, ReferralPoints, LabelRequestId
+        Points, Result, Latitude, Longitude, AssignPoint, WornPoint, ReferralPoints, LabelRequestId, PE_ID
     )
     SELECT 
         @Comp_Id AS Comp_ID,
@@ -806,7 +811,8 @@ BEGIN
         0 AS AssignPoint,
         0 AS WornPoint,
         SUM(CASE WHEN BL.Points IS NULL OR BL.Points = 0 THEN ISNULL(BL.Cash, 0) ELSE BL.Points END) AS ReferralPoints,
-        '' AS LabelRequestId
+        '' AS LabelRequestId,
+        NULL AS PE_ID
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
     LEFT JOIN tbl_Vendorvisekycstatus cc ON mc.M_Consumerid = cc.M_consumerId AND cc.comp_id = @comp_id
@@ -826,7 +832,7 @@ BEGIN
     -- 3. Insert other/extra earn point entries (Bonus, Repair, KYC, Invoice, Team Scans, etc.)
     INSERT INTO #FinalReport (
         Comp_ID, Comp_Name, UniqueCode, Series, Enq_Date, Dial_Mode, ConsumerName, MobileNo, State, Vrkabel_User_Type, City, Pro_Name, ServiceName,
-        Points, Result, Latitude, Longitude, AssignPoint, WornPoint, ReferralPoints, LabelRequestId
+        Points, Result, Latitude, Longitude, AssignPoint, WornPoint, ReferralPoints, LabelRequestId, PE_ID
     )
     SELECT 
         ISNULL(BL.compid, @Comp_Id) AS Comp_ID,
@@ -913,7 +919,8 @@ BEGIN
             END 
         AS DECIMAL(18,2))) AS WornPoint,
         0 AS ReferralPoints,
-        ISNULL(MCd.LabelRequestId, '') AS LabelRequestId
+        ISNULL(MCd.LabelRequestId, '') AS LabelRequestId,
+        NULL AS PE_ID
     FROM BLoyaltyPointsEarned BL WITH (NOLOCK)
     INNER JOIN M_Consumer MC ON BL.M_Consumerid = MC.M_Consumerid AND MC.IsDelete = 0
     LEFT JOIN tbl_Vendorvisekycstatus cc ON mc.M_Consumerid = cc.M_consumerId AND cc.comp_id = @comp_id
@@ -951,7 +958,7 @@ BEGIN
     GROUP BY BL.M_Consumerid, MC.ConsumerName, MC.MobileNo, MC.State, cc.Vrkabel_User_Type, MC.City, BL.UpdateDate, MS.ServiceName, BL.ServiceName, C.Code1, C.Code2, PR.Pro_Name, MCd.LabelRequestId, C.Pro_ID, PR.Pro_ID, C.Series_Order, C.Series_Serial, BL.compid;
 
     ----------------------------------------------------
-    -- RESULT SET 1 (Returns 17 Columns for FillData)
+    -- RESULT SET 1 (Returns 18 Columns for FillData)
     ----------------------------------------------------
     IF (@IsExport = 1)
     BEGIN
@@ -972,7 +979,8 @@ BEGIN
             FR.Longitude,
             CASE WHEN tsc.Point IS NULL THEN FR.AssignPoint ELSE ISNULL(TRY_CAST(tsc.Point AS DECIMAL(18,2)), FR.AssignPoint) END AS AssignPoint,
             FR.WornPoint,
-            FR.ReferralPoints 
+            FR.ReferralPoints,
+            FR.PE_ID
         FROM #FinalReport FR 
         LEFT JOIN #TempSoftCode tsc ON FR.LabelRequestId = tsc.TrackingId AND FR.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
@@ -1013,7 +1021,8 @@ BEGIN
             FR.Longitude,
             CASE WHEN tsc.Point IS NULL THEN FR.AssignPoint ELSE ISNULL(TRY_CAST(tsc.Point AS DECIMAL(18,2)), FR.AssignPoint) END AS AssignPoint,
             FR.WornPoint,
-            FR.ReferralPoints 
+            FR.ReferralPoints,
+            FR.PE_ID
         FROM #FinalReport FR 
         LEFT JOIN #TempSoftCode tsc ON FR.LabelRequestId = tsc.TrackingId AND FR.Vrkabel_User_Type = tsc.UserTypeId
         WHERE (
