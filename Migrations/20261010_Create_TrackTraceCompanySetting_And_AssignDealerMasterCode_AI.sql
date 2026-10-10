@@ -25,16 +25,14 @@ BEGIN
         -- Master Code Settings
         [IsMasterCodeEnabled]              [bit] NOT NULL CONSTRAINT [DF_TTCS_IsMasterCodeEnabled] DEFAULT ((1)),
         [IsMasterCodeRequired]             [bit] NOT NULL CONSTRAINT [DF_TTCS_IsMasterCodeRequired] DEFAULT ((0)),
-        [AllowDifferentProductMasterCode]  [bit] NOT NULL CONSTRAINT [DF_TTCS_AllowDiffProMaster] DEFAULT ((1)),
-        [AutoAssignMasterCodeIfEmpty]      [bit] NOT NULL CONSTRAINT [DF_TTCS_AutoAssignMaster] DEFAULT ((0)),
 
         -- Dealer Settings
         [IsDealerEnabled]                  [bit] NOT NULL CONSTRAINT [DF_TTCS_IsDealerEnabled] DEFAULT ((1)),
         [IsDealerRequired]                 [bit] NOT NULL CONSTRAINT [DF_TTCS_IsDealerRequired] DEFAULT ((0)),
         
         -- Additional Metadata Settings
+        [IsInvoiceEnabled]                 [bit] NOT NULL CONSTRAINT [DF_TTCS_IsInvoiceEnabled] DEFAULT ((1)),
         [IsInvoiceRequired]                [bit] NOT NULL CONSTRAINT [DF_TTCS_IsInvoiceRequired] DEFAULT ((0)),
-        [IsDispatchDateRequired]           [bit] NOT NULL CONSTRAINT [DF_TTCS_IsDispatchDateRequired] DEFAULT ((0)),
 
         -- Audit Columns
         [IsActive]                         [bit] NOT NULL CONSTRAINT [DF_TTCS_IsActive] DEFAULT ((1)),
@@ -45,6 +43,13 @@ BEGIN
         CONSTRAINT [PK_tbl_TrackTraceCompanySetting] PRIMARY KEY CLUSTERED ([Id] ASC),
         CONSTRAINT [UQ_tbl_TrackTraceCompanySetting_CompId] UNIQUE NONCLUSTERED ([Comp_Id] ASC)
     ) ON [PRIMARY];
+END
+ELSE
+BEGIN
+    IF COL_LENGTH('dbo.tbl_TrackTraceCompanySetting', 'IsInvoiceEnabled') IS NULL
+    BEGIN
+        ALTER TABLE [dbo].[tbl_TrackTraceCompanySetting] ADD [IsInvoiceEnabled] BIT NOT NULL CONSTRAINT [DF_TTCS_IsInvoiceEnabled] DEFAULT ((1));
+    END
 END
 GO
 
@@ -110,12 +115,10 @@ BEGIN
             Comp_Id,
             IsMasterCodeEnabled,
             IsMasterCodeRequired,
-            AllowDifferentProductMasterCode,
-            AutoAssignMasterCodeIfEmpty,
             IsDealerEnabled,
             IsDealerRequired,
+            IsInvoiceEnabled,
             IsInvoiceRequired,
-            IsDispatchDateRequired,
             IsActive,
             CreatedDate,
             UpdatedDate,
@@ -131,12 +134,10 @@ BEGIN
             @Comp_ID AS Comp_Id,
             CAST(1 AS BIT) AS IsMasterCodeEnabled,
             CAST(0 AS BIT) AS IsMasterCodeRequired,
-            CAST(1 AS BIT) AS AllowDifferentProductMasterCode,
-            CAST(0 AS BIT) AS AutoAssignMasterCodeIfEmpty,
             CAST(1 AS BIT) AS IsDealerEnabled,
             CAST(0 AS BIT) AS IsDealerRequired,
+            CAST(1 AS BIT) AS IsInvoiceEnabled,
             CAST(0 AS BIT) AS IsInvoiceRequired,
-            CAST(0 AS BIT) AS IsDispatchDateRequired,
             CAST(1 AS BIT) AS IsActive,
             GETDATE() AS CreatedDate,
             NULL AS UpdatedDate,
@@ -152,12 +153,10 @@ CREATE OR ALTER PROCEDURE [dbo].[USP_SaveTrackTraceCompanySetting_AI]
     @Comp_ID                          VARCHAR(50),
     @IsMasterCodeEnabled              BIT = 1,
     @IsMasterCodeRequired             BIT = 0,
-    @AllowDifferentProductMasterCode  BIT = 1,
-    @AutoAssignMasterCodeIfEmpty      BIT = 0,
     @IsDealerEnabled                  BIT = 1,
     @IsDealerRequired                 BIT = 0,
+    @IsInvoiceEnabled                 BIT = 1,
     @IsInvoiceRequired                BIT = 0,
-    @IsDispatchDateRequired           BIT = 0,
     @UpdatedBy                        VARCHAR(50) = NULL
 AS
 BEGIN
@@ -168,12 +167,10 @@ BEGIN
             UPDATE [dbo].[tbl_TrackTraceCompanySetting]
             SET IsMasterCodeEnabled             = @IsMasterCodeEnabled,
                 IsMasterCodeRequired            = @IsMasterCodeRequired,
-                AllowDifferentProductMasterCode = @AllowDifferentProductMasterCode,
-                AutoAssignMasterCodeIfEmpty     = @AutoAssignMasterCodeIfEmpty,
                 IsDealerEnabled                 = @IsDealerEnabled,
                 IsDealerRequired                = @IsDealerRequired,
+                IsInvoiceEnabled                = @IsInvoiceEnabled,
                 IsInvoiceRequired               = @IsInvoiceRequired,
-                IsDispatchDateRequired          = @IsDispatchDateRequired,
                 IsActive                        = 1,
                 UpdatedDate                     = GETDATE(),
                 UpdatedBy                       = @UpdatedBy
@@ -186,17 +183,15 @@ BEGIN
             INSERT INTO [dbo].[tbl_TrackTraceCompanySetting]
             (
                 Comp_Id, IsMasterCodeEnabled, IsMasterCodeRequired,
-                AllowDifferentProductMasterCode, AutoAssignMasterCodeIfEmpty,
                 IsDealerEnabled, IsDealerRequired,
-                IsInvoiceRequired, IsDispatchDateRequired,
+                IsInvoiceEnabled, IsInvoiceRequired,
                 IsActive, CreatedDate, UpdatedBy
             )
             VALUES
             (
                 @Comp_ID, @IsMasterCodeEnabled, @IsMasterCodeRequired,
-                @AllowDifferentProductMasterCode, @AutoAssignMasterCodeIfEmpty,
                 @IsDealerEnabled, @IsDealerRequired,
-                @IsInvoiceRequired, @IsDispatchDateRequired,
+                @IsInvoiceEnabled, @IsInvoiceRequired,
                 1, GETDATE(), @UpdatedBy
             );
 
@@ -245,19 +240,17 @@ BEGIN
         -- 1. Check Company Configuration Rules
         DECLARE @IsMasterCodeEnabled BIT = 1;
         DECLARE @IsMasterCodeRequired BIT = 0;
-        DECLARE @AllowDifferentProductMasterCode BIT = 1;
-        DECLARE @AutoAssignMasterCodeIfEmpty BIT = 0;
         DECLARE @IsDealerEnabled BIT = 1;
         DECLARE @IsDealerRequired BIT = 0;
+        DECLARE @IsInvoiceEnabled BIT = 1;
         DECLARE @IsInvoiceRequired BIT = 0;
 
         SELECT TOP 1
             @IsMasterCodeEnabled             = IsMasterCodeEnabled,
             @IsMasterCodeRequired            = IsMasterCodeRequired,
-            @AllowDifferentProductMasterCode = AllowDifferentProductMasterCode,
-            @AutoAssignMasterCodeIfEmpty     = AutoAssignMasterCodeIfEmpty,
             @IsDealerEnabled                 = IsDealerEnabled,
             @IsDealerRequired                = IsDealerRequired,
+            @IsInvoiceEnabled                = IsInvoiceEnabled,
             @IsInvoiceRequired               = IsInvoiceRequired
         FROM [dbo].[tbl_TrackTraceCompanySetting] WITH (NOLOCK)
         WHERE Comp_Id = @Comp_ID AND IsActive = 1;
@@ -298,11 +291,6 @@ BEGIN
             RETURN;
         END
 
-        IF (ISNULL(@MasterCode, '') = '') AND @AutoAssignMasterCodeIfEmpty = 1
-        BEGIN
-            SET @MasterCode = @SeriesStart;
-        END
-
         -- If MasterCode is provided, validate uniqueness and existence
         IF ISNULL(@MasterCode, '') <> ''
         BEGIN
@@ -311,21 +299,6 @@ BEGIN
                 ROLLBACK TRANSACTION;
                 SELECT 0 AS success, CONCAT('Master code ''', @MasterCode, ''' is already mapped to another batch/series.') AS message;
                 RETURN;
-            END
-
-            -- If master code must belong to the same product, verify prefix
-            IF @AllowDifferentProductMasterCode = 0
-            BEGIN
-                IF @MasterCode LIKE '%-%-%'
-                BEGIN
-                    DECLARE @MasterPrefix VARCHAR(50) = LEFT(@MasterCode, CHARINDEX('-', @MasterCode) - 1);
-                    IF UPPER(LTRIM(RTRIM(@MasterPrefix))) <> UPPER(LTRIM(RTRIM(@Pro_ID)))
-                    BEGIN
-                        ROLLBACK TRANSACTION;
-                        SELECT 0 AS success, 'Master code must belong to the same product.' AS message;
-                        RETURN;
-                    END
-                END
             END
         END
 
